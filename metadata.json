@@ -1,0 +1,6 @@
+{
+  "name": "Basco Cashflow",
+  "description": "Sistem pemantau arus kas cafe Basco Coffee terintegrasi Google Sheets. Dilengkapi analisis indikator kinerja & rasio bisnis cafe, laporan keuangan mingguan otomatis, pencatatan hutang bulanan & tahunan dengan notifikasi tanggal pembayaran serta analisis kelayakan berhutang otomatis oleh AI, jadwal shift barista, stok opname & audit bahan, analisis COGS/omset, catatan kalender dengan pengingat H-1 otomatis, kalkulasi gaji kehadiran harian, serta export slip gaji gambar PNG & WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
