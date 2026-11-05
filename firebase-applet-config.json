@@ -1,12 +1,12 @@
 {
-  "projectId": "gen-lang-client-0799280426",
-  "appId": "1:546806805633:web:e90edf4c8f90e3d0d58980",
-  "apiKey": "AIzaSyBeFOv2BQyTf50Jlwp4ABC8yOlSk639Duw",
-  "authDomain": "gen-lang-client-0799280426.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-bascocashflow-dee3541d-2e35-490f-9105-10097b4d1b85",
-  "storageBucket": "gen-lang-client-0799280426.firebasestorage.app",
-  "messagingSenderId": "546806805633",
-  "measurementId": "",
-  "oAuthClientId": "546806805633-ffhg9u72h0t03hk6ffqqa16rf2543qa9.apps.googleusercontent.com",
+  "projectId": "basco-cashflow",
+  "appId": "1:1031669657248:web:0dd992eb765d44d53f23c5",
+  "apiKey": "AIzaSyBiXX1Z6lFDnVQDP8tg1m8iRALeZn_qLkA",
+  "authDomain": "basco-cashflow.firebaseapp.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "basco-cashflow.firebasestorage.app",
+  "messagingSenderId": "1031669657248",
+  "measurementId": "G-BQH2J5T3NK",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }
