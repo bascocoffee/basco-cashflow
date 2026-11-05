@@ -22,6 +22,7 @@ export const provider = new GoogleAuthProvider();
 // Request necessary scopes for Google Sheets and Google Drive
 provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 provider.addScope('https://www.googleapis.com/auth/drive.file');
+provider.setCustomParameters({ prompt: 'select_account' });
 
 // Cache the access token in memory (never persistent in localStorage/sessionStorage for security)
 let cachedAccessToken: string | null = null;

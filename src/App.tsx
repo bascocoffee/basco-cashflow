@@ -380,12 +380,17 @@ export default function App() {
     } catch (err: any) {
       console.error('Google Sign-in error:', err);
       const code = err?.code || '';
+      const message = err?.message || '';
       if (code === 'auth/unauthorized-domain') {
-        setError(`Domain ${window.location.hostname} belum terdaftar di Authorized Domains Firebase. Anda bisa langsung masuk tanpa kendala menggunakan tombol "AKSES KHUSUS MANAGER (PIN: basco12)" di bawah.`);
+        setError(`Domain ${window.location.hostname} belum terdaftar di Authorized Domains Firebase.`);
+      } else if (code === 'auth/operation-not-allowed') {
+        setError('Google Sign-in belum diaktifkan di Firebase Console (Buka Firebase Console > Authentication > Sign-in method > pilih Google lalu klik Enable & Save).');
       } else if (code === 'auth/popup-closed-by-user') {
-        setError('Jendela login ditutup sebelum selesai.');
+        setError('Jendela popup login Google ditutup sebelum selesai.');
+      } else if (code === 'auth/popup-blocked') {
+        setError('Jendela popup diblokir oleh browser. Harap izinkan pop-up di browser Anda.');
       } else {
-        setError(err.message || 'Gagal masuk menggunakan Google Auth. Harap izinkan akses Google Drive & Sheets.');
+        setError(`Gagal login (${code || 'Detail'}): ${message || 'Pastikan izin Google Sheets & Drive diberikan.'}`);
       }
     } finally {
       setIsLoggingIn(false);
