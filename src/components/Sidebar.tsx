@@ -163,51 +163,6 @@ export default function Sidebar({
   };
 
   const navGroups = useMemo(() => {
-    if (isManagerMode) {
-      return [
-        {
-          groupTitle: 'Akses Manager',
-          items: [
-            { 
-              id: 'dashboard' as TabType, 
-              label: 'Dashboard Pencatatan Harian', 
-              icon: LayoutDashboard,
-              description: 'Arus kas & transaksi harian'
-            },
-            { 
-              id: 'employee_tasks' as TabType, 
-              label: 'Tugas Karyawan', 
-              icon: UserCheck, 
-              badge: 'Baru',
-              badgeColor: 'amber' as const,
-              description: 'Pencatatan tugas & jobdesk staf'
-            },
-            { 
-              id: 'omset_cogs' as TabType, 
-              label: 'Penjualan Menu', 
-              icon: Coffee, 
-              highlight: true,
-              description: 'Catatan penjualan menu & HPP'
-            },
-            { 
-              id: 'barista_schedule' as TabType, 
-              label: 'Jadwal Operasional', 
-              icon: Users, 
-              badge: 'Shift',
-              badgeColor: 'amber' as const,
-              description: 'Roster & shift barista'
-            },
-            { 
-              id: 'cogs' as TabType, 
-              label: 'Stok Opname Bulanan', 
-              icon: ClipboardList,
-              description: 'Audit bahan baku & inventory'
-            }
-          ]
-        }
-      ];
-    }
-
     return [
       {
         groupTitle: 'Dasbor & Operasional Bar',
@@ -517,7 +472,7 @@ export default function Sidebar({
           ))}
 
           {/* Quick Utility Shortcut: Backup JSON */}
-          {!isManagerMode && onOpenBackupModal && (
+          {onOpenBackupModal && (
             <div className="pt-2">
               {isCollapsed ? (
                 <button

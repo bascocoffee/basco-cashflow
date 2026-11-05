@@ -236,16 +236,6 @@ export default function App() {
     }
   }, [isManagerMode]);
 
-  // Allowed tabs in Manager Mode: Dashboard Pencatatan Harian, Tugas Karyawan, Penjualan Menu, Jadwal Operasional, Stok Opname Bulanan
-  const MANAGER_ALLOWED_TABS: TabType[] = ['dashboard', 'employee_tasks', 'omset_cogs', 'barista_schedule', 'cogs'];
-
-  // Ensure manager mode stays on allowed tabs
-  useEffect(() => {
-    if (isManagerMode && !MANAGER_ALLOWED_TABS.includes(activeTab)) {
-      setActiveTab('dashboard');
-    }
-  }, [isManagerMode, activeTab]);
-
   // Enter Manager mode without email login (Password PIN: basco12)
   const handleEnterManagerMode = (pinCode?: string) => {
     const inputClean = (pinCode || '').trim();
@@ -388,8 +378,15 @@ export default function App() {
         }
       }
     } catch (err: any) {
-      console.error(err);
-      setError('Gagal masuk menggunakan Google Auth. Harap izinkan akses Google Drive & Sheets.');
+      console.error('Google Sign-in error:', err);
+      const code = err?.code || '';
+      if (code === 'auth/unauthorized-domain') {
+        setError(`Domain ${window.location.hostname} belum terdaftar di Authorized Domains Firebase. Anda bisa langsung masuk tanpa kendala menggunakan tombol "AKSES KHUSUS MANAGER (PIN: basco12)" di bawah.`);
+      } else if (code === 'auth/popup-closed-by-user') {
+        setError('Jendela login ditutup sebelum selesai.');
+      } else {
+        setError(err.message || 'Gagal masuk menggunakan Google Auth. Harap izinkan akses Google Drive & Sheets.');
+      }
     } finally {
       setIsLoggingIn(false);
     }
