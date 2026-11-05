@@ -47,7 +47,10 @@ export async function getSpreadsheetDetails(spreadsheetIdOrUrl: string, accessTo
     if (res.status === 404) {
       throw new Error('Google Spreadsheet tidak ditemukan. Periksa kembali ID atau Link yang dimasukkan.');
     } else if (res.status === 403 || res.status === 401) {
-      throw new Error('Izin akses ditolak. Pastikan akun Google yang sedang login memiliki akses Edit pada spreadsheet ini.');
+      if (errorText.includes('has not been used') || errorText.includes('disabled') || errorText.includes('SERVICE_DISABLED')) {
+        throw new Error('Google Sheets API belum diaktifkan di project Firebase Anda. Aktifkan di: https://console.cloud.google.com/apis/library/sheets.googleapis.com?project=basco-cashflow');
+      }
+      throw new Error(`Izin akses ditolak (403). Pastikan akun yang login memiliki akses Editor pada file spreadsheet tersebut, serta centang izin Google Sheets & Drive saat login.`);
     }
     throw new Error(`Gagal membuka spreadsheet (${res.status}): ${errorText}`);
   }
