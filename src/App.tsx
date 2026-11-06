@@ -73,6 +73,8 @@ import {
   Crown,
   Briefcase,
   CheckCircle2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 const ROLE_USERS: Record<AppRole, User> = {
@@ -320,6 +322,7 @@ export default function App() {
   const [loginRoleTab, setLoginRoleTab] = useState<AppRole>("owner");
   const [rolePinInput, setRolePinInput] = useState("");
   const [rolePinError, setRolePinError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Manager Mode State (Akses Tanpa Email)
   const [isManagerMode, setIsManagerMode] = useState<boolean>(() => {
@@ -542,26 +545,19 @@ export default function App() {
     }
   }, [userRole, activeTab]);
 
-  // Unified Role PIN Login Handler (Owner, Manager, Barista)
+  // Unified Role Password Login Handler (Owner, Manager, Barista)
   const handleLoginWithRolePin = async (role: AppRole, pinCode?: string) => {
     const inputClean = (pinCode || rolePinInput || "").trim().toLowerCase();
 
-    // Master fallback PIN: basco12
-    // Role-specific default PINs: owner12, manager12, barista12
-    const defaultRolePin =
+    const expectedPassword =
       role === "owner"
-        ? "owner12"
+        ? "basco12.indonesia"
         : role === "manager"
-          ? "manager12"
-          : "barista12";
-    const storedPin =
-      localStorage.getItem(`aruskas_${role}_pin`) || defaultRolePin;
-    const validPins = ["basco12", defaultRolePin, storedPin.toLowerCase()];
+          ? "bascospv"
+          : "baristabasco";
 
-    if (!inputClean || !validPins.includes(inputClean)) {
-      setRolePinError(
-        `PIN Salah! Masukkan PIN default ${defaultRolePin} atau basco12`,
-      );
+    if (!inputClean || inputClean !== expectedPassword) {
+      setRolePinError("Password salah! Silakan periksa kembali password Anda.");
       return;
     }
 
@@ -1248,40 +1244,49 @@ export default function App() {
   // SIGN IN LANDING SCREEN (If not logged in) - 3 Roles: Owner, Manajer, Barista
   if (!user || !token) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-10 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-[#0b2e22] via-[#134e3a] to-[#082219] flex flex-col justify-center py-10 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
+        {/* Subtle Decorative Background Glow */}
+        <div className="pointer-events-none absolute -top-24 -left-24 h-80 w-80 rounded-full bg-emerald-600/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl" />
+
         {/* App Title & Header */}
         <div className="sm:mx-auto sm:w-full sm:max-w-xl text-center z-10 px-4">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-amber-400 shadow-md mb-3 border border-slate-800">
-            <Coffee className="h-7 w-7" />
+          <div className="inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-white p-2.5 shadow-xl mb-3.5 border-2 border-emerald-300/40">
+            <img
+              src="/basco-logo.png"
+              alt="Basco Logo"
+              className="h-full w-full object-contain"
+            />
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-slate-900">
+          <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white drop-shadow-xs">
             Basco Cashflow & Cafe System
           </h2>
-          <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto font-bold uppercase tracking-wider">
+          <p className="mt-1 text-xs text-emerald-100/80 max-w-md mx-auto font-bold uppercase tracking-wider">
             Sistem Pemantau Keuangan & Operasional Cafe Real-Time
           </p>
         </div>
 
         <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl z-10 px-4">
-          <div className="bg-white py-7 px-5 sm:px-8 rounded-2xl border border-slate-200/90 shadow-lg">
+          <div className="bg-white py-7 px-5 sm:px-8 rounded-2xl border border-emerald-900/20 shadow-2xl">
             {/* 3 ROLE SELECTOR TABS */}
             <div className="mb-6">
-              <label className="text-[11px] font-black uppercase tracking-wider text-slate-500 block mb-2 text-center">
+              <label className="text-[11px] font-black uppercase tracking-wider text-emerald-950/70 block mb-2 text-center">
                 Pilih Peran Masuk (Role Akun)
               </label>
-              <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-3 gap-2 p-1.5 bg-emerald-950/5 rounded-xl border border-emerald-900/15">
                 <button
                   type="button"
                   onClick={() => {
                     setLoginRoleTab("owner");
                     setRolePinError(null);
                     setRolePinInput("");
+                    setShowPassword(false);
                   }}
                   className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                     loginRoleTab === "owner"
-                      ? "bg-purple-600 text-white shadow-sm ring-2 ring-purple-600/30"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      ? "bg-[#14532d] text-white shadow-sm ring-2 ring-emerald-800/30"
+                      : "text-emerald-950/70 hover:text-emerald-950 hover:bg-white/80"
                   }`}
                 >
                   <span className="text-base sm:mr-1.5">👑</span>
@@ -1294,11 +1299,12 @@ export default function App() {
                     setLoginRoleTab("manager");
                     setRolePinError(null);
                     setRolePinInput("");
+                    setShowPassword(false);
                   }}
                   className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                     loginRoleTab === "manager"
-                      ? "bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-500/30"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      ? "bg-[#14532d] text-white shadow-sm ring-2 ring-emerald-800/30"
+                      : "text-emerald-950/70 hover:text-emerald-950 hover:bg-white/80"
                   }`}
                 >
                   <span className="text-base sm:mr-1.5">👔</span>
@@ -1311,11 +1317,12 @@ export default function App() {
                     setLoginRoleTab("barista");
                     setRolePinError(null);
                     setRolePinInput("");
+                    setShowPassword(false);
                   }}
                   className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                     loginRoleTab === "barista"
-                      ? "bg-sky-500 text-white shadow-sm ring-2 ring-sky-500/30"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                      ? "bg-[#14532d] text-white shadow-sm ring-2 ring-emerald-800/30"
+                      : "text-emerald-950/70 hover:text-emerald-950 hover:bg-white/80"
                   }`}
                 >
                   <span className="text-base sm:mr-1.5">☕</span>
@@ -1343,16 +1350,16 @@ export default function App() {
             {loginRoleTab === "owner" && (
               <div className="space-y-5">
                 {/* Role description banner */}
-                <div className="p-4 bg-purple-50/80 rounded-xl border border-purple-200 text-purple-950">
+                <div className="p-4 bg-emerald-950/5 rounded-xl border border-emerald-800/20 text-emerald-950">
                   <div className="flex items-start space-x-3">
-                    <div className="p-2 bg-purple-600 text-white rounded-lg shrink-0 shadow-xs">
+                    <div className="p-2 bg-[#14532d] text-white rounded-lg shrink-0 shadow-xs">
                       <Crown className="h-4 w-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-purple-950">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950">
                         Akses Penuh Owner (Pemilik Usaha)
                       </h4>
-                      <p className="text-[11px] text-purple-900/80 font-medium mt-0.5 leading-relaxed">
+                      <p className="text-[11px] text-emerald-900/80 font-medium mt-0.5 leading-relaxed">
                         Kendali lengkap: Dasbor Keuangan & Laba Bersih, Omset &
                         HPP, Debt Tracker AI, Kontrol Roster Gaji, Analisis
                         Biaya Tetap & BEP, dan Sinkronisasi Google Sheets.
@@ -1367,11 +1374,11 @@ export default function App() {
                     type="button"
                     onClick={handleLogin}
                     disabled={isLoggingIn}
-                    className="w-full flex justify-center items-center py-2.5 px-4 border border-purple-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-purple-50/50 transition cursor-pointer disabled:opacity-60 shadow-xs hover:border-purple-300"
+                    className="w-full flex justify-center items-center py-2.5 px-4 border border-emerald-800/25 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-emerald-50/60 transition cursor-pointer disabled:opacity-60 shadow-xs hover:border-emerald-700/40"
                   >
                     {isLoggingIn ? (
                       <div className="flex items-center space-x-2">
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#14532d]" />
                         <span>Menghubungkan akun Google...</span>
                       </div>
                     ) : (
@@ -1418,12 +1425,12 @@ export default function App() {
                   </div>
                   <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest">
                     <span className="bg-white px-3 text-slate-400">
-                      Atau Masuk Cepat dengan PIN Owner
+                      Atau Masuk dengan Password Owner
                     </span>
                   </div>
                 </div>
 
-                {/* Option 2: Owner PIN Form */}
+                {/* Option 2: Owner Password Form */}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1437,32 +1444,39 @@ export default function App() {
                         <Lock className="h-4 w-4" />
                       </div>
                       <input
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         value={rolePinInput}
                         onChange={(e) => setRolePinInput(e.target.value)}
-                        placeholder="Masukkan PIN Owner (owner12 atau basco12)"
-                        className="w-full pl-9 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                        placeholder="Masukkan password"
+                        className="w-full pl-9 pr-10 py-2.5 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] focus:outline-none"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-900 transition cursor-pointer"
+                        tabIndex={-1}
+                        aria-label={
+                          showPassword
+                            ? "Sembunyikan password"
+                            : "Tampilkan password"
+                        }
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="submit"
-                      className="py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center space-x-1.5"
-                    >
-                      <Lock className="h-3.5 w-3.5" />
-                      <span>Masuk dengan PIN</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleLoginWithRolePin("owner", "owner12")}
-                      className="py-2.5 px-3 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
-                    >
-                      <span>⚡ Cepat: PIN owner12</span>
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 px-4 bg-[#14532d] hover:bg-[#0f3f22] text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center space-x-1.5"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>Masuk sebagai Owner</span>
+                  </button>
                 </form>
               </div>
             )}
@@ -1471,16 +1485,16 @@ export default function App() {
             {loginRoleTab === "manager" && (
               <div className="space-y-5">
                 {/* Role description banner */}
-                <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 text-amber-950">
+                <div className="p-4 bg-emerald-950/5 rounded-xl border border-emerald-800/20 text-emerald-950">
                   <div className="flex items-start space-x-3">
-                    <div className="p-2 bg-amber-500 text-slate-950 rounded-lg shrink-0 shadow-xs">
+                    <div className="p-2 bg-[#14532d] text-white rounded-lg shrink-0 shadow-xs">
                       <Briefcase className="h-4 w-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950">
                         Akses Manajer Operasional Cafe
                       </h4>
-                      <p className="text-[11px] text-amber-900 font-medium mt-0.5 leading-relaxed">
+                      <p className="text-[11px] text-emerald-900/80 font-medium mt-0.5 leading-relaxed">
                         Kelola operasional: Tugas Karyawan, Catatan Kalender,
                         Jadwal Operasional, Analisis COGS & Sales, Bahan Perlu
                         Dibelanjakan, dan Stok Opname Bulanan.
@@ -1492,7 +1506,7 @@ export default function App() {
                 {/* Manager Features Checklist */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-[#14532d] shrink-0" />
                     <span>
                       Fitur Terbuka: Tugas Karyawan, Catatan Kalender, Jadwal
                       Operasional, COGS & Sales, Belanja & Stok Opname
@@ -1504,7 +1518,7 @@ export default function App() {
                   </p>
                 </div>
 
-                {/* Manager PIN Form */}
+                {/* Manager Password Form */}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1518,34 +1532,39 @@ export default function App() {
                         <Lock className="h-4 w-4" />
                       </div>
                       <input
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         value={rolePinInput}
                         onChange={(e) => setRolePinInput(e.target.value)}
-                        placeholder="Masukkan PIN Manajer (manager12 atau basco12)"
-                        className="w-full pl-9 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        placeholder="Masukkan password"
+                        className="w-full pl-9 pr-10 py-2.5 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] focus:outline-none"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-900 transition cursor-pointer"
+                        tabIndex={-1}
+                        aria-label={
+                          showPassword
+                            ? "Sembunyikan password"
+                            : "Tampilkan password"
+                        }
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="submit"
-                      className="py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center space-x-1.5"
-                    >
-                      <Lock className="h-3.5 w-3.5" />
-                      <span>Masuk Manajer</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleLoginWithRolePin("manager", "manager12")
-                      }
-                      className="py-2.5 px-3 bg-amber-100/70 hover:bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
-                    >
-                      <span>⚡ Cepat: PIN manager12</span>
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 px-4 bg-[#14532d] hover:bg-[#0f3f22] text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center space-x-1.5"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>Masuk Manajer</span>
+                  </button>
                 </form>
 
                 {/* Option 2: Google OAuth for Manager */}
@@ -1554,9 +1573,9 @@ export default function App() {
                     type="button"
                     onClick={() => handleLogin("manager")}
                     disabled={isLoggingIn}
-                    className="w-full flex justify-center items-center py-2 px-4 border border-amber-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-amber-50/50 transition cursor-pointer disabled:opacity-60 shadow-2xs"
+                    className="w-full flex justify-center items-center py-2 px-4 border border-emerald-800/25 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-emerald-50/60 transition cursor-pointer disabled:opacity-60 shadow-2xs"
                   >
-                    <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700">
+                    <span className="text-[10.5px] font-black uppercase tracking-wider text-emerald-950">
                       🔗 Masuk Manajer via Akun Google (Sinkron Otomatis)
                     </span>
                   </button>
@@ -1568,16 +1587,16 @@ export default function App() {
             {loginRoleTab === "barista" && (
               <div className="space-y-5">
                 {/* Role description banner */}
-                <div className="p-4 bg-sky-50/80 rounded-xl border border-sky-200 text-sky-950">
+                <div className="p-4 bg-emerald-950/5 rounded-xl border border-emerald-800/20 text-emerald-950">
                   <div className="flex items-start space-x-3">
-                    <div className="p-2 bg-sky-500 text-white rounded-lg shrink-0 shadow-xs">
+                    <div className="p-2 bg-[#14532d] text-white rounded-lg shrink-0 shadow-xs">
                       <Coffee className="h-4 w-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950">
                         Akses Barista & Tim Bar
                       </h4>
-                      <p className="text-[11px] text-sky-950 font-medium mt-0.5 leading-relaxed">
+                      <p className="text-[11px] text-emerald-900/80 font-medium mt-0.5 leading-relaxed">
                         Area khusus barista: input pencatatan penjualan & jatah
                         menu harian pada modul Analisis COGS & Sales.
                       </p>
@@ -1588,7 +1607,7 @@ export default function App() {
                 {/* Barista Features Checklist */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-[#14532d] shrink-0" />
                     <span>
                       Fitur Terbuka: Analisis COGS & Sales (Bagian 1: Pencatatan
                       Harian)
@@ -1600,7 +1619,7 @@ export default function App() {
                   </p>
                 </div>
 
-                {/* Barista PIN Form */}
+                {/* Barista Password Form */}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -1614,34 +1633,39 @@ export default function App() {
                         <Lock className="h-4 w-4" />
                       </div>
                       <input
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         value={rolePinInput}
                         onChange={(e) => setRolePinInput(e.target.value)}
-                        placeholder="Masukkan PIN Barista (barista12 atau basco12)"
-                        className="w-full pl-9 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                        placeholder="Masukkan password"
+                        className="w-full pl-9 pr-10 py-2.5 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#14532d] focus:border-[#14532d] focus:outline-none"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-900 transition cursor-pointer"
+                        tabIndex={-1}
+                        aria-label={
+                          showPassword
+                            ? "Sembunyikan password"
+                            : "Tampilkan password"
+                        }
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="submit"
-                      className="py-2.5 px-3 bg-sky-500 hover:bg-sky-600 text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center space-x-1.5"
-                    >
-                      <Lock className="h-3.5 w-3.5" />
-                      <span>Masuk Barista</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleLoginWithRolePin("barista", "barista12")
-                      }
-                      className="py-2.5 px-3 bg-sky-100/70 hover:bg-sky-100 text-sky-950 border border-sky-300 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
-                    >
-                      <span>⚡ Cepat: PIN barista12</span>
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 px-4 bg-[#14532d] hover:bg-[#0f3f22] text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-sm flex items-center justify-center space-x-1.5"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>Masuk Barista</span>
+                  </button>
                 </form>
 
                 {/* Option 2: Google OAuth for Barista */}
@@ -1650,9 +1674,9 @@ export default function App() {
                     type="button"
                     onClick={() => handleLogin("barista")}
                     disabled={isLoggingIn}
-                    className="w-full flex justify-center items-center py-2 px-4 border border-sky-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-sky-50/50 transition cursor-pointer disabled:opacity-60 shadow-2xs"
+                    className="w-full flex justify-center items-center py-2 px-4 border border-emerald-800/25 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-emerald-50/60 transition cursor-pointer disabled:opacity-60 shadow-2xs"
                   >
-                    <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700">
+                    <span className="text-[10.5px] font-black uppercase tracking-wider text-emerald-950">
                       🔗 Masuk Barista via Akun Google (Sinkron Otomatis)
                     </span>
                   </button>
@@ -1662,7 +1686,7 @@ export default function App() {
 
             {/* Footer privacy guarantee */}
             <div className="mt-6 pt-4 border-t border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider text-center flex items-center justify-center space-x-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <ShieldCheck className="h-3.5 w-3.5 text-[#14532d] shrink-0" />
               <span>
                 Sistem Enkripsi Sesi Client-Side & Google Cloud Terproteksi
               </span>
