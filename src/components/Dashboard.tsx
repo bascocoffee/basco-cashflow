@@ -590,6 +590,12 @@ export default function Dashboard({
 
   // Statistics calculated purely on the filtered transactions to make the dashboard highly interactive
   const filteredStats = useMemo(() => getFinancialSummary(filteredTransactions), [filteredTransactions]);
+  const filteredColumnBreakdown = useMemo(() => {
+    const kreditColC = filteredTransactions.reduce((acc, t) => acc + (Number(t.kredit) || 0), 0);
+    const kreditColE = filteredTransactions.reduce((acc, t) => acc + (Number(t.kredit2) || 0), 0);
+    const saldoColCOnly = filteredStats.totalDebit - kreditColC;
+    return { kreditColC, kreditColE, saldoColCOnly };
+  }, [filteredTransactions, filteredStats.totalDebit]);
   // Statistics calculated on all transactions for global reference
   const globalStats = useMemo(() => getFinancialSummary(transactions), [transactions]);
 
@@ -1553,6 +1559,13 @@ export default function Dashboard({
           <h3 className="text-2xl font-black text-red-500 truncate mt-2">
             {formatRupiah(filteredStats.totalKredit)}
           </h3>
+          {filteredColumnBreakdown.kreditColE > 0 && (
+            <div className="text-[10px] font-medium text-slate-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+              <span>Kol C: <strong className="text-slate-700">{formatRupiah(filteredColumnBreakdown.kreditColC)}</strong></span>
+              <span>•</span>
+              <span>Kol E: <strong className="text-slate-700">{formatRupiah(filteredColumnBreakdown.kreditColE)}</strong></span>
+            </div>
+          )}
           <div className="w-full h-1 bg-red-100 mt-2">
             <div className="w-1/2 h-full bg-red-500"></div>
           </div>
@@ -1571,6 +1584,11 @@ export default function Dashboard({
           <h3 className="text-2xl font-black text-slate-900 truncate mt-2">
             {formatRupiah(filteredStats.saldo)}
           </h3>
+          {filteredColumnBreakdown.kreditColE > 0 && (
+            <div className="text-[10px] font-medium text-slate-500 mt-1">
+              Debit − Kol C saja: <strong className="text-emerald-700">{formatRupiah(filteredColumnBreakdown.saldoColCOnly)}</strong>
+            </div>
+          )}
           <div className="w-full h-1 bg-slate-100 mt-2">
             <div className="w-1/4 h-full bg-slate-900"></div>
           </div>

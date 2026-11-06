@@ -155,23 +155,135 @@ export async function appendRows(spreadsheetId: string, range: string, values: s
   }
 }
 
+// Parse RFC-4180 CSV text into 2D string array
+function parseCsvToRows(csvText: string): string[][] {
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvText.length; i++) {
+    const ch = csvText[i];
+    const next = csvText[i + 1];
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        currentCell += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        currentCell += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        currentRow.push(currentCell);
+        currentCell = '';
+      } else if (ch === '\r' && next === '\n') {
+        currentRow.push(currentCell);
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+        i++;
+      } else if (ch === '\n' || ch === '\r') {
+        currentRow.push(currentCell);
+        rows.push(currentRow);
+        currentRow = [];
+        currentCell = '';
+      } else {
+        currentCell += ch;
+      }
+    }
+  }
+
+  if (currentCell.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentCell);
+    rows.push(currentRow);
+  }
+
+  return rows;
+}
+
+// Fetch sheet rows via OAuth API first, and automatically fallback to public/link-shared Google Sheets CSV endpoint
+export async function fetchSheetRowsWithFallback(
+  spreadsheetId: string,
+  sheetName: string,
+  range: string,
+  accessToken?: string | null
+): Promise<string[][] | null> {
+  if (!spreadsheetId || spreadsheetId.startsWith('local_')) return null;
+
+  const hasValidOAuth = Boolean(accessToken && !accessToken.endsWith('-local-token'));
+
+  if (hasValidOAuth) {
+    try {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.values || [];
+      }
+      if (res.status === 400 || res.status === 404) {
+        return null;
+      }
+    } catch {
+      // Fall through to public CSV fallback
+    }
+  }
+
+  // Public / Link-shared Google Sheets CSV fallback (works across all devices without OAuth token!)
+  try {
+    const isSheet1 = sheetName.trim().toLowerCase() === 'sheet1';
+    const csvUrl = isSheet1
+      ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=0`
+      : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+    let csvRes = await fetch(csvUrl);
+    if (!csvRes.ok && isSheet1) {
+      csvRes = await fetch(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`);
+    }
+    if (!csvRes.ok) return null;
+    const csvText = await csvRes.text();
+    if (!csvText || csvText.trim().startsWith('<!DOCTYPE') || csvText.trim().startsWith('<html')) {
+      return null;
+    }
+    const rows = parseCsvToRows(csvText);
+    if (rows.length === 0) return [];
+
+    // Google gviz falls back to Sheet1 (gid=0) if a requested sheetName does not exist.
+    // Detect that case so non-existent tabs return null instead of Sheet1 rows.
+    if (!isSheet1) {
+      const r0 = rows[0] || [];
+      if (
+        r0[0]?.trim() === 'Tanggal' &&
+        r0[1]?.trim() === 'Debit' &&
+        r0[2]?.trim() === 'Kredit' &&
+        r0[3]?.trim() === 'Pengeluaran 1'
+      ) {
+        return null;
+      }
+    }
+
+    return rows;
+  } catch (err) {
+    console.warn(`Public fallback fetch failed for ${sheetName}:`, err);
+    return null;
+  }
+}
+
 // Fetch all transactions from spreadsheet
 export async function fetchTransactions(spreadsheetId: string, accessToken: string): Promise<Transaction[]> {
   const range = "Sheet1!A1:H5000"; // Reading up to 5000 records
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-  
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
+  const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Sheet1", range, accessToken);
 
-  if (!res.ok) {
+  if (!rows) {
     throw new Error(`Gagal mengambil data dari Google Sheets. Silakan periksa koneksi internet.`);
   }
-
-  const data = await res.json();
-  const rows: string[][] = data.values || [];
   
-  if (rows.length > 0) {
+  if (rows.length > 0 && accessToken && !accessToken.endsWith('-local-token')) {
     // Perform self-healing check for headers asynchronously so it doesn't block fetching
     const currentHeaders = rows[0];
     ensureCorrectHeaders(spreadsheetId, currentHeaders, accessToken).catch(err => {
@@ -195,13 +307,22 @@ export async function fetchTransactions(spreadsheetId: string, accessToken: stri
     if (!rawTanggal || String(rawTanggal).trim().toLowerCase() === "tanggal") continue;
 
     const tanggal = normalizeDateString(rawTanggal) || String(rawTanggal).trim();
-    const debit = parseFloat(row[1]) || 0;
-    const kredit = parseFloat(row[2]) || 0;
-    const jenisPengeluaran = row[3] || "Lain-lain";
-    const kredit2 = parseFloat(row[4]) || 0;
-    const jenisPengeluaran2 = row[5] || "-";
-    const keterangan = row[6] || "";
-    const operasionalDanManajemen = row[7] || "-";
+    const debit = parseSheetNumber(row[1]);
+    const kredit = parseSheetNumber(row[2]);
+    const jenisPengeluaran = (row[3] || "").trim() || "Lain-lain";
+    const kredit2 = parseSheetNumber(row[4]);
+    const rawCol5 = (row[5] || "").trim();
+    const rawCol6 = (row[6] || "").trim();
+    // In Sheet1, Header F is "Keterangan" and Header G is "Keterangan Detail".
+    // If Column G is empty, Column F is the Keterangan (note) and the category is Column D (Pengeluaran 1).
+    const jenisPengeluaran2 = rawCol6 ? (rawCol5 || "-") : "-";
+    const keterangan = rawCol6 ? rawCol6 : rawCol5;
+    const operasionalDanManajemen = (row[7] || "").trim() || "-";
+
+    // Skip completely empty rows where debit, kredit, and kredit2 are all 0 and no category/note is present
+    if (debit === 0 && kredit === 0 && kredit2 === 0 && jenisPengeluaran === "Lain-lain" && !keterangan) {
+      continue;
+    }
 
     transactions.push({
       id: String(i + 1), // Store row index (1-indexed, e.g. row 2 has id "2")
@@ -314,38 +435,29 @@ export async function deleteTransaction(spreadsheetId: string, id: string, acces
 // Fetch all categories from the 'Kategori' sheet
 export async function fetchCategories(spreadsheetId: string, accessToken: string): Promise<string[] | null> {
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Kategori!A1:A200`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400) {
-      // Worksheet 'Kategori' doesn't exist, we will create it!
-      await createKategoriSheet(spreadsheetId, accessToken);
-      // Write default categories
-      const defaults = [
-        "Makanan & Minuman",
-        "Transportasi",
-        "Kebutuhan Rumah",
-        "Kesehatan",
-        "Hiburan & Rekreasi",
-        "Pendidikan",
-        "Pekerjaan & Gaji",
-        "Investasi",
-        "Utilitas & Tagihan",
-        "Lain-lain"
-      ];
-      await saveCategoriesToSheet(spreadsheetId, defaults, accessToken);
-      return defaults;
-    }
-
-    if (!res.ok) {
-      console.warn("Failed to fetch categories sheet, returning null:", await res.text());
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Kategori", "Kategori!A1:A200", accessToken);
+    if (!rows) {
+      if (accessToken && !accessToken.endsWith('-local-token')) {
+        // Worksheet 'Kategori' doesn't exist, we will create it!
+        await createKategoriSheet(spreadsheetId, accessToken);
+        const defaults = [
+          "Makanan & Minuman",
+          "Transportasi",
+          "Kebutuhan Rumah",
+          "Kesehatan",
+          "Hiburan & Rekreasi",
+          "Pendidikan",
+          "Pekerjaan & Gaji",
+          "Investasi",
+          "Utilitas & Tagihan",
+          "Lain-lain"
+        ];
+        await saveCategoriesToSheet(spreadsheetId, defaults, accessToken);
+        return defaults;
+      }
       return null;
     }
 
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
     const categories = rows
       .map(r => r[0])
       .filter(cat => cat && cat.trim() !== "");
@@ -499,21 +611,8 @@ export async function createCustomSheetTab(spreadsheetId: string, title: string,
 export async function fetchMenuCatalogFromSheet(spreadsheetId: string, accessToken: string): Promise<any[] | null> {
   try {
     const range = "'Catalog Menu'!A1:G500";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404) {
-      // Tab doesn't exist yet
-      return null;
-    }
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Catalog Menu", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const items: any[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -529,9 +628,9 @@ export async function fetchMenuCatalogFromSheet(spreadsheetId: string, accessTok
         id: row[0],
         nama: row[1] || 'Menu',
         kategori: row[2] || 'Minuman',
-        hargaJual: parseFloat(row[3]) || 0,
-        hpp: parseFloat(row[4]) || 0,
-        defaultJatah: parseFloat(row[5]) || 0,
+        hargaJual: parseSheetNumber(row[3]),
+        hpp: parseSheetNumber(row[4]),
+        defaultJatah: parseSheetNumber(row[5]),
         recipe
       });
     }
@@ -692,46 +791,39 @@ export async function fetchDailySalesFromSheet(
     for (const jTab of jatahTabs) {
       try {
         const rangeJatah = `'${jTab}'!A1:ZZ1000`;
-        const urlJatah = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rangeJatah)}`;
-        const resJatah = await fetch(urlJatah, {
-          headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        if (resJatah.ok) {
-          const jData = await resJatah.json();
-          const jRows: string[][] = jData.values || [];
-          if (jRows.length > 1) {
-            const headerRow = jRows[0] || [];
-            let dateColIdx = 1;
-            let notesColIdx = 3;
-            let jsonColIdx = -1;
+        const jRows = await fetchSheetRowsWithFallback(spreadsheetId, jTab, rangeJatah, accessToken);
+        if (jRows && jRows.length > 1) {
+          const headerRow = jRows[0] || [];
+          let dateColIdx = 1;
+          let notesColIdx = 3;
+          let jsonColIdx = -1;
 
-            for (let c = 0; c < headerRow.length; c++) {
-              const h = (headerRow[c] || '').toLowerCase();
-              if (h.includes('tanggal') || h.includes('date') || h === 'tgl') dateColIdx = c;
-              if (h.includes('catatan') || h.includes('note')) notesColIdx = c;
-              if (h.includes('json') || h.includes('detail')) jsonColIdx = c;
-            }
+          for (let c = 0; c < headerRow.length; c++) {
+            const h = (headerRow[c] || '').toLowerCase();
+            if (h.includes('tanggal') || h.includes('date') || h === 'tgl') dateColIdx = c;
+            if (h.includes('catatan') || h.includes('note')) notesColIdx = c;
+            if (h.includes('json') || h.includes('detail')) jsonColIdx = c;
+          }
 
-            for (let i = 1; i < jRows.length; i++) {
-              const r = jRows[i];
-              if (r && r[dateColIdx]) {
-                const rawTgl = r[dateColIdx].trim();
-                const normTgl = normalizeDateString(rawTgl) || rawTgl;
-                let ms: any[] = [];
-                
-                const jsonCell = jsonColIdx >= 0 ? r[jsonColIdx] : (r[4] || r[r.length - 2] || r[r.length - 1]);
-                if (jsonCell) {
-                  try { ms = JSON.parse(jsonCell); } catch (e) { /* ignore */ }
-                }
+          for (let i = 1; i < jRows.length; i++) {
+            const r = jRows[i];
+            if (r && r[dateColIdx]) {
+              const rawTgl = r[dateColIdx].trim();
+              const normTgl = normalizeDateString(rawTgl) || rawTgl;
+              let ms: any[] = [];
+              
+              const jsonCell = jsonColIdx >= 0 ? r[jsonColIdx] : (r[4] || r[r.length - 2] || r[r.length - 1]);
+              if (jsonCell) {
+                try { ms = JSON.parse(jsonCell); } catch (e) { /* ignore */ }
+              }
 
-                if (!jatahFallbackMap[normTgl] || (ms && ms.length > 0)) {
-                  jatahFallbackMap[normTgl] = {
-                    menuSales: ms,
-                    notes: r[notesColIdx] || jatahFallbackMap[normTgl]?.notes || ''
-                  };
-                  if (rawTgl !== normTgl) {
-                    jatahFallbackMap[rawTgl] = jatahFallbackMap[normTgl];
-                  }
+              if (!jatahFallbackMap[normTgl] || (ms && ms.length > 0)) {
+                jatahFallbackMap[normTgl] = {
+                  menuSales: ms,
+                  notes: r[notesColIdx] || jatahFallbackMap[normTgl]?.notes || ''
+                };
+                if (rawTgl !== normTgl) {
+                  jatahFallbackMap[rawTgl] = jatahFallbackMap[normTgl];
                 }
               }
             }
@@ -745,13 +837,8 @@ export async function fetchDailySalesFromSheet(
     // 2. Read saved fallback from 'Penjualan Harian' tab as secondary fallback
     try {
       const fallbackRange = "'Penjualan Harian'!A1:G1000";
-      const urlFallback = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackRange)}`;
-      const resFallback = await fetch(urlFallback, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (resFallback.ok) {
-        const fbData = await resFallback.json();
-        const fbRows: string[][] = fbData.values || [];
+      const fbRows = await fetchSheetRowsWithFallback(spreadsheetId, "Penjualan Harian", fallbackRange, accessToken);
+      if (fbRows && fbRows.length > 1) {
         for (let i = 1; i < fbRows.length; i++) {
           const r = fbRows[i];
           if (r && r[1]) {
@@ -781,40 +868,34 @@ export async function fetchDailySalesFromSheet(
     const candidateTabs = ["Harian Penjualan Menu", "Laporan Harian Penjualan", "Penjualan Harian"];
     let sheetTitles: string[] = candidateTabs;
 
-    try {
-      const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
-      const metaRes = await fetch(metaUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (metaRes.ok) {
-        const metaData = await metaRes.json();
-        const titlesFromSheet: string[] = (metaData.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
-        if (titlesFromSheet.length > 0) {
-          const combined = new Set<string>();
-          candidateTabs.forEach(t => {
-            const foundReal = titlesFromSheet.find(real => real.trim().toLowerCase() === t.toLowerCase());
-            if (foundReal) combined.add(foundReal);
-          });
-          titlesFromSheet.forEach(t => combined.add(t));
-          sheetTitles = Array.from(combined);
+    if (accessToken && !accessToken.endsWith('-local-token')) {
+      try {
+        const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
+        const metaRes = await fetch(metaUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          const titlesFromSheet: string[] = (metaData.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
+          if (titlesFromSheet.length > 0) {
+            const combined = new Set<string>();
+            candidateTabs.forEach(t => {
+              const foundReal = titlesFromSheet.find(real => real.trim().toLowerCase() === t.toLowerCase());
+              if (foundReal) combined.add(foundReal);
+            });
+            titlesFromSheet.forEach(t => combined.add(t));
+            sheetTitles = Array.from(combined);
+          }
         }
+      } catch (e) {
+        console.warn("Could not fetch spreadsheet metadata titles:", e);
       }
-    } catch (e) {
-      console.warn("Could not fetch spreadsheet metadata titles:", e);
     }
     
     for (const tabName of sheetTitles) {
       const range = `'${tabName}'!A1:ZZ1000`;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-
-      if (!res.ok) continue;
-
-      const data = await res.json();
-      const rows: string[][] = data.values || [];
-      if (rows.length <= 1) continue;
+      const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabName, range, accessToken);
+      if (!rows || rows.length <= 1) continue;
 
       // Find header row (row containing 'Tanggal', 'Date', or 'Tgl')
       let headerRowIdx = -1;
@@ -996,37 +1077,29 @@ export async function fetchDailySalesFromSheet(
 
     // Fallback: If 'Harian Penjualan Menu' is not available, try 'Penjualan Harian' tab
     const fallbackRange = "'Penjualan Harian'!A1:G1000";
-    const urlFallback = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackRange)}`;
-    const resFallback = await fetch(urlFallback, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
+    const fallbackRows = await fetchSheetRowsWithFallback(spreadsheetId, "Penjualan Harian", fallbackRange, accessToken);
+    if (fallbackRows && fallbackRows.length > 1) {
+      const records: any[] = [];
+      for (let i = 1; i < fallbackRows.length; i++) {
+        const row = fallbackRows[i];
+        if (!row || !row[0] || !row[1]) continue;
 
-    if (resFallback.ok) {
-      const data = await resFallback.json();
-      const rows: string[][] = data.values || [];
-      if (rows.length > 1) {
-        const records: any[] = [];
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row || !row[0] || !row[1]) continue;
-
-          let menuSales: any[] = [];
-          if (row[6]) {
-            try { menuSales = JSON.parse(row[6]); } catch (e) { /* ignore */ }
-          }
-
-          records.push({
-            id: row[0],
-            tanggal: row[1],
-            cups: parseFloat(row[2]) || 0,
-            omset: parseFloat(row[3]) || 0,
-            hppTotal: parseFloat(row[4]) || 0,
-            notes: row[5] || '',
-            menuSales
-          });
+        let menuSales: any[] = [];
+        if (row[6]) {
+          try { menuSales = JSON.parse(row[6]); } catch (e) { /* ignore */ }
         }
-        return records.length > 0 ? records : null;
+
+        records.push({
+          id: row[0],
+          tanggal: row[1],
+          cups: parseSheetNumber(row[2]),
+          omset: parseSheetNumber(row[3]),
+          hppTotal: parseSheetNumber(row[4]),
+          notes: row[5] || '',
+          menuSales
+        });
       }
+      return records.length > 0 ? records : null;
     }
 
     return null;
@@ -1260,16 +1333,8 @@ export async function saveDailySalesToSheet(
 export async function fetchIngredientsFromSheet(spreadsheetId: string, accessToken: string): Promise<any[] | null> {
   try {
     const range = "'Bahan Baku & Resep'!A1:F300";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Bahan Baku & Resep", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const items: any[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1279,9 +1344,9 @@ export async function fetchIngredientsFromSheet(spreadsheetId: string, accessTok
       items.push({
         id: row[0],
         namaBahan: row[1],
-        hargaBeli: parseFloat(row[2]) || 0,
+        hargaBeli: parseSheetNumber(row[2]),
         satuanBeli: row[3] || '1000 gram',
-        takaranPerCup: parseFloat(row[4]) || 1,
+        takaranPerCup: parseSheetNumber(row[4]) || 1,
         satuanTakaran: row[5] || 'gram'
       });
     }
@@ -1334,16 +1399,8 @@ export async function saveIngredientsToSheet(spreadsheetId: string, ingredients:
 export async function fetchIncomingBatchesFromSheet(spreadsheetId: string, accessToken: string): Promise<IncomingIngredientBatch[] | null> {
   try {
     const range = "'Barang Masuk & Pembelian'!A1:K1500";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Barang Masuk & Pembelian", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const items: IncomingIngredientBatch[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1356,10 +1413,10 @@ export async function fetchIncomingBatchesFromSheet(spreadsheetId: string, acces
         namaBahan: row[2],
         ingredientId: row[3] || undefined,
         kategori: row[4] || 'Minuman',
-        berat: parseFloat(row[5]) || 0,
+        berat: parseSheetNumber(row[5]),
         satuan: row[6] || 'gram',
-        harga: parseFloat(row[7]) || 0,
-        hargaSatuan: parseFloat(row[8]) || 0,
+        harga: parseSheetNumber(row[7]),
+        hargaSatuan: parseSheetNumber(row[8]),
         statusPembayaran: (row[9] as any) || 'Lunas',
         supplier: row[10] || '',
         keterangan: row[11] || '',
@@ -1440,16 +1497,8 @@ export async function saveIncomingBatchesToSheet(spreadsheetId: string, batches:
 export async function fetchBiayaListFromSheet(spreadsheetId: string, accessToken: string): Promise<any[] | null> {
   try {
     const range = "'Biaya Operasional'!A1:D100";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Biaya Operasional", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const items: any[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1459,7 +1508,7 @@ export async function fetchBiayaListFromSheet(spreadsheetId: string, accessToken
       items.push({
         id: row[0],
         nama: row[1],
-        jumlah: parseFloat(row[2]) || 0,
+        jumlah: parseSheetNumber(row[2]),
         kategori: row[3] || 'Gaji'
       });
     }
@@ -1514,16 +1563,8 @@ export async function fetchStockOpnameFromSheet(
 ): Promise<{ entries: Record<string, StockOpnameEntry>; petugas?: string } | null> {
   try {
     const range = "'Laporan Stok Opname'!A1:L5000";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const entries: Record<string, StockOpnameEntry> = {};
     let petugas = '';
@@ -1541,13 +1582,13 @@ export async function fetchStockOpnameFromSheet(
       entries[itemId] = {
         itemId,
         namaBahan: row[3] || '',
-        stokAwal: parseFloat(row[4]) || 0,
-        stokMasuk: parseFloat(row[5]) || 0,
-        terpakai: parseFloat(row[6]) || 0,
-        sisaDiBar: parseFloat(row[7]) || 0,
-        wasteLoss: parseFloat(row[8]) || 0,
+        stokAwal: parseSheetNumber(row[4]),
+        stokMasuk: parseSheetNumber(row[5]),
+        terpakai: parseSheetNumber(row[6]),
+        sisaDiBar: parseSheetNumber(row[7]),
+        wasteLoss: parseSheetNumber(row[8]),
         catatanLoss: row[9] || '',
-        nilaiLoss: parseFloat(row[10]) || 0,
+        nilaiLoss: parseSheetNumber(row[10]),
         isAutoTerpakai: false
       };
     }
@@ -1569,16 +1610,8 @@ export async function fetchAllStockOpnameReportsFromSheet(
 } | null> {
   try {
     const range = "'Laporan Stok Opname'!A1:L5000";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const monthlyMap: Record<string, { entries: Record<string, StockOpnameEntry>; petugas: string; lastUpdated: string }> = {};
 
@@ -1805,16 +1838,8 @@ export async function fetchBaristaScheduleFromSheet(
 ): Promise<BaristaScheduleEntry[] | null> {
   try {
     const range = "'Jadwal Barista'!A1:K4000";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Jadwal Barista", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const schedules: BaristaScheduleEntry[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1917,16 +1942,8 @@ export async function fetchBaristasFromSheet(
 ): Promise<Barista[] | null> {
   try {
     const range = "'Master Tim Barista'!A1:P200";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Master Tim Barista", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const baristas: Barista[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1945,12 +1962,12 @@ export async function fetchBaristasFromSheet(
         color: row[5] ? row[5].trim() : 'amber',
         isActive,
         joinDate: normalizeDateString(row[7]) || undefined,
-        monthlySalary: parseFloat(row[8]) || 0,
-        positionAllowance: parseFloat(row[9]) || 0,
-        dailySalary: parseFloat(row[10]) || 0,
+        monthlySalary: parseSheetNumber(row[8]),
+        positionAllowance: parseSheetNumber(row[9]),
+        dailySalary: parseSheetNumber(row[10]),
         annualIncreaseType: (row[11] === 'percentage' || row[11] === '%' ? 'percentage' : 'fixed'),
-        annualIncreaseValue: parseFloat(row[12]) || 0,
-        overtimeRatePerHour: parseFloat(row[13]) || 0,
+        annualIncreaseValue: parseSheetNumber(row[12]),
+        overtimeRatePerHour: parseSheetNumber(row[13]),
         notes: row[14] || ''
       });
     }
@@ -2040,16 +2057,8 @@ export async function fetchShiftsFromSheet(
 ): Promise<ShiftMaster[] | null> {
   try {
     const range = "'Master Jam Shift'!A1:J100";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404 || !res.ok) return null;
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length <= 1) return null;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Master Jam Shift", range, accessToken);
+    if (!rows || rows.length <= 1) return null;
 
     const shifts: ShiftMaster[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -2175,54 +2184,42 @@ export async function fetchCalendarNotesFromSheet(
   spreadsheetId: string,
   accessToken: string
 ): Promise<CalendarNoteActivity[] | null> {
-  if (!spreadsheetId || !accessToken) return null;
+  if (!spreadsheetId) return null;
 
   try {
-    // 1. Discover actual sheet titles from spreadsheet metadata
+    // 1. Discover actual sheet titles from spreadsheet metadata if live OAuth token is present
     let detectedTab: string | null = null;
     const tabCandidates = ["Catatan & Agenda Kalender", "Catatan & Agenda", "Agenda Kalender", "Catatan Kalender", "Agenda"];
 
-    try {
-      const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
-      const metaRes = await fetch(metaUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (metaRes.ok) {
-        const metaData = await metaRes.json();
-        const sheetList = (metaData.sheets || []).map((s: any) => s.properties?.title as string).filter(Boolean);
-        for (const cand of tabCandidates) {
-          const found = sheetList.find(t => t.trim().toLowerCase() === cand.toLowerCase());
-          if (found) {
-            detectedTab = found;
-            break;
+    if (accessToken && !accessToken.endsWith('-local-token')) {
+      try {
+        const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
+        const metaRes = await fetch(metaUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          const sheetList = (metaData.sheets || []).map((s: any) => s.properties?.title as string).filter(Boolean);
+          for (const cand of tabCandidates) {
+            const found = sheetList.find(t => t.trim().toLowerCase() === cand.toLowerCase());
+            if (found) {
+              detectedTab = found;
+              break;
+            }
+          }
+          if (!detectedTab) {
+            const partialMatch = sheetList.find(t => /catatan|agenda|kalender/i.test(t));
+            if (partialMatch) detectedTab = partialMatch;
           }
         }
-        if (!detectedTab) {
-          const partialMatch = sheetList.find(t => /catatan|agenda|kalender/i.test(t));
-          if (partialMatch) detectedTab = partialMatch;
-        }
+      } catch (metaErr) {
+        console.warn("Could not query spreadsheet metadata for calendar notes:", metaErr);
       }
-    } catch (metaErr) {
-      console.warn("Could not query spreadsheet metadata for calendar notes:", metaErr);
     }
 
-    // If tab does not exist yet in this spreadsheet, return null cleanly without error
-    if (!detectedTab) {
-      return null;
-    }
-
-    const range = `'${detectedTab}'!A1:P2500`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (!res.ok) {
-      return null;
-    }
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
+    const tabToQuery = detectedTab || "Catatan & Agenda Kalender";
+    const range = `'${tabToQuery}'!A1:P2500`;
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabToQuery, range, accessToken);
     if (!rows || rows.length <= 1) return null;
 
     const activities: CalendarNoteActivity[] = [];
@@ -2414,71 +2411,66 @@ export async function fetchShoppingListFromSheet4(
   accessToken: string
 ): Promise<{ items: ShoppingIngredientItem[]; actualTabName: string; statusColIndex?: number } | null> {
   try {
-    // 1. Discover actual sheet titles from spreadsheet metadata
+    // 1. Discover actual sheet titles from spreadsheet metadata if live OAuth token is present
     let detectedTab: string | null = null;
     const candidateTabNames = ["Sheet 4", "Sheet4", "sheet 4", "sheet4", "Bahan yang Harus Dibelanjakan", "Bahan Belanja", "Daftar Belanja"];
 
-    try {
-      const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
-      const metaRes = await fetch(metaUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (metaRes.ok) {
-        const metaData = await metaRes.json();
-        const sheetList = (metaData.sheets || []).map((s: any) => s.properties?.title as string).filter(Boolean);
-        
-        // Check for exact / loose match with Sheet 4
-        for (const cand of candidateTabNames) {
-          const found = sheetList.find(t => t.trim().toLowerCase() === cand.toLowerCase());
-          if (found) {
-            detectedTab = found;
-            break;
+    const hasValidOAuth = Boolean(accessToken && !accessToken.endsWith('-local-token'));
+
+    if (hasValidOAuth) {
+      try {
+        const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
+        const metaRes = await fetch(metaUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          const sheetList = (metaData.sheets || []).map((s: any) => s.properties?.title as string).filter(Boolean);
+          
+          // Check for exact / loose match with Sheet 4
+          for (const cand of candidateTabNames) {
+            const found = sheetList.find(t => t.trim().toLowerCase() === cand.toLowerCase());
+            if (found) {
+              detectedTab = found;
+              break;
+            }
+          }
+
+          // If not found yet, check if any tab has 'sheet 4' or 'sheet4' in its name
+          if (!detectedTab) {
+            const matchSheet4 = sheetList.find(t => /sheet\s*4/i.test(t));
+            if (matchSheet4) detectedTab = matchSheet4;
+          }
+
+          // If still not found, check if 4th sheet exists (index 3) and user meant the 4th tab
+          if (!detectedTab && sheetList.length >= 4) {
+            const fourthSheet = sheetList[3];
+            if (fourthSheet && !['Sheet1', 'Kategori', 'Catalog Menu', 'Bahan Baku & Resep'].includes(fourthSheet)) {
+              detectedTab = fourthSheet;
+            }
           }
         }
-
-        // If not found yet, check if any tab has 'sheet 4' or 'sheet4' in its name
-        if (!detectedTab) {
-          const matchSheet4 = sheetList.find(t => /sheet\s*4/i.test(t));
-          if (matchSheet4) detectedTab = matchSheet4;
-        }
-
-        // If still not found, check if 4th sheet exists (index 3) and user meant the 4th tab
-        if (!detectedTab && sheetList.length >= 4) {
-          const fourthSheet = sheetList[3];
-          if (fourthSheet && !['Sheet1', 'Kategori', 'Catalog Menu', 'Bahan Baku & Resep'].includes(fourthSheet)) {
-            detectedTab = fourthSheet;
-          }
-        }
+      } catch (e) {
+        console.warn("Could not query spreadsheet metadata for Sheet 4:", e);
       }
-    } catch (e) {
-      console.warn("Could not query spreadsheet metadata for Sheet 4:", e);
     }
 
     const tabToQuery = detectedTab || "Sheet 4";
-
-    // 2. Query both formatted values AND formulas so we can detect =IMPORTRANGE(...) columns
     const range = `'${tabToQuery}'!A1:Z1000`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-    const formulaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`;
 
-    const [valRes, formulaRes] = await Promise.all([
-      fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } }),
-      fetch(formulaUrl, { headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => null)
-    ]);
-
-    if (valRes.status === 400 || valRes.status === 404 || !valRes.ok) {
-      return null;
-    }
-
-    const data = await valRes.json();
-    const rows: string[][] = data.values || [];
-    if (rows.length === 0) return null;
+    // 2. Query values with fallback to public CSV if no OAuth token
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabToQuery, range, accessToken);
+    if (!rows || rows.length === 0) return null;
 
     let formulaRows: string[][] = [];
-    if (formulaRes && formulaRes.ok) {
+    if (hasValidOAuth) {
       try {
-        const fData = await formulaRes.json();
-        formulaRows = fData.values || [];
+        const formulaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMULA`;
+        const formulaRes = await fetch(formulaUrl, { headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => null);
+        if (formulaRes && formulaRes.ok) {
+          const fData = await formulaRes.json();
+          formulaRows = fData.values || [];
+        }
       } catch {}
     }
 
@@ -2912,23 +2904,10 @@ export async function fetchEmployeeTasksFromSheet(
 ): Promise<EmployeeTask[] | null> {
   try {
     const range = `'${tabName}'!A1:K1000`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-
-    if (res.status === 400 || res.status === 404) {
-      // Tab doesn't exist yet, return null so caller can seed default and save
+    const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabName, range, accessToken);
+    if (!rows) {
       return null;
     }
-
-    if (!res.ok) {
-      console.warn(`Could not fetch employee tasks from ${tabName}:`, await res.text());
-      return null;
-    }
-
-    const data = await res.json();
-    const rows: string[][] = data.values || [];
     if (rows.length <= 1) {
       return [];
     }

@@ -345,15 +345,23 @@ export default function App() {
       localStorage.setItem('aruskas_sheet_name', sheetName);
       localStorage.setItem('aruskas_sheet_url', sheetUrl);
 
-      // Load cached transactions immediately while Google Sheet syncs
+      // Load cached real transactions while Google Sheet syncs (ignore legacy 8-row dummy data)
       const savedTx = localStorage.getItem('aruskas_manager_transactions');
+      const hasRealSheet = Boolean(sheetId && !sheetId.startsWith('local_'));
       if (savedTx) {
         try {
-          setTransactions(JSON.parse(savedTx));
+          const parsed = JSON.parse(savedTx);
+          const isLegacyDummy = Array.isArray(parsed) && parsed.some((t: any) => t?.id === 'm1' && t?.debit === 18500000);
+          if (isLegacyDummy && hasRealSheet) {
+            localStorage.removeItem('aruskas_manager_transactions');
+            setTransactions([]);
+          } else {
+            setTransactions(parsed);
+          }
         } catch (e) {
-          setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
+          setTransactions(hasRealSheet ? [] : DEFAULT_MANAGER_TRANSACTIONS);
         }
-      } else {
+      } else if (!hasRealSheet) {
         setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
         localStorage.setItem('aruskas_manager_transactions', JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS));
       }
@@ -430,13 +438,21 @@ export default function App() {
     setToken(sharedToken || `${role}-local-token`);
 
     const savedTx = localStorage.getItem('aruskas_manager_transactions');
+    const hasRealSheet = Boolean(sheetId && !sheetId.startsWith('local_'));
     if (savedTx) {
       try {
-        setTransactions(JSON.parse(savedTx));
+        const parsed = JSON.parse(savedTx);
+        const isLegacyDummy = Array.isArray(parsed) && parsed.some((t: any) => t?.id === 'm1' && t?.debit === 18500000);
+        if (isLegacyDummy && hasRealSheet) {
+          localStorage.removeItem('aruskas_manager_transactions');
+          setTransactions([]);
+        } else {
+          setTransactions(parsed);
+        }
       } catch (e) {
-        setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
+        setTransactions(hasRealSheet ? [] : DEFAULT_MANAGER_TRANSACTIONS);
       }
-    } else {
+    } else if (!hasRealSheet) {
       setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
       localStorage.setItem('aruskas_manager_transactions', JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS));
     }
@@ -477,12 +493,12 @@ export default function App() {
     } catch {}
   };
 
-  // Drive and Sheets logic whenever a valid Google token & Spreadsheet ID are active (any role)
+  // Drive and Sheets logic whenever a Spreadsheet ID is active (any role, with or without OAuth token)
   useEffect(() => {
     if (user && hasValidGoogleToken && !spreadsheetId) {
       checkForSpreadsheet(token!);
-    } else if (user && hasValidGoogleToken && spreadsheetId && !spreadsheetId.startsWith('local_')) {
-      loadTransactionsFromSheet(spreadsheetId, token!);
+    } else if (user && spreadsheetId && !spreadsheetId.startsWith('local_')) {
+      loadTransactionsFromSheet(spreadsheetId, token || '');
     }
   }, [user, token, hasValidGoogleToken, spreadsheetId]);
 
@@ -510,6 +526,9 @@ export default function App() {
     try {
       const list = await fetchTransactions(id, accessToken);
       setTransactions(list);
+      if (list.length > 0) {
+        localStorage.setItem('aruskas_manager_transactions', JSON.stringify(list));
+      }
 
       // Fetch custom categories from sheet
       const sheetCats = await fetchCategories(id, accessToken);
@@ -736,14 +755,16 @@ export default function App() {
 
   // Refresh manually
   const handleRefresh = async () => {
-    if (spreadsheetId && hasValidGoogleToken && token) {
-      await loadTransactionsFromSheet(spreadsheetId, token);
-    } else {
-      const sharedToken = await resolveSharedGoogleToken();
-      if (sharedToken && spreadsheetId) {
-        setToken(sharedToken);
-        await loadTransactionsFromSheet(spreadsheetId, sharedToken);
+    if (spreadsheetId && !spreadsheetId.startsWith('local_')) {
+      let activeToken = hasValidGoogleToken && token ? token : '';
+      if (!activeToken) {
+        const sharedToken = await resolveSharedGoogleToken();
+        if (sharedToken) {
+          setToken(sharedToken);
+          activeToken = sharedToken;
+        }
       }
+      await loadTransactionsFromSheet(spreadsheetId, activeToken);
     }
   };
 
@@ -1726,6 +1747,8 @@ export default function App() {
               onManageCategories={() => setIsCategoryManagerOpen(true)}
               onNavigateToDebt={userRole === 'owner' ? () => setActiveTab('debt_tracker') : undefined}
               onNavigateToShopping={() => setActiveTab('shopping_report')}
+              onRefresh={handleRefresh}
+              isLoadingData={isLoadingData}
             />
           ) : activeTab === 'employee_tasks' ? (
             <EmployeeTaskPage
@@ -1733,7 +1756,7 @@ export default function App() {
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={!hasValidGoogleToken}
+              isManagerMode={Boolean(!spreadsheetId || spreadsheetId.startsWith('local_'))}
             />
           ) : activeTab === 'omset_cogs' ? (
             <CogsDailySalesPage
@@ -1763,7 +1786,7 @@ export default function App() {
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={!hasValidGoogleToken}
+              isManagerMode={Boolean(!spreadsheetId || spreadsheetId.startsWith('local_'))}
               onNavigateToIncomingGoods={() => setActiveTab('omset_cogs')}
             />
           ) : activeTab === 'calendar_notes' ? (
@@ -1772,7 +1795,7 @@ export default function App() {
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={!hasValidGoogleToken}
+              isManagerMode={Boolean(!spreadsheetId || spreadsheetId.startsWith('local_'))}
             />
           ) : activeTab === 'categories' ? (
             <CategoryExpenses
