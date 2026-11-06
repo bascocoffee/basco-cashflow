@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // Helper function to handle Gemini content generation with multi-model fallback
 async function generateContentWithFallback(
@@ -588,6 +588,83 @@ Instruksi Laporan Analisis AI:
   }
 });
 
+const KV_APP_KEY = "etem1g9b";
+const KV_BASE_URL = "https://keyvalue.immanuel.co/api/KeyVal";
+const PASTE_BASE_URL = "https://api.pastes.dev";
+
+const serverSlotMemory: Record<string, any> = {};
+
+async function saveServerCloudSlot(slotName: string, data: any, existingPasteKey?: string): Promise<void> {
+  serverSlotMemory[slotName] = data;
+  try {
+    let pasteKey = existingPasteKey || "";
+    if (!pasteKey) {
+      const postRes = await fetch(`${PASTE_BASE_URL}/post`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "BascoCashflow/1.0",
+        },
+        body: JSON.stringify(data),
+      });
+      if (postRes.ok) {
+        const postJson: any = await postRes.json();
+        if (postJson?.key) pasteKey = String(postJson.key).trim();
+      }
+    }
+    if (pasteKey) {
+      await fetch(
+        `${KV_BASE_URL}/UpdateValue/${KV_APP_KEY}/basco_v2_${slotName}/${encodeURIComponent(pasteKey)}`,
+        { method: "POST" }
+      );
+    }
+  } catch (err) {
+    console.warn(`[CloudSync] Failed saving slot ${slotName}:`, err);
+  }
+}
+
+async function loadServerCloudSlot(slotName: string): Promise<any | null> {
+  try {
+    const ptrRes = await fetch(
+      `${KV_BASE_URL}/GetValue/${KV_APP_KEY}/basco_v2_${slotName}?_t=${Date.now()}`
+    );
+    if (ptrRes.ok) {
+      const rawPtr = (await ptrRes.text()).replace(/"/g, "").trim();
+      if (rawPtr && rawPtr !== "null" && rawPtr.length >= 4 && rawPtr.length <= 40 && !rawPtr.includes(" ")) {
+        const pasteRes = await fetch(`${PASTE_BASE_URL}/${encodeURIComponent(rawPtr)}`, {
+          headers: { "User-Agent": "BascoCashflow/1.0" },
+        });
+        if (pasteRes.ok) {
+          const remoteData: any = await pasteRes.json();
+          const memData = serverSlotMemory[slotName];
+          if (!memData || (remoteData?.updatedAt || 0) >= (memData?.updatedAt || 0)) {
+            serverSlotMemory[slotName] = remoteData;
+            return remoteData;
+          }
+        }
+      }
+    }
+  } catch {
+    // fallback to memory
+  }
+  return serverSlotMemory[slotName] || null;
+}
+
+app.get("/api/cloud-sync/:slot", async (req, res) => {
+  const slot = req.params.slot;
+  const data = await loadServerCloudSlot(slot);
+  res.json({ ok: true, data });
+});
+
+app.post("/api/cloud-sync/:slot", async (req, res) => {
+  const slot = req.params.slot;
+  const { pasteKey, data } = req.body || {};
+  if (data) {
+    await saveServerCloudSlot(slot, data, pasteKey);
+  }
+  res.json({ ok: true, data: serverSlotMemory[slot] || data });
+});
+
 // Shared Google OAuth Token & Spreadsheet Config Sync across devices
 let sharedAuthCache: {
   accessToken: string | null;
@@ -604,26 +681,42 @@ let sharedAuthCache: {
   updatedAt: 0,
 };
 
-app.get("/api/auth/shared-token", (_req, res) => {
+app.get("/api/auth/shared-token", async (_req, res) => {
+  const remoteAuth = await loadServerCloudSlot("auth_token");
+  if (remoteAuth && (remoteAuth.updatedAt || 0) >= sharedAuthCache.updatedAt) {
+    sharedAuthCache = {
+      ...sharedAuthCache,
+      ...remoteAuth,
+      spreadsheetId: "1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc",
+      spreadsheetName: "Dasbor Arus Kas Keuangan",
+      spreadsheetUrl:
+        "https://docs.google.com/spreadsheets/d/1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc/edit?gid=0#gid=0",
+    };
+  }
   res.json(sharedAuthCache);
 });
 
-app.post("/api/auth/shared-token", (req, res) => {
+app.post("/api/auth/shared-token", async (req, res) => {
   const { accessToken, spreadsheetId, spreadsheetName, spreadsheetUrl } =
     req.body || {};
   if (accessToken && !accessToken.endsWith("-local-token")) {
     sharedAuthCache.accessToken = accessToken;
     sharedAuthCache.updatedAt = Date.now();
   }
-  if (spreadsheetId && !spreadsheetId.startsWith("local_")) {
+  if (
+    spreadsheetId &&
+    !spreadsheetId.startsWith("local_") &&
+    spreadsheetId !== "1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM"
+  ) {
     sharedAuthCache.spreadsheetId = spreadsheetId;
   }
   if (spreadsheetName && !spreadsheetName.startsWith("Database Lokal")) {
     sharedAuthCache.spreadsheetName = spreadsheetName;
   }
-  if (spreadsheetUrl) {
+  if (spreadsheetUrl && !spreadsheetUrl.includes("1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM")) {
     sharedAuthCache.spreadsheetUrl = spreadsheetUrl;
   }
+  await saveServerCloudSlot("auth_token", sharedAuthCache);
   res.json({ ok: true, sharedAuthCache });
 });
 
@@ -638,33 +731,68 @@ let sharedDailySalesCache: {
   updatedAt: 0,
 };
 
-app.get("/api/cogs/shared-sales", (_req, res) => {
+app.get("/api/cogs/shared-sales", async (_req, res) => {
+  const remoteSales = await loadServerCloudSlot("daily_sales");
+  if (remoteSales && typeof remoteSales === "object") {
+    const mergedRecords: Record<string, any> = {
+      ...(remoteSales.recordsByDate || {}),
+    };
+    Object.entries(sharedDailySalesCache.recordsByDate || {}).forEach(([tgl, rec]: [string, any]) => {
+      const existing = mergedRecords[tgl];
+      if (!existing || (rec?.updatedAt || 0) >= (existing?.updatedAt || 0)) {
+        mergedRecords[tgl] = rec;
+      }
+    });
+    sharedDailySalesCache = {
+      recordsByDate: mergedRecords,
+      lastSelectedDate:
+        (remoteSales.updatedAt || 0) >= sharedDailySalesCache.updatedAt
+          ? remoteSales.lastSelectedDate || sharedDailySalesCache.lastSelectedDate
+          : sharedDailySalesCache.lastSelectedDate || remoteSales.lastSelectedDate,
+      updatedAt: Math.max(sharedDailySalesCache.updatedAt || 0, remoteSales.updatedAt || 0),
+    };
+  }
   res.json(sharedDailySalesCache);
 });
 
-app.post("/api/cogs/shared-sales", (req, res) => {
+app.post("/api/cogs/shared-sales", async (req, res) => {
   const { record, records, selectedDate } = req.body || {};
+  const remoteSales = await loadServerCloudSlot("daily_sales");
+  if (remoteSales && remoteSales.recordsByDate) {
+    Object.entries(remoteSales.recordsByDate).forEach(([tgl, rec]: [string, any]) => {
+      const existing = sharedDailySalesCache.recordsByDate[tgl];
+      if (!existing || (rec?.updatedAt || 0) >= (existing?.updatedAt || 0)) {
+        sharedDailySalesCache.recordsByDate[tgl] = rec;
+      }
+    });
+  }
+
   if (selectedDate && typeof selectedDate === "string") {
     sharedDailySalesCache.lastSelectedDate = selectedDate;
   }
   if (record && record.tanggal) {
     sharedDailySalesCache.recordsByDate[record.tanggal] = {
       ...record,
-      updatedAt: Date.now(),
+      updatedAt: record.updatedAt || Date.now(),
     };
     sharedDailySalesCache.updatedAt = Date.now();
   }
   if (Array.isArray(records)) {
     records.forEach((r: any) => {
-      if (r && r.tanggal) {
-        sharedDailySalesCache.recordsByDate[r.tanggal] = {
-          ...r,
-          updatedAt: r.updatedAt || Date.now(),
-        };
+      if (r && r.tanggal && r.id !== "ds-1" && r.id !== "ds-2" && r.id !== "ds-3") {
+        const existing = sharedDailySalesCache.recordsByDate[r.tanggal];
+        const rTs = r.updatedAt || Date.now();
+        if (!existing || rTs >= (existing.updatedAt || 0)) {
+          sharedDailySalesCache.recordsByDate[r.tanggal] = {
+            ...r,
+            updatedAt: rTs,
+          };
+        }
       }
     });
     sharedDailySalesCache.updatedAt = Date.now();
   }
+  await saveServerCloudSlot("daily_sales", sharedDailySalesCache);
   res.json({ ok: true, sharedDailySalesCache });
 });
 

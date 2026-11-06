@@ -3,6 +3,7 @@ import { CalendarNoteActivity, ActivityCategory, ActivityPriority } from './type
 import { ShoppingIngredientItem, ShoppingUrgency, ShoppingStatus } from './types/shoppingList';
 import { EmployeeTask } from './types/employeeTask';
 import { parseDateString } from './utils';
+import { saveCloudSlot, loadCloudSlot, pushDailySalesToCloud, pullDailySalesFromCloud } from './utils/cloudSync';
 
 // Fetch the sheetId and properties for Sheet1 or other sheets
 async function getSheetId(spreadsheetId: string, accessToken: string): Promise<number> {
@@ -337,23 +338,75 @@ export async function fetchTransactions(spreadsheetId: string, accessToken: stri
     });
   }
 
+  // Merge cross-device cloud delta (transactions added/edited/deleted via password login)
+  let finalTransactions = transactions;
+  try {
+    const txDelta = await loadCloudSlot<{
+      added?: Transaction[];
+      edited?: Record<string, Omit<Transaction, 'id'>>;
+      deletedIds?: string[];
+    }>('tx_delta');
+    if (txDelta) {
+      const deletedSet = new Set(txDelta.deletedIds || []);
+      finalTransactions = finalTransactions
+        .filter(t => !deletedSet.has(t.id))
+        .map(t => (txDelta.edited && txDelta.edited[t.id] ? { ...txDelta.edited[t.id], id: t.id } : t));
+
+      if (Array.isArray(txDelta.added)) {
+        txDelta.added.forEach(addTx => {
+          if (!addTx || deletedSet.has(addTx.id)) return;
+          const alreadyInSheet = finalTransactions.some(
+            t =>
+              t.id === addTx.id ||
+              (t.tanggal === addTx.tanggal &&
+                t.debit === addTx.debit &&
+                t.kredit === addTx.kredit &&
+                t.keterangan === addTx.keterangan)
+          );
+          if (!alreadyInSheet) {
+            finalTransactions.push(
+              txDelta.edited && txDelta.edited[addTx.id]
+                ? { ...txDelta.edited[addTx.id], id: addTx.id }
+                : addTx
+            );
+          }
+        });
+      }
+    }
+  } catch {
+    // ignore delta error
+  }
+
   // Sort: newest date first
-  return transactions.sort((a, b) => parseDateString(b.tanggal).getTime() - parseDateString(a.tanggal).getTime());
+  return finalTransactions.sort((a, b) => parseDateString(b.tanggal).getTime() - parseDateString(a.tanggal).getTime());
 }
 
 // Add a single transaction
 export async function addTransaction(spreadsheetId: string, transaction: Omit<Transaction, 'id'>, accessToken: string): Promise<void> {
-  const row = [
-    transaction.tanggal,
-    String(transaction.debit),
-    String(transaction.kredit),
-    transaction.jenisPengeluaran,
-    String(transaction.kredit2 || 0),
-    transaction.jenisPengeluaran2 || "-",
-    transaction.keterangan,
-    transaction.operasionalDanManajemen || "-"
-  ];
-  await appendRows(spreadsheetId, "Sheet1!A:H", [row], accessToken);
+  const hasValidOAuth = Boolean(accessToken && !accessToken.endsWith('-local-token'));
+  if (hasValidOAuth) {
+    try {
+      const row = [
+        transaction.tanggal,
+        String(transaction.debit),
+        String(transaction.kredit),
+        transaction.jenisPengeluaran,
+        String(transaction.kredit2 || 0),
+        transaction.jenisPengeluaran2 || "-",
+        transaction.keterangan,
+        transaction.operasionalDanManajemen || "-"
+      ];
+      await appendRows(spreadsheetId, "Sheet1!A:H", [row], accessToken);
+      return;
+    } catch {
+      // fall through to cloud delta
+    }
+  }
+
+  const currentDelta = (await loadCloudSlot<any>('tx_delta')) || { added: [], edited: {}, deletedIds: [] };
+  const newTx: Transaction = { ...transaction, id: `cloud-tx-${Date.now()}` };
+  currentDelta.added = [newTx, ...(currentDelta.added || [])];
+  await saveCloudSlot('tx_delta', currentDelta);
 }
 
 // Edit a transaction by updating its specific row
@@ -363,73 +416,88 @@ export async function updateTransaction(
   transaction: Omit<Transaction, 'id'>, 
   accessToken: string
 ): Promise<void> {
-  const range = `Sheet1!A${id}:H${id}`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
-  
-  const row = [
-    transaction.tanggal,
-    String(transaction.debit),
-    String(transaction.kredit),
-    transaction.jenisPengeluaran,
-    String(transaction.kredit2 || 0),
-    transaction.jenisPengeluaran2 || "-",
-    transaction.keterangan,
-    transaction.operasionalDanManajemen || "-"
-  ];
+  const hasValidOAuth = Boolean(accessToken && !accessToken.endsWith('-local-token') && !id.startsWith('cloud-tx-'));
+  if (hasValidOAuth) {
+    try {
+      const range = `Sheet1!A${id}:H${id}`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+      
+      const row = [
+        transaction.tanggal,
+        String(transaction.debit),
+        String(transaction.kredit),
+        transaction.jenisPengeluaran,
+        String(transaction.kredit2 || 0),
+        transaction.jenisPengeluaran2 || "-",
+        transaction.keterangan,
+        transaction.operasionalDanManajemen || "-"
+      ];
 
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      values: [row]
-    })
-  });
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          values: [row]
+        })
+      });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gagal memperbarui transaksi: ${err}`);
+      if (res.ok) return;
+    } catch {
+      // fall through to cloud delta
+    }
   }
+
+  const currentDelta = (await loadCloudSlot<any>('tx_delta')) || { added: [], edited: {}, deletedIds: [] };
+  currentDelta.edited = currentDelta.edited || {};
+  currentDelta.edited[id] = transaction;
+  await saveCloudSlot('tx_delta', currentDelta);
 }
 
 // Delete a transaction by deleting the sheet row dimension
 export async function deleteTransaction(spreadsheetId: string, id: string, accessToken: string): Promise<void> {
-  const rowIndex = parseInt(id) - 1; // 0-indexed index for sheet row deletion
-  if (isNaN(rowIndex) || rowIndex < 1) {
-    throw new Error("Invalid transaction row ID");
+  const hasValidOAuth = Boolean(accessToken && !accessToken.endsWith('-local-token') && !id.startsWith('cloud-tx-'));
+  if (hasValidOAuth) {
+    try {
+      const rowIndex = parseInt(id) - 1; // 0-indexed index for sheet row deletion
+      if (!isNaN(rowIndex) && rowIndex >= 1) {
+        const sheetId = await getSheetId(spreadsheetId, accessToken);
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            requests: [
+              {
+                deleteDimension: {
+                  range: {
+                    sheetId: sheetId,
+                    dimension: "ROWS",
+                    startIndex: rowIndex,
+                    endIndex: rowIndex + 1
+                  }
+                }
+              }
+            ]
+          })
+        });
+
+        if (res.ok) return;
+      }
+    } catch {
+      // fall through to cloud delta
+    }
   }
 
-  const sheetId = await getSheetId(spreadsheetId, accessToken);
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId: sheetId,
-              dimension: "ROWS",
-              startIndex: rowIndex,
-              endIndex: rowIndex + 1
-            }
-          }
-        }
-      ]
-    })
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gagal menghapus transaksi dari spreadsheet: ${err}`);
-  }
+  const currentDelta = (await loadCloudSlot<any>('tx_delta')) || { added: [], edited: {}, deletedIds: [] };
+  currentDelta.deletedIds = Array.from(new Set([...(currentDelta.deletedIds || []), id]));
+  await saveCloudSlot('tx_delta', currentDelta);
 }
 
 // Fetch all categories from the 'Kategori' sheet
@@ -610,29 +678,40 @@ export async function createCustomSheetTab(spreadsheetId: string, title: string,
 // --- MENU CATALOG SYNC ---
 export async function fetchMenuCatalogFromSheet(spreadsheetId: string, accessToken: string): Promise<any[] | null> {
   try {
-    const range = "'Catalog Menu'!A1:G500";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Catalog Menu", range, accessToken);
-    if (!rows || rows.length <= 1) return null;
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: any[] }>('menu_catalog'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Catalog Menu", "'Catalog Menu'!A1:G500", accessToken)
+    ]);
 
     const items: any[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row || !row[0]) continue;
-      
-      let recipe: any[] = [];
-      if (row[6]) {
-        try { recipe = JSON.parse(row[6]); } catch (e) { /* ignore */ }
-      }
+    if (rows && rows.length > 1) {
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row[0]) continue;
+        
+        let recipe: any[] = [];
+        if (row[6]) {
+          try { recipe = JSON.parse(row[6]); } catch (e) { /* ignore */ }
+        }
 
-      items.push({
-        id: row[0],
-        nama: row[1] || 'Menu',
-        kategori: row[2] || 'Minuman',
-        hargaJual: parseSheetNumber(row[3]),
-        hpp: parseSheetNumber(row[4]),
-        defaultJatah: parseSheetNumber(row[5]),
-        recipe
-      });
+        items.push({
+          id: row[0],
+          nama: row[1] || 'Menu',
+          kategori: row[2] || 'Minuman',
+          hargaJual: parseSheetNumber(row[3]),
+          hpp: parseSheetNumber(row[4]),
+          defaultJatah: parseSheetNumber(row[5]),
+          recipe
+        });
+      }
+    }
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      // If cloudSlot has non-default catalog items, merge or prefer cloudSlot
+      const isDefault8 = cloudSlot.items.length <= 8 && cloudSlot.items.some((m: any) => m.id === 'm-1');
+      if (!isDefault8 || items.length === 0) {
+        return cloudSlot.items;
+      }
     }
 
     return items.length > 0 ? items : null;
@@ -644,6 +723,9 @@ export async function fetchMenuCatalogFromSheet(spreadsheetId: string, accessTok
 
 export async function saveMenuCatalogToSheet(spreadsheetId: string, menuItems: any[], accessToken: string): Promise<void> {
   try {
+    await saveCloudSlot('menu_catalog', { items: menuItems });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, "Catalog Menu", accessToken);
 
     const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Catalog Menu'!A1:G500:clear`;
@@ -965,6 +1047,7 @@ export async function fetchDailySalesFromSheet(
             masterMenuList.push({
               id: m.id,
               nama: m.nama,
+              kategori: m.kategori || 'Minuman',
               hargaJual: m.hargaJual || 0,
               hpp: m.hpp || 0,
               defaultJatah: m.defaultJatah || 0
@@ -980,6 +1063,7 @@ export async function fetchDailySalesFromSheet(
           masterMenuList.push({
             id: `menu-${nLower.replace(/[^a-z0-9]/g, '-')}`,
             nama: hName,
+            kategori: 'Minuman',
             hargaJual: 0,
             hpp: 0,
             defaultJatah: 0
@@ -1038,6 +1122,9 @@ export async function fetchDailySalesFromSheet(
           menuSalesList.push({
             menuId: m.id,
             nama: m.nama,
+            kategori: m.kategori || 'Minuman',
+            hargaJual: m.hargaJual || 0,
+            hpp: m.hpp || 0,
             terjual,
             jatah
           });
@@ -1071,6 +1158,20 @@ export async function fetchDailySalesFromSheet(
       }
 
       if (records.length > 0) {
+        try {
+          const cloudSales = await pullDailySalesFromCloud();
+          if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
+            const byDate = new Map<string, any>();
+            records.forEach(r => byDate.set(normalizeDateString(r.tanggal) || r.tanggal, r));
+            Object.entries(cloudSales.recordsByDate).forEach(([tgl, cRec]: [string, any]) => {
+              const normTgl = normalizeDateString(tgl) || tgl;
+              if (cRec && normTgl) {
+                byDate.set(normTgl, { ...cRec, tanggal: normTgl });
+              }
+            });
+            return Array.from(byDate.values()).sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
+          }
+        } catch {}
         return records;
       }
     }
@@ -1099,9 +1200,32 @@ export async function fetchDailySalesFromSheet(
           menuSales
         });
       }
-      return records.length > 0 ? records : null;
+      if (records.length > 0) {
+        try {
+          const cloudSales = await pullDailySalesFromCloud();
+          if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
+            const byDate = new Map<string, any>();
+            records.forEach(r => byDate.set(normalizeDateString(r.tanggal) || r.tanggal, r));
+            Object.entries(cloudSales.recordsByDate).forEach(([tgl, cRec]: [string, any]) => {
+              const normTgl = normalizeDateString(tgl) || tgl;
+              if (cRec && normTgl) {
+                byDate.set(normTgl, { ...cRec, tanggal: normTgl });
+              }
+            });
+            return Array.from(byDate.values()).sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
+          }
+        } catch {}
+        return records;
+      }
+      return null;
     }
 
+    try {
+      const cloudSales = await pullDailySalesFromCloud();
+      if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
+        return Object.values(cloudSales.recordsByDate);
+      }
+    } catch {}
     return null;
   } catch (error) {
     console.error("Error fetching daily sales from sheet:", error);
@@ -1116,6 +1240,9 @@ export async function saveDailySalesToSheet(
   menuCatalog?: any[]
 ): Promise<void> {
   try {
+    await pushDailySalesToCloud({ records: dailySales });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     const activeMenuList = (menuCatalog && menuCatalog.length > 0) ? menuCatalog : [];
     const menuJatahHeaders = activeMenuList.map(m => `Jatah - ${m.nama}`);
     const menuTerjualHeaders = activeMenuList.map(m => m.nama);
@@ -1332,9 +1459,17 @@ export async function saveDailySalesToSheet(
 // --- INGREDIENTS (BAHAN BAKU RESEP) SYNC ---
 export async function fetchIngredientsFromSheet(spreadsheetId: string, accessToken: string): Promise<any[] | null> {
   try {
-    const range = "'Bahan Baku & Resep'!A1:F300";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Bahan Baku & Resep", range, accessToken);
-    if (!rows || rows.length <= 1) return null;
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: any[] }>('ingredients'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Bahan Baku & Resep", "'Bahan Baku & Resep'!A1:F300", accessToken)
+    ]);
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      const isDefault = cloudSlot.items.length <= 12 && cloudSlot.items.some((i: any) => i.id === 'ing-1');
+      if (!isDefault) return cloudSlot.items;
+    }
+
+    if (!rows || rows.length <= 1) return cloudSlot?.items || null;
 
     const items: any[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1351,7 +1486,7 @@ export async function fetchIngredientsFromSheet(spreadsheetId: string, accessTok
       });
     }
 
-    return items.length > 0 ? items : null;
+    return items.length > 0 ? items : (cloudSlot?.items || null);
   } catch (error) {
     console.error("Error fetching ingredients from sheet:", error);
     return null;
@@ -1360,6 +1495,9 @@ export async function fetchIngredientsFromSheet(spreadsheetId: string, accessTok
 
 export async function saveIngredientsToSheet(spreadsheetId: string, ingredients: any[], accessToken: string): Promise<void> {
   try {
+    await saveCloudSlot('ingredients', { items: ingredients });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, "Bahan Baku & Resep", accessToken);
 
     const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Bahan Baku & Resep'!A1:F300:clear`;
@@ -1398,9 +1536,17 @@ export async function saveIngredientsToSheet(spreadsheetId: string, ingredients:
 // --- BARANG / BAHAN MASUK (INCOMING INGREDIENTS / PURCHASES) SYNC ---
 export async function fetchIncomingBatchesFromSheet(spreadsheetId: string, accessToken: string): Promise<IncomingIngredientBatch[] | null> {
   try {
-    const range = "'Barang Masuk & Pembelian'!A1:K1500";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Barang Masuk & Pembelian", range, accessToken);
-    if (!rows || rows.length <= 1) return null;
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: IncomingIngredientBatch[] }>('incoming_batches'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Barang Masuk & Pembelian", "'Barang Masuk & Pembelian'!A1:K1500", accessToken)
+    ]);
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      const isDefault3 = cloudSlot.items.length <= 3 && cloudSlot.items.some(b => b.id === 'in-batch-1');
+      if (!isDefault3) return cloudSlot.items;
+    }
+
+    if (!rows || rows.length <= 1) return cloudSlot?.items || null;
 
     const items: IncomingIngredientBatch[] = [];
     for (let i = 1; i < rows.length; i++) {
@@ -1425,7 +1571,7 @@ export async function fetchIncomingBatchesFromSheet(spreadsheetId: string, acces
       });
     }
 
-    return items.length > 0 ? items : null;
+    return items.length > 0 ? items : (cloudSlot?.items || null);
   } catch (error) {
     console.error("Error fetching incoming batches from sheet:", error);
     return null;
@@ -1434,6 +1580,9 @@ export async function fetchIncomingBatchesFromSheet(spreadsheetId: string, acces
 
 export async function saveIncomingBatchesToSheet(spreadsheetId: string, batches: IncomingIngredientBatch[], accessToken: string): Promise<void> {
   try {
+    await saveCloudSlot('incoming_batches', { items: batches });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, "Barang Masuk & Pembelian", accessToken);
 
     const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Barang Masuk & Pembelian'!A1:N2000:clear`;
@@ -1496,8 +1645,15 @@ export async function saveIncomingBatchesToSheet(spreadsheetId: string, batches:
 // --- BIAYA OPERASIONAL SYNC ---
 export async function fetchBiayaListFromSheet(spreadsheetId: string, accessToken: string): Promise<any[] | null> {
   try {
-    const range = "'Biaya Operasional'!A1:D100";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Biaya Operasional", range, accessToken);
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: any[] }>('biaya_list'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Biaya Operasional", "'Biaya Operasional'!A1:D100", accessToken)
+    ]);
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      return cloudSlot.items;
+    }
+
     if (!rows || rows.length <= 1) return null;
 
     const items: any[] = [];
@@ -1522,6 +1678,9 @@ export async function fetchBiayaListFromSheet(spreadsheetId: string, accessToken
 
 export async function saveBiayaListToSheet(spreadsheetId: string, biayaList: any[], accessToken: string): Promise<void> {
   try {
+    await saveCloudSlot('biaya_list', { items: biayaList });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, "Biaya Operasional", accessToken);
 
     const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Biaya Operasional'!A1:D100:clear`;
@@ -1562,8 +1721,18 @@ export async function fetchStockOpnameFromSheet(
   accessToken: string
 ): Promise<{ entries: Record<string, StockOpnameEntry>; petugas?: string } | null> {
   try {
-    const range = "'Laporan Stok Opname'!A1:L5000";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", range, accessToken);
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<any>('stock_opname'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", "'Laporan Stok Opname'!A1:L5000", accessToken)
+    ]);
+
+    if (cloudSlot?.monthlyMap && cloudSlot.monthlyMap[month]?.entries) {
+      return {
+        entries: cloudSlot.monthlyMap[month].entries,
+        petugas: cloudSlot.monthlyMap[month].petugas
+      };
+    }
+
     if (!rows || rows.length <= 1) return null;
 
     const entries: Record<string, StockOpnameEntry> = {};
@@ -1609,50 +1778,67 @@ export async function fetchAllStockOpnameReportsFromSheet(
   monthlyEntries: Record<string, { entries: Record<string, StockOpnameEntry>; petugas: string }>;
 } | null> {
   try {
-    const range = "'Laporan Stok Opname'!A1:L5000";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", range, accessToken);
-    if (!rows || rows.length <= 1) return null;
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<any>('stock_opname'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", "'Laporan Stok Opname'!A1:L5000", accessToken)
+    ]);
 
     const monthlyMap: Record<string, { entries: Record<string, StockOpnameEntry>; petugas: string; lastUpdated: string }> = {};
 
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row || !row[0] || !row[2]) continue;
+    if (rows && rows.length > 1) {
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row[0] || !row[2]) continue;
 
-      const rowMonth = row[0].trim();
-      const petugas = (row[1] || 'Barista Leader').trim();
-      const itemId = row[2].trim();
-      const namaBahan = row[3] || '';
-      const lastUpdated = row[11] || '';
+        const rowMonth = row[0].trim();
+        const petugas = (row[1] || 'Barista Leader').trim();
+        const itemId = row[2].trim();
+        const namaBahan = row[3] || '';
+        const lastUpdated = row[11] || '';
 
-      if (!monthlyMap[rowMonth]) {
-        monthlyMap[rowMonth] = {
-          entries: {},
-          petugas,
-          lastUpdated
+        if (!monthlyMap[rowMonth]) {
+          monthlyMap[rowMonth] = {
+            entries: {},
+            petugas,
+            lastUpdated
+          };
+        }
+
+        if (row[1] && row[1].trim()) {
+          monthlyMap[rowMonth].petugas = row[1].trim();
+        }
+        if (lastUpdated) {
+          monthlyMap[rowMonth].lastUpdated = lastUpdated;
+        }
+
+        monthlyMap[rowMonth].entries[itemId] = {
+          itemId,
+          namaBahan,
+          stokAwal: parseFloat(row[4]) || 0,
+          stokMasuk: parseFloat(row[5]) || 0,
+          terpakai: parseFloat(row[6]) || 0,
+          sisaDiBar: parseFloat(row[7]) || 0,
+          wasteLoss: parseFloat(row[8]) || 0,
+          catatanLoss: row[9] || '',
+          nilaiLoss: parseFloat(row[10]) || 0,
+          isAutoTerpakai: false
         };
       }
-
-      if (row[1] && row[1].trim()) {
-        monthlyMap[rowMonth].petugas = row[1].trim();
-      }
-      if (lastUpdated) {
-        monthlyMap[rowMonth].lastUpdated = lastUpdated;
-      }
-
-      monthlyMap[rowMonth].entries[itemId] = {
-        itemId,
-        namaBahan,
-        stokAwal: parseFloat(row[4]) || 0,
-        stokMasuk: parseFloat(row[5]) || 0,
-        terpakai: parseFloat(row[6]) || 0,
-        sisaDiBar: parseFloat(row[7]) || 0,
-        wasteLoss: parseFloat(row[8]) || 0,
-        catatanLoss: row[9] || '',
-        nilaiLoss: parseFloat(row[10]) || 0,
-        isAutoTerpakai: false
-      };
     }
+
+    if (cloudSlot?.monthlyMap && typeof cloudSlot.monthlyMap === 'object') {
+      Object.entries(cloudSlot.monthlyMap).forEach(([m, val]: [string, any]) => {
+        if (val && val.entries) {
+          monthlyMap[m] = {
+            entries: val.entries,
+            petugas: val.petugas || 'Barista Leader',
+            lastUpdated: val.lastUpdated || new Date().toISOString()
+          };
+        }
+      });
+    }
+
+    if (Object.keys(monthlyMap).length === 0) return null;
 
     const monthNames = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -1709,6 +1895,20 @@ export async function saveStockOpnameToSheet(
   const accessToken = isSecondToken ? maybeToken : petugasOrToken;
 
   try {
+    // Save to persistent cross-device cloud slot
+    const existingCloud = (await loadCloudSlot<any>('stock_opname')) || { monthlyMap: {} };
+    existingCloud.monthlyMap = existingCloud.monthlyMap || {};
+    existingCloud.monthlyMap[month] = {
+      entries,
+      petugas: petugas || 'Barista Leader',
+      lastUpdated: new Date().toISOString()
+    };
+    await saveCloudSlot('stock_opname', existingCloud);
+
+    if (!accessToken || accessToken.endsWith('-local-token')) {
+      return true;
+    }
+
     await createCustomSheetTab(spreadsheetId, "Laporan Stok Opname", accessToken);
 
     // Fetch existing records from other months so we preserve them
@@ -1837,8 +2037,15 @@ export async function fetchBaristaScheduleFromSheet(
   accessToken: string
 ): Promise<BaristaScheduleEntry[] | null> {
   try {
-    const range = "'Jadwal Barista'!A1:K4000";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Jadwal Barista", range, accessToken);
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: BaristaScheduleEntry[] }>('barista_schedule'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Jadwal Barista", "'Jadwal Barista'!A1:K4000", accessToken)
+    ]);
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      return cloudSlot.items;
+    }
+
     if (!rows || rows.length <= 1) return null;
 
     const schedules: BaristaScheduleEntry[] = [];
@@ -1888,6 +2095,9 @@ export async function saveBaristaScheduleToSheet(
   accessToken: string
 ): Promise<void> {
   try {
+    await saveCloudSlot('barista_schedule', { items: scheduleEntries });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, "Jadwal Barista", accessToken);
 
     const headers = ["ID Entry", "Tanggal", "Hari", "Barista ID", "Nama Barista", "Shift ID", "Nama Shift", "Jam Kerja", "Status Shift", "Catatan", "Waktu Sync"];
@@ -1941,8 +2151,15 @@ export async function fetchBaristasFromSheet(
   accessToken: string
 ): Promise<Barista[] | null> {
   try {
-    const range = "'Master Tim Barista'!A1:P200";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Master Tim Barista", range, accessToken);
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: Barista[] }>('baristas'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Master Tim Barista", "'Master Tim Barista'!A1:P200", accessToken)
+    ]);
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      return cloudSlot.items;
+    }
+
     if (!rows || rows.length <= 1) return null;
 
     const baristas: Barista[] = [];
@@ -1986,6 +2203,9 @@ export async function saveBaristasToSheet(
   accessToken: string
 ): Promise<void> {
   try {
+    await saveCloudSlot('baristas', { items: baristas });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, "Master Tim Barista", accessToken);
 
     const headers = [
@@ -2056,8 +2276,15 @@ export async function fetchShiftsFromSheet(
   accessToken: string
 ): Promise<ShiftMaster[] | null> {
   try {
-    const range = "'Master Jam Shift'!A1:J100";
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, "Master Jam Shift", range, accessToken);
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: ShiftMaster[] }>('shifts'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Master Jam Shift", "'Master Jam Shift'!A1:J100", accessToken)
+    ]);
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      return cloudSlot.items;
+    }
+
     if (!rows || rows.length <= 1) return null;
 
     const shifts: ShiftMaster[] = [];
@@ -2094,6 +2321,9 @@ export async function saveShiftsToSheet(
   accessToken: string
 ): Promise<void> {
   try {
+    await saveCloudSlot('shifts', { items: shifts });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, "Master Jam Shift", accessToken);
 
     const headers = [
@@ -2187,6 +2417,11 @@ export async function fetchCalendarNotesFromSheet(
   if (!spreadsheetId) return null;
 
   try {
+    const cloudSlot = await loadCloudSlot<{ items?: CalendarNoteActivity[] }>('calendar_notes');
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      return cloudSlot.items;
+    }
+
     // 1. Discover actual sheet titles from spreadsheet metadata if live OAuth token is present
     let detectedTab: string | null = null;
     const tabCandidates = ["Catatan & Agenda Kalender", "Catatan & Agenda", "Agenda Kalender", "Catatan Kalender", "Agenda"];
@@ -2323,7 +2558,10 @@ export async function saveCalendarNotesToSheet(
   activities: CalendarNoteActivity[],
   accessToken: string
 ): Promise<void> {
-  if (!spreadsheetId || !accessToken) return;
+  try {
+    await saveCloudSlot('calendar_notes', { items: activities });
+  } catch {}
+  if (!spreadsheetId || !accessToken || accessToken.endsWith('-local-token')) return;
 
   try {
     await createCustomSheetTab(spreadsheetId, "Catatan & Agenda Kalender", accessToken);
@@ -2459,8 +2697,16 @@ export async function fetchShoppingListFromSheet4(
     const range = `'${tabToQuery}'!A1:Z1000`;
 
     // 2. Query values with fallback to public CSV if no OAuth token
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabToQuery, range, accessToken);
-    if (!rows || rows.length === 0) return null;
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: ShoppingIngredientItem[]; actualTabName?: string; statusByName?: Record<string, ShoppingStatus> }>('shopping_list'),
+      fetchSheetRowsWithFallback(spreadsheetId, tabToQuery, range, accessToken)
+    ]);
+    if (!rows || rows.length === 0) {
+      if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+        return { items: cloudSlot.items, actualTabName: cloudSlot.actualTabName || tabToQuery };
+      }
+      return null;
+    }
 
     let formulaRows: string[][] = [];
     if (hasValidOAuth) {
@@ -2608,6 +2854,10 @@ export async function fetchShoppingListFromSheet4(
       });
     }
 
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      return { items: cloudSlot.items, actualTabName: cloudSlot.actualTabName || tabToQuery, statusColIndex: colStatus };
+    }
+
     return { items, actualTabName: tabToQuery, statusColIndex: colStatus };
   } catch (error) {
     console.error("Error fetching shopping list from Sheet 4:", error);
@@ -2630,6 +2880,19 @@ export async function updateShoppingItemStatusInSheet4(
   tabName = 'Sheet 4'
 ): Promise<boolean> {
   try {
+    const existingCloud = await loadCloudSlot<{ items?: ShoppingIngredientItem[]; actualTabName?: string }>('shopping_list');
+    if (existingCloud?.items && Array.isArray(existingCloud.items)) {
+      const updatedItems = existingCloud.items.map(i =>
+        (i.id === item.id || i.namaBahan === item.namaBahan)
+          ? { ...i, status: newStatus, checked: newStatus === 'sudah_dibeli' }
+          : i
+      );
+      await saveCloudSlot('shopping_list', { items: updatedItems, actualTabName: tabName });
+    }
+    if (!accessToken || accessToken.endsWith('-local-token')) {
+      return true;
+    }
+
     const statusText = newStatus === 'sudah_dibeli' ? 'Sudah Dibeli' : 
                        newStatus === 'sedang_dipesan' ? 'Sedang Dipesan' : 
                        newStatus === 'dibatalkan' ? 'Dibatalkan' : 'Perlu Dibeli';
@@ -2751,6 +3014,9 @@ export async function saveShoppingListToSheet4(
   tabName = 'Sheet 4'
 ): Promise<void> {
   try {
+    await saveCloudSlot('shopping_list', { items, actualTabName: tabName });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, tabName, accessToken);
 
     // Fetch existing values AND formulas to detect formulas and headers
@@ -2903,8 +3169,15 @@ export async function fetchEmployeeTasksFromSheet(
   tabName = 'Tugas Karyawan'
 ): Promise<EmployeeTask[] | null> {
   try {
-    const range = `'${tabName}'!A1:K1000`;
-    const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabName, range, accessToken);
+    const [cloudSlot, rows] = await Promise.all([
+      loadCloudSlot<{ items?: EmployeeTask[] }>('employee_tasks'),
+      fetchSheetRowsWithFallback(spreadsheetId, tabName, `'${tabName}'!A1:K1000`, accessToken)
+    ]);
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
+      return cloudSlot.items;
+    }
+
     if (!rows) {
       return null;
     }
@@ -2987,6 +3260,9 @@ export async function saveEmployeeTasksToSheet(
   tabName = 'Tugas Karyawan'
 ): Promise<void> {
   try {
+    await saveCloudSlot('employee_tasks', { items: tasks });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, tabName, accessToken);
 
     const headers = [
@@ -3055,6 +3331,11 @@ export async function appendEmployeeTaskToSheet(
   tabName = 'Tugas Karyawan'
 ): Promise<void> {
   try {
+    const existing = await loadCloudSlot<{ items?: EmployeeTask[] }>('employee_tasks');
+    const list = Array.isArray(existing?.items) ? [...existing.items, task] : [task];
+    await saveCloudSlot('employee_tasks', { items: list });
+    if (!accessToken || accessToken.endsWith('-local-token')) return;
+
     await createCustomSheetTab(spreadsheetId, tabName, accessToken);
 
     const row = [

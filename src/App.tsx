@@ -26,6 +26,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { initAuth, googleSignIn, getAccessToken, logout } from "./firebase";
+import { loadCloudSlot, saveCloudSlot } from "./utils/cloudSync";
 import {
   findExistingSpreadsheet,
   createSpreadsheet,
@@ -185,25 +186,44 @@ const getInitialSheetUrl = (): string => {
 };
 
 const resolveSharedGoogleToken = async (): Promise<string | null> => {
+  const applySharedAuthData = (data: any): string | null => {
+    if (
+      data?.spreadsheetId &&
+      !data.spreadsheetId.startsWith("local_") &&
+      data.spreadsheetId !== "1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM"
+    ) {
+      localStorage.setItem("aruskas_sheet_id", data.spreadsheetId);
+      if (data.spreadsheetName)
+        localStorage.setItem("aruskas_sheet_name", data.spreadsheetName);
+      if (data.spreadsheetUrl)
+        localStorage.setItem("aruskas_sheet_url", data.spreadsheetUrl);
+    }
+    if (data?.accessToken && !data.accessToken.endsWith("-local-token")) {
+      localStorage.setItem("aruskas_google_access_token", data.accessToken);
+      return data.accessToken;
+    }
+    return null;
+  };
+
   try {
     const resp = await fetch("/api/auth/shared-token");
     if (resp.ok) {
       const data = await resp.json();
-      if (data?.spreadsheetId && !data.spreadsheetId.startsWith("local_")) {
-        localStorage.setItem("aruskas_sheet_id", data.spreadsheetId);
-        if (data.spreadsheetName)
-          localStorage.setItem("aruskas_sheet_name", data.spreadsheetName);
-        if (data.spreadsheetUrl)
-          localStorage.setItem("aruskas_sheet_url", data.spreadsheetUrl);
-      }
-      if (data?.accessToken) {
-        localStorage.setItem("aruskas_google_access_token", data.accessToken);
-        return data.accessToken;
-      }
+      const tok = applySharedAuthData(data);
+      if (tok) return tok;
     }
   } catch {
     // ignore network errors
   }
+
+  try {
+    const cloudAuth = await loadCloudSlot<any>("auth_token");
+    const tok = applySharedAuthData(cloudAuth);
+    if (tok) return tok;
+  } catch {
+    // ignore cloud errors
+  }
+
   const localToken = await getAccessToken();
   if (localToken && !localToken.endsWith("-local-token")) {
     return localToken;
@@ -808,16 +828,18 @@ export default function App() {
         localStorage.setItem("aruskas_sheet_name", sheetName);
         localStorage.setItem("aruskas_sheet_url", sheetUrl);
 
+        const authPayload = {
+          accessToken: result.accessToken,
+          spreadsheetId: sheetId,
+          spreadsheetName: sheetName,
+          spreadsheetUrl: sheetUrl,
+        };
         fetch("/api/auth/shared-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            accessToken: result.accessToken,
-            spreadsheetId: sheetId,
-            spreadsheetName: sheetName,
-            spreadsheetUrl: sheetUrl,
-          }),
+          body: JSON.stringify(authPayload),
         }).catch(() => {});
+        saveCloudSlot("auth_token", authPayload).catch(() => {});
 
         if (chosenRole === "barista") {
           setActiveTab("omset_cogs");
@@ -971,12 +993,7 @@ export default function App() {
 
   // Add / Edit submission
   const handleFormSubmit = async (data: Omit<Transaction, "id">) => {
-    if (
-      !hasValidGoogleToken ||
-      !spreadsheetId ||
-      spreadsheetId.startsWith("local_") ||
-      !token
-    ) {
+    if (!spreadsheetId || spreadsheetId.startsWith("local_")) {
       let updated: Transaction[];
       if (editingTransaction) {
         updated = transactions.map((t) =>
@@ -996,31 +1013,27 @@ export default function App() {
       return;
     }
 
+    const effectiveToken = token || `${userRole}-local-token`;
     if (editingTransaction) {
       // Edit mode
       await updateTransaction(
         spreadsheetId,
         editingTransaction.id,
         data,
-        token,
+        effectiveToken,
       );
     } else {
       // Add mode
-      await addTransaction(spreadsheetId, data, token);
+      await addTransaction(spreadsheetId, data, effectiveToken);
     }
 
     // Refresh transactions
-    await loadTransactionsFromSheet(spreadsheetId, token);
+    await loadTransactionsFromSheet(spreadsheetId, effectiveToken);
   };
 
   // Delete transaction action
   const handleDeleteTransaction = async (id: string) => {
-    if (
-      !hasValidGoogleToken ||
-      !spreadsheetId ||
-      spreadsheetId.startsWith("local_") ||
-      !token
-    ) {
+    if (!spreadsheetId || spreadsheetId.startsWith("local_")) {
       const updated = transactions.filter((t) => t.id !== id);
       setTransactions(updated);
       localStorage.setItem(
@@ -1029,10 +1042,11 @@ export default function App() {
       );
       return;
     }
+    const effectiveToken = token || `${userRole}-local-token`;
     try {
       setIsLoadingData(true);
-      await deleteTransaction(spreadsheetId, id, token);
-      await loadTransactionsFromSheet(spreadsheetId, token);
+      await deleteTransaction(spreadsheetId, id, effectiveToken);
+      await loadTransactionsFromSheet(spreadsheetId, effectiveToken);
     } catch (err: any) {
       console.error(err);
       alert(`Gagal menghapus transaksi: ${err.message}`);

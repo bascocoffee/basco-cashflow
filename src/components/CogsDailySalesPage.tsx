@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import RecipePdfModal from './RecipePdfModal';
 import SalesCogsReportPdfModal from './SalesCogsReportPdfModal';
 import HppAiForum from './HppAiForum';
+import { pushDailySalesToCloud, pullDailySalesFromCloud, loadCloudSlot } from '../utils/cloudSync';
 import { 
   FileText,
   DollarSign, 
@@ -595,23 +596,26 @@ export default function CogsDailySalesPage({
   const [comparisonDailySortMode, setComparisonDailySortMode] = useState<'date_desc' | 'sales_desc' | 'hpp_desc' | 'profit_desc' | 'margin_desc'>('date_desc');
   const [isMinComparisonSection, setIsMinComparisonSection] = useState<boolean>(false);
 
-  // Function to sync with Google Sheets Cloud & Shared Server Cache (Realtime all data across roles)
+  // Function to sync with Google Sheets Cloud & Shared Server Cache (Realtime all data across roles & devices)
   const syncDataToCloud = async (
     currentMenu = menuItems, 
     currentSales = dailySales,
     currentIngs = ingredients,
     currentBiaya = biayaList,
-    currentIncoming = incomingBatches
+    currentIncoming = incomingBatches,
+    explicitSelectedDate?: string
   ) => {
-    // 1. Always push dailySales to shared server cache so Barista -> Owner/Manajer syncs instantly
+    const cleanSales = (currentSales || []).filter(
+      r => r && r.id !== 'ds-1' && r.id !== 'ds-2' && r.id !== 'ds-3'
+    );
+    const activeDate = normalizeDateString(explicitSelectedDate || selectedDate) || explicitSelectedDate || selectedDate;
+
+    // 1. Always push dailySales to cross-device cloud & shared server cache so Barista <-> Owner/Manajer syncs across devices
     try {
-      await fetch('/api/cogs/shared-sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          records: currentSales,
-          selectedDate: normalizeDateString(selectedDate) || selectedDate
-        })
+      await pushDailySalesToCloud({
+        records: cleanSales,
+        selectedDate: activeDate,
+        immediate: true
       });
     } catch {
       // ignore offline error
@@ -635,16 +639,27 @@ export default function CogsDailySalesPage({
         // ignore
       }
     }
+    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) {
+      try {
+        const cloudAuth = await loadCloudSlot<any>('auth_token');
+        if (cloudAuth?.accessToken && !cloudAuth.accessToken.endsWith('-local-token')) {
+          activeOAuthToken = cloudAuth.accessToken;
+          localStorage.setItem('aruskas_google_access_token', cloudAuth.accessToken);
+        }
+      } catch {
+        // ignore
+      }
+    }
 
-    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) return;
+    const effectiveToken = activeOAuthToken || token || 'local-token';
 
     setIsSyncingSheet(true);
     try {
-      await saveMenuCatalogToSheet(spreadsheetId, currentMenu, activeOAuthToken);
-      await saveDailySalesToSheet(spreadsheetId, currentSales, activeOAuthToken, currentMenu);
-      await saveIngredientsToSheet(spreadsheetId, currentIngs, activeOAuthToken);
-      await saveBiayaListToSheet(spreadsheetId, currentBiaya, activeOAuthToken);
-      await saveIncomingBatchesToSheet(spreadsheetId, currentIncoming, activeOAuthToken);
+      await saveMenuCatalogToSheet(spreadsheetId, currentMenu, effectiveToken);
+      await saveDailySalesToSheet(spreadsheetId, cleanSales, effectiveToken, currentMenu);
+      await saveIngredientsToSheet(spreadsheetId, currentIngs, effectiveToken);
+      await saveBiayaListToSheet(spreadsheetId, currentBiaya, effectiveToken);
+      await saveIncomingBatchesToSheet(spreadsheetId, currentIncoming, effectiveToken);
       setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
       console.error('Error syncing data to Google Sheets:', err);
@@ -655,6 +670,8 @@ export default function CogsDailySalesPage({
 
   // Debounced auto-save hook for real-time changes
   const isCloudLoadedRef = useRef(false);
+  const isApplyingRemoteRef = useRef(false);
+  const lastRemoteUpdatedAtRef = useRef<number>(0);
   const autoSaveTimeoutRef = useRef<any>(null);
 
   const triggerAutoSaveToCloud = (
@@ -664,9 +681,10 @@ export default function CogsDailySalesPage({
     currentBiaya = biayaList,
     currentIncoming = incomingBatches
   ) => {
-    if (!spreadsheetId || !token) return;
+    if (!spreadsheetId || !token || isApplyingRemoteRef.current) return;
     if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
     autoSaveTimeoutRef.current = setTimeout(() => {
+      if (isApplyingRemoteRef.current) return;
       syncDataToCloud(currentMenu, currentSales, currentIngs, currentBiaya, currentIncoming);
     }, 1200);
   };
@@ -674,35 +692,35 @@ export default function CogsDailySalesPage({
   // Sync to LocalStorage & Realtime Cloud Sync
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(menuItems));
-    if (isCloudLoadedRef.current) {
+    if (isCloudLoadedRef.current && !isApplyingRemoteRef.current) {
       triggerAutoSaveToCloud(menuItems, dailySales, ingredients, biayaList, incomingBatches);
     }
   }, [menuItems]);
 
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(dailySales));
-    if (isCloudLoadedRef.current) {
+    if (isCloudLoadedRef.current && !isApplyingRemoteRef.current) {
       triggerAutoSaveToCloud(menuItems, dailySales, ingredients, biayaList, incomingBatches);
     }
   }, [dailySales]);
 
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_ingredients', JSON.stringify(ingredients));
-    if (isCloudLoadedRef.current) {
+    if (isCloudLoadedRef.current && !isApplyingRemoteRef.current) {
       triggerAutoSaveToCloud(menuItems, dailySales, ingredients, biayaList, incomingBatches);
     }
   }, [ingredients]);
 
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_page_biaya', JSON.stringify(biayaList));
-    if (isCloudLoadedRef.current) {
+    if (isCloudLoadedRef.current && !isApplyingRemoteRef.current) {
       triggerAutoSaveToCloud(menuItems, dailySales, ingredients, biayaList, incomingBatches);
     }
   }, [biayaList]);
 
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(incomingBatches));
-    if (isCloudLoadedRef.current) {
+    if (isCloudLoadedRef.current && !isApplyingRemoteRef.current) {
       triggerAutoSaveToCloud(menuItems, dailySales, ingredients, biayaList, incomingBatches);
     }
   }, [incomingBatches]);
@@ -729,6 +747,7 @@ export default function CogsDailySalesPage({
     if (spreadsheetId && token) {
       const loadCloudData = async () => {
         setIsSyncingSheet(true);
+        isApplyingRemoteRef.current = true;
         try {
           // 1. Fetch Remote Ingredients
           const cloudIngs = await fetchIngredientsFromSheet(spreadsheetId, token);
@@ -753,20 +772,24 @@ export default function CogsDailySalesPage({
             localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(cloudMenu));
           }
 
-          // 4. Fetch Shared Server Daily Sales (Barista <-> Owner/Manager) & Remote Google Sheet Daily Sales
+          // 4. Fetch Cross-Device Cloud & Shared Server Daily Sales (Barista <-> Owner/Manager) & Remote Google Sheet Daily Sales
           let sharedServerRecords: DailySalesRecord[] = [];
+          let sharedLastSelectedDate: string | null = null;
           try {
-            const sharedResp = await fetch('/api/cogs/shared-sales');
-            if (sharedResp.ok) {
-              const sharedData = await sharedResp.json();
-              if (sharedData?.lastSelectedDate) {
-                const normSharedDate = normalizeDateString(sharedData.lastSelectedDate) || sharedData.lastSelectedDate;
-                localStorage.setItem('aruskas_cogs_selected_date', normSharedDate);
-                setSelectedDate(normSharedDate);
-              }
-              if (sharedData?.recordsByDate && typeof sharedData.recordsByDate === 'object') {
-                sharedServerRecords = Object.values(sharedData.recordsByDate) as DailySalesRecord[];
-              }
+            const sharedData = await pullDailySalesFromCloud();
+            if (sharedData?.updatedAt && sharedData.updatedAt > lastRemoteUpdatedAtRef.current) {
+              lastRemoteUpdatedAtRef.current = sharedData.updatedAt;
+            }
+            if (sharedData?.lastSelectedDate) {
+              const normSharedDate = normalizeDateString(sharedData.lastSelectedDate) || sharedData.lastSelectedDate;
+              sharedLastSelectedDate = normSharedDate;
+              localStorage.setItem('aruskas_cogs_selected_date', normSharedDate);
+              setSelectedDate(normSharedDate);
+            }
+            if (sharedData?.recordsByDate && typeof sharedData.recordsByDate === 'object') {
+              sharedServerRecords = (Object.values(sharedData.recordsByDate) as DailySalesRecord[]).filter(
+                r => r && r.id !== 'ds-1' && r.id !== 'ds-2' && r.id !== 'ds-3'
+              );
             }
           } catch {
             // ignore
@@ -777,13 +800,14 @@ export default function CogsDailySalesPage({
             setDailySales(prevSales => {
               const mergedMap = new Map<string, DailySalesRecord>();
               
-              // First add existing local sales
+              // First add existing non-dummy local sales
               prevSales.forEach(rec => {
+                if (!rec || rec.id === 'ds-1' || rec.id === 'ds-2' || rec.id === 'ds-3') return;
                 const normDate = normalizeDateString(rec.tanggal) || rec.tanggal;
                 mergedMap.set(normDate, rec);
               });
 
-              // Merge shared server records (from Barista / Manager / Owner session)
+              // Merge shared server/cloud records (from Barista / Manager / Owner session across devices)
               sharedServerRecords.forEach(sRec => {
                 if (!sRec || !sRec.tanggal) return;
                 const normDate = normalizeDateString(sRec.tanggal) || sRec.tanggal;
@@ -797,6 +821,7 @@ export default function CogsDailySalesPage({
 
               // Smart merge with cloudSales (preserving newer local/Barista entries!)
               (cloudSales || []).forEach(cRec => {
+                if (!cRec || cRec.id === 'ds-1' || cRec.id === 'ds-2' || cRec.id === 'ds-3') return;
                 const normDate = normalizeDateString(cRec.tanggal) || cRec.tanggal;
                 const existing = mergedMap.get(normDate) as any;
                 
@@ -869,6 +894,19 @@ export default function CogsDailySalesPage({
 
               const mergedList = Array.from(mergedMap.values()).sort((a, b) => a.tanggal.localeCompare(b.tanggal));
               localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(mergedList));
+
+              // If the newly opened device has no record for its current selectedDate, snap to sharedLastSelectedDate or the most recent recorded date with data
+              const targetCheckDate = sharedLastSelectedDate || normalizeDateString(selectedDate) || selectedDate;
+              const hasTargetRecord = mergedList.some(r => (normalizeDateString(r.tanggal) || r.tanggal) === targetCheckDate);
+              if (!hasTargetRecord && mergedList.length > 0) {
+                const latestWithData = [...mergedList].reverse().find(r => (r.cups || 0) > 0 || (r.omset || 0) > 0 || (r.menuSales || []).some(ms => (ms.jatah || 0) > 0 || (ms.terjual || 0) > 0)) || mergedList[mergedList.length - 1];
+                if (latestWithData?.tanggal) {
+                  const latestNorm = normalizeDateString(latestWithData.tanggal) || latestWithData.tanggal;
+                  localStorage.setItem('aruskas_cogs_selected_date', latestNorm);
+                  setSelectedDate(latestNorm);
+                }
+              }
+
               return mergedList;
             });
 
@@ -916,6 +954,9 @@ export default function CogsDailySalesPage({
         } finally {
           setIsSyncingSheet(false);
           isCloudLoadedRef.current = true;
+          setTimeout(() => {
+            isApplyingRemoteRef.current = false;
+          }, 400);
         }
       };
       loadCloudData();
@@ -923,6 +964,78 @@ export default function CogsDailySalesPage({
       isCloudLoadedRef.current = true;
     }
   }, [spreadsheetId, token]);
+
+  // Background cross-device polling so changes made on Device A (e.g. Barista HP) appear automatically on Device B (Owner/Manager Laptop)
+  useEffect(() => {
+    let isMounted = true;
+    const pollCrossDeviceSales = async () => {
+      try {
+        const sharedData = await pullDailySalesFromCloud();
+        if (!isMounted || !sharedData) return;
+
+        const remoteUpdated = Number(sharedData.updatedAt) || 0;
+        const hasNewRemoteUpdate = remoteUpdated > lastRemoteUpdatedAtRef.current;
+
+        if (sharedData.recordsByDate && typeof sharedData.recordsByDate === 'object') {
+          const remoteRecords = (Object.values(sharedData.recordsByDate) as DailySalesRecord[]).filter(
+            r => r && r.id !== 'ds-1' && r.id !== 'ds-2' && r.id !== 'ds-3'
+          );
+          if (remoteRecords.length > 0) {
+            setDailySales(prev => {
+              let changed = false;
+              const map = new Map<string, DailySalesRecord>();
+              prev.forEach(r => {
+                if (!r || r.id === 'ds-1' || r.id === 'ds-2' || r.id === 'ds-3') return;
+                const d = normalizeDateString(r.tanggal) || r.tanggal;
+                map.set(d, r);
+              });
+              remoteRecords.forEach(r => {
+                if (!r || !r.tanggal) return;
+                const d = normalizeDateString(r.tanggal) || r.tanggal;
+                const ex = map.get(d) as any;
+                const rUp = (r as any).updatedAt || 0;
+                const exUp = ex?.updatedAt || 0;
+                if (!ex || rUp > exUp) {
+                  map.set(d, { ...r, tanggal: d });
+                  changed = true;
+                }
+              });
+              if (!changed) return prev;
+              isApplyingRemoteRef.current = true;
+              const next = Array.from(map.values()).sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+              localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(next));
+              setTimeout(() => {
+                isApplyingRemoteRef.current = false;
+              }, 300);
+              return next;
+            });
+          }
+        }
+
+        if (hasNewRemoteUpdate && sharedData.lastSelectedDate) {
+          lastRemoteUpdatedAtRef.current = remoteUpdated;
+          const normRemoteDate = normalizeDateString(sharedData.lastSelectedDate) || sharedData.lastSelectedDate;
+          if (normRemoteDate) {
+            localStorage.setItem('aruskas_cogs_selected_date', normRemoteDate);
+            setSelectedDate(normRemoteDate);
+          }
+        }
+      } catch {
+        // ignore network poll errors
+      }
+    };
+
+    const intervalId = setInterval(pollCrossDeviceSales, 6000);
+    const handleFocus = () => {
+      pollCrossDeviceSales();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
 
   // Export and Import Data Sheet JSON Backup
   const handleExportDataSheetJSON = () => {
@@ -1073,10 +1186,10 @@ export default function CogsDailySalesPage({
       }
 
       localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(nextList));
-      fetch('/api/cogs/shared-sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ record: newRecord, selectedDate: normSelected })
+      lastRemoteUpdatedAtRef.current = newRecord.updatedAt || Date.now();
+      pushDailySalesToCloud({
+        record: newRecord,
+        selectedDate: normSelected
       }).catch(() => {});
 
       return nextList;
@@ -2270,7 +2383,7 @@ export default function CogsDailySalesPage({
   const bagianPengelola = useMemo(() => Math.max(0, netProfit) * pengelolaPct, [netProfit, pengelolaPct]);
 
   // Save Itemized Daily Entry
-  const handleSaveItemizedDaily = (e: React.FormEvent) => {
+  const handleSaveItemizedDaily = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const menuSalesList: DailyMenuItemSale[] = menuItems.map(item => {
@@ -2322,9 +2435,16 @@ export default function CogsDailySalesPage({
     }
 
     localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(nextDailySales));
-    syncDataToCloud(menuItems, nextDailySales);
+    lastRemoteUpdatedAtRef.current = newRecord.updatedAt || Date.now();
+    await pushDailySalesToCloud({
+      record: newRecord,
+      records: nextDailySales.filter(r => r && r.id !== 'ds-1' && r.id !== 'ds-2' && r.id !== 'ds-3'),
+      selectedDate: normSelected,
+      immediate: true
+    });
+    syncDataToCloud(menuItems, nextDailySales, ingredients, biayaList, incomingBatches, normSelected);
 
-    alert(`Data penjualan & jatah menu harian tanggal ${selectedDate} berhasil disimpan dan otomatis tersinkron ke Owner & Manajer!`);
+    alert(`Data penjualan & jatah menu harian tanggal ${selectedDate} berhasil disimpan dan otomatis tersinkron ke semua perangkat (Owner, Manajer & Barista)!`);
   };
 
   // AI Menu Margin Analysis Handler
@@ -2414,13 +2534,14 @@ export default function CogsDailySalesPage({
 
     const normSelected = normalizeDateString(selectedDate) || selectedDate;
     const existingIndex = dailySales.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
-    const newRecord: DailySalesRecord = {
+    const newRecord: DailySalesRecord & { updatedAt?: number } = {
       id: existingIndex >= 0 ? dailySales[existingIndex].id : `ds-${Date.now()}`,
       tanggal: normSelected,
       cups: cupsNum,
       omset: omsetNum,
       hppTotal: hppEst,
-      notes: dailyNotes.trim()
+      notes: dailyNotes.trim(),
+      updatedAt: Date.now()
     };
 
     let nextDailySales: DailySalesRecord[] = [];
@@ -2433,8 +2554,16 @@ export default function CogsDailySalesPage({
       setDailySales(nextDailySales);
     }
 
+    lastRemoteUpdatedAtRef.current = newRecord.updatedAt || Date.now();
+    pushDailySalesToCloud({
+      record: newRecord,
+      records: nextDailySales.filter(r => r && r.id !== 'ds-1' && r.id !== 'ds-2' && r.id !== 'ds-3'),
+      selectedDate: normSelected,
+      immediate: true
+    }).catch(() => {});
+
     if (spreadsheetId && token) {
-      syncDataToCloud(menuItems, nextDailySales);
+      syncDataToCloud(menuItems, nextDailySales, ingredients, biayaList, incomingBatches, normSelected);
     }
 
     alert(`Data penjualan harian tanggal ${selectedDate} berhasil diperbarui!`);

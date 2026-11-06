@@ -63,14 +63,17 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     cachedAccessToken = credential.accessToken;
     try {
       localStorage.setItem('aruskas_google_access_token', cachedAccessToken);
+      const activeSheetId = localStorage.getItem('aruskas_sheet_id') || '1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc';
+      const activeSheetName = localStorage.getItem('aruskas_sheet_name') || 'Dasbor Arus Kas Keuangan';
+      const activeSheetUrl = localStorage.getItem('aruskas_sheet_url') || `https://docs.google.com/spreadsheets/d/${activeSheetId}/edit?gid=0#gid=0`;
       fetch('/api/auth/shared-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           accessToken: cachedAccessToken,
-          spreadsheetId: '1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM',
-          spreadsheetName: 'Copy of Dasbor Arus Kas Keuangan',
-          spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM/edit'
+          spreadsheetId: activeSheetId,
+          spreadsheetName: activeSheetName,
+          spreadsheetUrl: activeSheetUrl
         })
       }).catch(() => {});
     } catch {}
