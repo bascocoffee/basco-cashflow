@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { User } from 'firebase/auth';
-import { 
-  TrendingUp, 
-  Database, 
-  CheckCircle, 
-  AlertCircle, 
-  FileSpreadsheet, 
-  RefreshCw, 
+import React, { useState, useEffect } from "react";
+import { User } from "firebase/auth";
+import {
+  TrendingUp,
+  Database,
+  CheckCircle,
+  AlertCircle,
+  FileSpreadsheet,
+  RefreshCw,
   Sparkles,
   ArrowRight,
   LogOut,
@@ -23,141 +23,155 @@ import {
   ExternalLink,
   ShieldCheck,
   PanelLeftClose,
-  PanelLeftOpen
-} from 'lucide-react';
-import { initAuth, googleSignIn, getAccessToken, logout } from './firebase';
-import { 
-  findExistingSpreadsheet, 
-  createSpreadsheet, 
+  PanelLeftOpen,
+} from "lucide-react";
+import { initAuth, googleSignIn, getAccessToken, logout } from "./firebase";
+import {
+  findExistingSpreadsheet,
+  createSpreadsheet,
   getSpreadsheetDetails,
-  fetchTransactions, 
-  addTransaction, 
-  updateTransaction, 
-  deleteTransaction, 
-  fetchCategories, 
-  saveCategoriesToSheet, 
-  fetchIngredientsFromSheet, 
-  fetchAllStockOpnameReportsFromSheet, 
-  fetchCalendarNotesFromSheet, 
-  fetchShoppingListFromSheet4 
-} from './sheetsService';
-import { CALENDAR_NOTES_STORAGE_KEY } from './utils/calendarNotesData';
-import { SHOPPING_LIST_STORAGE_KEY, DEFAULT_SHOPPING_ITEMS, computeShoppingMetrics } from './utils/shoppingListData';
-import { Transaction, CATEGORIES, AppRole } from './types';
+  fetchTransactions,
+  addTransaction,
+  updateTransaction,
+  deleteTransaction,
+  fetchCategories,
+  saveCategoriesToSheet,
+  fetchIngredientsFromSheet,
+  fetchAllStockOpnameReportsFromSheet,
+  fetchCalendarNotesFromSheet,
+  fetchShoppingListFromSheet4,
+} from "./sheetsService";
+import { CALENDAR_NOTES_STORAGE_KEY } from "./utils/calendarNotesData";
+import {
+  SHOPPING_LIST_STORAGE_KEY,
+  DEFAULT_SHOPPING_ITEMS,
+  computeShoppingMetrics,
+} from "./utils/shoppingListData";
+import { Transaction, CATEGORIES, AppRole } from "./types";
 
 // Components
-import Sidebar, { TabType } from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import TransactionForm from './components/TransactionForm';
-import CategoryManager from './components/CategoryManager';
-import CategoryExpenses from './components/CategoryExpenses';
-import AiChat from './components/AiChat';
-import CogsDetail from './components/CogsDetail';
-import FixedCostSimulator from './components/FixedCostSimulator';
-import CogsDailySalesPage from './components/CogsDailySalesPage';
-import StockOpnamePage from './components/StockOpnamePage';
-import BaristaSchedulePage from './components/BaristaSchedulePage';
-import CalendarNotesPage from './components/CalendarNotesPage';
-import DebtTrackerPage from './components/DebtTrackerPage';
-import ShoppingReportPage from './components/ShoppingReportPage';
-import BackupRestoreModal from './components/BackupRestoreModal';
-import EmployeeTaskPage from './components/EmployeeTaskPage';
-import { KeyRound, UserCheck, Lock, Crown, Briefcase, CheckCircle2 } from 'lucide-react';
+import Sidebar, { TabType } from "./components/Sidebar";
+import Dashboard from "./components/Dashboard";
+import TransactionForm from "./components/TransactionForm";
+import CategoryManager from "./components/CategoryManager";
+import CategoryExpenses from "./components/CategoryExpenses";
+import AiChat from "./components/AiChat";
+import CogsDetail from "./components/CogsDetail";
+import FixedCostSimulator from "./components/FixedCostSimulator";
+import CogsDailySalesPage from "./components/CogsDailySalesPage";
+import StockOpnamePage from "./components/StockOpnamePage";
+import BaristaSchedulePage from "./components/BaristaSchedulePage";
+import CalendarNotesPage from "./components/CalendarNotesPage";
+import DebtTrackerPage from "./components/DebtTrackerPage";
+import ShoppingReportPage from "./components/ShoppingReportPage";
+import BackupRestoreModal from "./components/BackupRestoreModal";
+import EmployeeTaskPage from "./components/EmployeeTaskPage";
+import {
+  KeyRound,
+  UserCheck,
+  Lock,
+  Crown,
+  Briefcase,
+  CheckCircle2,
+} from "lucide-react";
 
 const ROLE_USERS: Record<AppRole, User> = {
   owner: {
-    uid: 'owner-local-uid',
-    displayName: 'Owner Basco Coffee',
-    email: 'Akses Owner (Pemilik)',
+    uid: "owner-local-uid",
+    displayName: "Owner Basco Coffee",
+    email: "Akses Owner (Pemilik)",
     photoURL: null,
     emailVerified: true,
     isAnonymous: true,
     metadata: {} as any,
     providerData: [],
-    refreshToken: '',
+    refreshToken: "",
     tenantId: null,
     delete: async () => Promise.resolve(),
-    getIdToken: async () => Promise.resolve(''),
+    getIdToken: async () => Promise.resolve(""),
     getIdTokenResult: async () => Promise.resolve({} as any),
     reload: async () => Promise.resolve(),
     toJSON: () => ({}),
     phoneNumber: null,
-    providerId: 'owner'
+    providerId: "owner",
   },
   manager: {
-    uid: 'manager-local-uid',
-    displayName: 'Manager Cafe',
-    email: 'Akses Manager (Operasional)',
+    uid: "manager-local-uid",
+    displayName: "Manager Cafe",
+    email: "Akses Manager (Operasional)",
     photoURL: null,
     emailVerified: true,
     isAnonymous: true,
     metadata: {} as any,
     providerData: [],
-    refreshToken: '',
+    refreshToken: "",
     tenantId: null,
     delete: async () => Promise.resolve(),
-    getIdToken: async () => Promise.resolve(''),
+    getIdToken: async () => Promise.resolve(""),
     getIdTokenResult: async () => Promise.resolve({} as any),
     reload: async () => Promise.resolve(),
     toJSON: () => ({}),
     phoneNumber: null,
-    providerId: 'manager'
+    providerId: "manager",
   },
   barista: {
-    uid: 'barista-local-uid',
-    displayName: 'Barista Basco',
-    email: 'Akses Barista (Staff)',
+    uid: "barista-local-uid",
+    displayName: "Barista Basco",
+    email: "Akses Barista (Staff)",
     photoURL: null,
     emailVerified: true,
     isAnonymous: true,
     metadata: {} as any,
     providerData: [],
-    refreshToken: '',
+    refreshToken: "",
     tenantId: null,
     delete: async () => Promise.resolve(),
-    getIdToken: async () => Promise.resolve(''),
+    getIdToken: async () => Promise.resolve(""),
     getIdTokenResult: async () => Promise.resolve({} as any),
     reload: async () => Promise.resolve(),
     toJSON: () => ({}),
     phoneNumber: null,
-    providerId: 'barista'
-  }
+    providerId: "barista",
+  },
 };
 
-const DEFAULT_SHEET_ID = '1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM';
-const DEFAULT_SHEET_NAME = 'Copy of Dasbor Arus Kas Keuangan';
-const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM/edit';
+const DEFAULT_SHEET_ID = "1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc";
+const DEFAULT_SHEET_NAME = "Dasbor Arus Kas Keuangan";
+const DEFAULT_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc/edit?gid=0#gid=0";
 
 const getInitialSheetId = (): string => {
-  const saved = localStorage.getItem('aruskas_sheet_id');
-  if (saved && !saved.startsWith('local_')) return saved;
+  const saved = localStorage.getItem("aruskas_sheet_id");
+  if (saved && !saved.startsWith("local_")) return saved;
   return DEFAULT_SHEET_ID;
 };
 
 const getInitialSheetName = (): string => {
-  const saved = localStorage.getItem('aruskas_sheet_name');
-  if (saved && !saved.startsWith('Database Lokal')) return saved;
+  const saved = localStorage.getItem("aruskas_sheet_name");
+  if (saved && !saved.startsWith("Database Lokal")) return saved;
   return DEFAULT_SHEET_NAME;
 };
 
 const getInitialSheetUrl = (): string => {
-  const saved = localStorage.getItem('aruskas_sheet_url');
-  if (saved && saved.includes('docs.google.com/spreadsheets')) return saved;
+  const saved = localStorage.getItem("aruskas_sheet_url");
+  if (saved && saved.includes("docs.google.com/spreadsheets")) return saved;
   return DEFAULT_SHEET_URL;
 };
 
 const resolveSharedGoogleToken = async (): Promise<string | null> => {
   try {
-    const resp = await fetch('/api/auth/shared-token');
+    const resp = await fetch("/api/auth/shared-token");
     if (resp.ok) {
       const data = await resp.json();
-      if (data?.spreadsheetId && !data.spreadsheetId.startsWith('local_')) {
-        localStorage.setItem('aruskas_sheet_id', data.spreadsheetId);
-        if (data.spreadsheetName) localStorage.setItem('aruskas_sheet_name', data.spreadsheetName);
-        if (data.spreadsheetUrl) localStorage.setItem('aruskas_sheet_url', data.spreadsheetUrl);
+      if (data?.spreadsheetId && !data.spreadsheetId.startsWith("local_")) {
+        localStorage.setItem("aruskas_sheet_id", data.spreadsheetId);
+        if (data.spreadsheetName)
+          localStorage.setItem("aruskas_sheet_name", data.spreadsheetName);
+        if (data.spreadsheetUrl)
+          localStorage.setItem("aruskas_sheet_url", data.spreadsheetUrl);
       }
       if (data?.accessToken) {
-        localStorage.setItem('aruskas_google_access_token', data.accessToken);
+        localStorage.setItem("aruskas_google_access_token", data.accessToken);
         return data.accessToken;
       }
     }
@@ -165,21 +179,101 @@ const resolveSharedGoogleToken = async (): Promise<string | null> => {
     // ignore network errors
   }
   const localToken = await getAccessToken();
-  if (localToken && !localToken.endsWith('-local-token')) {
+  if (localToken && !localToken.endsWith("-local-token")) {
     return localToken;
   }
   return null;
 };
 
 const DEFAULT_MANAGER_TRANSACTIONS: Transaction[] = [
-  { id: '1', tanggal: '2026-06-01', debit: 24500000, kredit: 0, kredit2: 0, jenisPengeluaran: '-', jenisPengeluaran2: '-', keterangan: 'Pemasukan Penjualan Kasir POS (Minggu 1 Juni)', operasionalDanManajemen: '-' },
-  { id: '2', tanggal: '2026-06-03', debit: 0, kredit: 4800000, kredit2: 0, jenisPengeluaran: 'Bahan Baku & HPP (COGS)', jenisPengeluaran2: '-', keterangan: 'Susu Fresh Milk, Biji Kopi Blend, Sirup Karamel', operasionalDanManajemen: 'Operasional' },
-  { id: '3', tanggal: '2026-06-05', debit: 0, kredit: 1200000, kredit2: 0, jenisPengeluaran: 'Operasional & Sewa Tempat', jenisPengeluaran2: '-', keterangan: 'Listrik & Wifi Cafe Kece', operasionalDanManajemen: 'Operasional' },
-  { id: '4', tanggal: '2026-06-10', debit: 28900000, kredit: 0, kredit2: 0, jenisPengeluaran: '-', jenisPengeluaran2: '-', keterangan: 'Pemasukan Penjualan Kasir POS (Minggu 2-3 Juni)', operasionalDanManajemen: '-' },
-  { id: '5', tanggal: '2026-06-12', debit: 0, kredit: 450000, kredit2: 0, jenisPengeluaran: 'Promosi & Marketing', jenisPengeluaran2: '-', keterangan: 'Sponsorship Event Musik Akustik & Selebaran', operasionalDanManajemen: 'Operasional' },
-  { id: '6', tanggal: '2026-06-18', debit: 0, kredit: 850000, kredit2: 0, jenisPengeluaran: 'Peralatan & Inventaris', jenisPengeluaran2: '-', keterangan: 'Beli Gelas Latte, Sedotan Bambu, & Cup Sealer', operasionalDanManajemen: 'Operasional' },
-  { id: '7', tanggal: '2026-06-25', debit: 0, kredit: 7500000, kredit2: 0, jenisPengeluaran: 'Gaji Karyawan & Barista', jenisPengeluaran2: '-', keterangan: 'Gaji 2 Barista & 1 Staff Dapur', operasionalDanManajemen: 'Manajemen' },
-  { id: '8', tanggal: '2026-07-01', debit: 18500000, kredit: 0, kredit2: 0, jenisPengeluaran: '-', jenisPengeluaran2: '-', keterangan: 'Penjualan Omset Kasir Juli Minggu 1', operasionalDanManajemen: '-' },
+  {
+    id: "1",
+    tanggal: "2026-06-01",
+    debit: 24500000,
+    kredit: 0,
+    kredit2: 0,
+    jenisPengeluaran: "-",
+    jenisPengeluaran2: "-",
+    keterangan: "Pemasukan Penjualan Kasir POS (Minggu 1 Juni)",
+    operasionalDanManajemen: "-",
+  },
+  {
+    id: "2",
+    tanggal: "2026-06-03",
+    debit: 0,
+    kredit: 4800000,
+    kredit2: 0,
+    jenisPengeluaran: "Bahan Baku & HPP (COGS)",
+    jenisPengeluaran2: "-",
+    keterangan: "Susu Fresh Milk, Biji Kopi Blend, Sirup Karamel",
+    operasionalDanManajemen: "Operasional",
+  },
+  {
+    id: "3",
+    tanggal: "2026-06-05",
+    debit: 0,
+    kredit: 1200000,
+    kredit2: 0,
+    jenisPengeluaran: "Operasional & Sewa Tempat",
+    jenisPengeluaran2: "-",
+    keterangan: "Listrik & Wifi Cafe Kece",
+    operasionalDanManajemen: "Operasional",
+  },
+  {
+    id: "4",
+    tanggal: "2026-06-10",
+    debit: 28900000,
+    kredit: 0,
+    kredit2: 0,
+    jenisPengeluaran: "-",
+    jenisPengeluaran2: "-",
+    keterangan: "Pemasukan Penjualan Kasir POS (Minggu 2-3 Juni)",
+    operasionalDanManajemen: "-",
+  },
+  {
+    id: "5",
+    tanggal: "2026-06-12",
+    debit: 0,
+    kredit: 450000,
+    kredit2: 0,
+    jenisPengeluaran: "Promosi & Marketing",
+    jenisPengeluaran2: "-",
+    keterangan: "Sponsorship Event Musik Akustik & Selebaran",
+    operasionalDanManajemen: "Operasional",
+  },
+  {
+    id: "6",
+    tanggal: "2026-06-18",
+    debit: 0,
+    kredit: 850000,
+    kredit2: 0,
+    jenisPengeluaran: "Peralatan & Inventaris",
+    jenisPengeluaran2: "-",
+    keterangan: "Beli Gelas Latte, Sedotan Bambu, & Cup Sealer",
+    operasionalDanManajemen: "Operasional",
+  },
+  {
+    id: "7",
+    tanggal: "2026-06-25",
+    debit: 0,
+    kredit: 7500000,
+    kredit2: 0,
+    jenisPengeluaran: "Gaji Karyawan & Barista",
+    jenisPengeluaran2: "-",
+    keterangan: "Gaji 2 Barista & 1 Staff Dapur",
+    operasionalDanManajemen: "Manajemen",
+  },
+  {
+    id: "8",
+    tanggal: "2026-07-01",
+    debit: 18500000,
+    kredit: 0,
+    kredit2: 0,
+    jenisPengeluaran: "-",
+    jenisPengeluaran2: "-",
+    keterangan: "Penjualan Omset Kasir Juli Minggu 1",
+    operasionalDanManajemen: "-",
+  },
 ];
 
 export default function App() {
@@ -191,45 +285,57 @@ export default function App() {
 
   // User Role State ('owner' | 'manager' | 'barista')
   const [userRole, setUserRole] = useState<AppRole>(() => {
-    const saved = localStorage.getItem('aruskas_user_role') as AppRole;
-    if (saved && ['owner', 'manager', 'barista'].includes(saved)) return saved;
-    return localStorage.getItem('aruskas_is_manager_mode') === 'true' ? 'manager' : 'owner';
+    const saved = localStorage.getItem("aruskas_user_role") as AppRole;
+    if (saved && ["owner", "manager", "barista"].includes(saved)) return saved;
+    return localStorage.getItem("aruskas_is_manager_mode") === "true"
+      ? "manager"
+      : "owner";
   });
 
   // Selected Role Tab on Landing Page
-  const [loginRoleTab, setLoginRoleTab] = useState<AppRole>('owner');
-  const [rolePinInput, setRolePinInput] = useState('');
+  const [loginRoleTab, setLoginRoleTab] = useState<AppRole>("owner");
+  const [rolePinInput, setRolePinInput] = useState("");
   const [rolePinError, setRolePinError] = useState<string | null>(null);
 
   // Manager Mode State (Akses Tanpa Email)
   const [isManagerMode, setIsManagerMode] = useState<boolean>(() => {
-    return localStorage.getItem('aruskas_is_manager_mode') === 'true';
+    return localStorage.getItem("aruskas_is_manager_mode") === "true";
   });
   const [showPinModal, setShowPinModal] = useState(false);
-  const [managerPinInput, setManagerPinInput] = useState('');
+  const [managerPinInput, setManagerPinInput] = useState("");
   const [managerPinError, setManagerPinError] = useState<string | null>(null);
 
   // Spreadsheet State (Defaults automatically to primary Google Sheet across all devices)
-  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => getInitialSheetId());
-  const [spreadsheetName, setSpreadsheetName] = useState<string | null>(() => getInitialSheetName());
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(() => getInitialSheetUrl());
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() =>
+    getInitialSheetId(),
+  );
+  const [spreadsheetName, setSpreadsheetName] = useState<string | null>(() =>
+    getInitialSheetName(),
+  );
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(() =>
+    getInitialSheetUrl(),
+  );
   const [isSearchingSheet, setIsSearchingSheet] = useState(false);
   const [isInitializingSheet, setIsInitializingSheet] = useState(false);
-  const [foundSheetInfo, setFoundSheetInfo] = useState<{ id: string; name: string } | null>(null);
-  const [customSheetInput, setCustomSheetInput] = useState('');
+  const [foundSheetInfo, setFoundSheetInfo] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [customSheetInput, setCustomSheetInput] = useState("");
   const [isLinkingCustomSheet, setIsLinkingCustomSheet] = useState(false);
 
-  const hasValidGoogleToken = Boolean(token && !token.endsWith('-local-token'));
+  const hasValidGoogleToken = Boolean(token && !token.endsWith("-local-token"));
 
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingTransaction, setEditingTransaction] =
+    useState<Transaction | null>(null);
 
   // Categories State
   const [categories, setCategories] = useState<string[]>(() => {
-    const saved = localStorage.getItem('aruskas_categories');
+    const saved = localStorage.getItem("aruskas_categories");
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -241,7 +347,7 @@ export default function App() {
   });
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [isGlobalBackupModalOpen, setIsGlobalBackupModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>("dashboard");
 
   // Shopping items notification state from Sheet 4
   const [shoppingUrgentCount, setShoppingUrgentCount] = useState<number>(() => {
@@ -258,7 +364,7 @@ export default function App() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('basco_sidebar_collapsed') === 'true';
+      return localStorage.getItem("basco_sidebar_collapsed") === "true";
     } catch {
       return false;
     }
@@ -268,7 +374,7 @@ export default function App() {
     setIsSidebarCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('basco_sidebar_collapsed', String(next));
+        localStorage.setItem("basco_sidebar_collapsed", String(next));
       } catch (e) {
         console.warn(e);
       }
@@ -278,7 +384,7 @@ export default function App() {
 
   // Sync categories to localStorage
   useEffect(() => {
-    localStorage.setItem('aruskas_categories', JSON.stringify(categories));
+    localStorage.setItem("aruskas_categories", JSON.stringify(categories));
   }, [categories]);
 
   // Initialize Firebase Auth listener
@@ -292,23 +398,23 @@ export default function App() {
         setSpreadsheetId(sheetId);
         setSpreadsheetName(sheetName);
         setSpreadsheetUrl(sheetUrl);
-        localStorage.setItem('aruskas_sheet_id', sheetId);
-        localStorage.setItem('aruskas_sheet_name', sheetName);
-        localStorage.setItem('aruskas_sheet_url', sheetUrl);
+        localStorage.setItem("aruskas_sheet_id", sheetId);
+        localStorage.setItem("aruskas_sheet_name", sheetName);
+        localStorage.setItem("aruskas_sheet_url", sheetUrl);
 
         let activeToken = cachedToken;
-        if (!activeToken || activeToken.endsWith('-local-token')) {
+        if (!activeToken || activeToken.endsWith("-local-token")) {
           activeToken = await resolveSharedGoogleToken();
         } else {
-          fetch('/api/auth/shared-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          fetch("/api/auth/shared-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               accessToken: activeToken,
               spreadsheetId: sheetId,
               spreadsheetName: sheetName,
-              spreadsheetUrl: sheetUrl
-            })
+              spreadsheetUrl: sheetUrl,
+            }),
           }).catch(() => {});
         }
         setToken(activeToken);
@@ -317,12 +423,12 @@ export default function App() {
       async () => {
         // Pre-fetch shared Google token & sheet from backend so PIN logins on new devices immediately connect
         await resolveSharedGoogleToken();
-        if (!localStorage.getItem('aruskas_is_manager_mode')) {
+        if (!localStorage.getItem("aruskas_is_manager_mode")) {
           setUser(null);
           setToken(null);
         }
         setAuthChecking(false);
-      }
+      },
     );
 
     return () => unsubscribe();
@@ -341,19 +447,21 @@ export default function App() {
       setSpreadsheetId(sheetId);
       setSpreadsheetName(sheetName);
       setSpreadsheetUrl(sheetUrl);
-      localStorage.setItem('aruskas_sheet_id', sheetId);
-      localStorage.setItem('aruskas_sheet_name', sheetName);
-      localStorage.setItem('aruskas_sheet_url', sheetUrl);
+      localStorage.setItem("aruskas_sheet_id", sheetId);
+      localStorage.setItem("aruskas_sheet_name", sheetName);
+      localStorage.setItem("aruskas_sheet_url", sheetUrl);
 
       // Load cached real transactions while Google Sheet syncs (ignore legacy 8-row dummy data)
-      const savedTx = localStorage.getItem('aruskas_manager_transactions');
-      const hasRealSheet = Boolean(sheetId && !sheetId.startsWith('local_'));
+      const savedTx = localStorage.getItem("aruskas_manager_transactions");
+      const hasRealSheet = Boolean(sheetId && !sheetId.startsWith("local_"));
       if (savedTx) {
         try {
           const parsed = JSON.parse(savedTx);
-          const isLegacyDummy = Array.isArray(parsed) && parsed.some((t: any) => t?.id === 'm1' && t?.debit === 18500000);
+          const isLegacyDummy =
+            Array.isArray(parsed) &&
+            parsed.some((t: any) => t?.id === "m1" && t?.debit === 18500000);
           if (isLegacyDummy && hasRealSheet) {
-            localStorage.removeItem('aruskas_manager_transactions');
+            localStorage.removeItem("aruskas_manager_transactions");
             setTransactions([]);
           } else {
             setTransactions(parsed);
@@ -363,7 +471,10 @@ export default function App() {
         }
       } else if (!hasRealSheet) {
         setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
-        localStorage.setItem('aruskas_manager_transactions', JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS));
+        localStorage.setItem(
+          "aruskas_manager_transactions",
+          JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS),
+        );
       }
 
       resolveSharedGoogleToken().then((sharedToken) => {
@@ -371,7 +482,11 @@ export default function App() {
         if (sharedToken) {
           setToken(sharedToken);
         } else {
-          setToken((prev) => (prev && !prev.endsWith('-local-token') ? prev : `${userRole}-local-token`));
+          setToken((prev) =>
+            prev && !prev.endsWith("-local-token")
+              ? prev
+              : `${userRole}-local-token`,
+          );
         }
         setAuthChecking(false);
       });
@@ -384,44 +499,52 @@ export default function App() {
 
   // Route protection for Manager and Barista roles
   useEffect(() => {
-    if (userRole === 'barista') {
-      if (activeTab !== 'omset_cogs') {
-        setActiveTab('omset_cogs');
+    if (userRole === "barista") {
+      if (activeTab !== "omset_cogs") {
+        setActiveTab("omset_cogs");
       }
-    } else if (userRole === 'manager') {
+    } else if (userRole === "manager") {
       const allowedManagerTabs: TabType[] = [
-        'employee_tasks',
-        'calendar_notes',
-        'barista_schedule',
-        'omset_cogs',
-        'shopping_report',
-        'cogs'
+        "employee_tasks",
+        "calendar_notes",
+        "barista_schedule",
+        "omset_cogs",
+        "shopping_report",
+        "cogs",
       ];
       if (!allowedManagerTabs.includes(activeTab)) {
-        setActiveTab('employee_tasks');
+        setActiveTab("employee_tasks");
       }
     }
   }, [userRole, activeTab]);
 
   // Unified Role PIN Login Handler (Owner, Manager, Barista)
   const handleLoginWithRolePin = async (role: AppRole, pinCode?: string) => {
-    const inputClean = (pinCode || rolePinInput || '').trim().toLowerCase();
-    
+    const inputClean = (pinCode || rolePinInput || "").trim().toLowerCase();
+
     // Master fallback PIN: basco12
     // Role-specific default PINs: owner12, manager12, barista12
-    const defaultRolePin = role === 'owner' ? 'owner12' : role === 'manager' ? 'manager12' : 'barista12';
-    const storedPin = localStorage.getItem(`aruskas_${role}_pin`) || defaultRolePin;
-    const validPins = ['basco12', defaultRolePin, storedPin.toLowerCase()];
+    const defaultRolePin =
+      role === "owner"
+        ? "owner12"
+        : role === "manager"
+          ? "manager12"
+          : "barista12";
+    const storedPin =
+      localStorage.getItem(`aruskas_${role}_pin`) || defaultRolePin;
+    const validPins = ["basco12", defaultRolePin, storedPin.toLowerCase()];
 
     if (!inputClean || !validPins.includes(inputClean)) {
-      setRolePinError(`PIN Salah! Masukkan PIN default ${defaultRolePin} atau basco12`);
+      setRolePinError(
+        `PIN Salah! Masukkan PIN default ${defaultRolePin} atau basco12`,
+      );
       return;
     }
 
     setUserRole(role);
-    localStorage.setItem('aruskas_user_role', role);
+    localStorage.setItem("aruskas_user_role", role);
     setIsManagerMode(true);
-    localStorage.setItem('aruskas_is_manager_mode', 'true');
+    localStorage.setItem("aruskas_is_manager_mode", "true");
     setUser(ROLE_USERS[role]);
 
     const sheetId = getInitialSheetId();
@@ -430,21 +553,23 @@ export default function App() {
     setSpreadsheetId(sheetId);
     setSpreadsheetName(sheetName);
     setSpreadsheetUrl(sheetUrl);
-    localStorage.setItem('aruskas_sheet_id', sheetId);
-    localStorage.setItem('aruskas_sheet_name', sheetName);
-    localStorage.setItem('aruskas_sheet_url', sheetUrl);
+    localStorage.setItem("aruskas_sheet_id", sheetId);
+    localStorage.setItem("aruskas_sheet_name", sheetName);
+    localStorage.setItem("aruskas_sheet_url", sheetUrl);
 
     const sharedToken = await resolveSharedGoogleToken();
     setToken(sharedToken || `${role}-local-token`);
 
-    const savedTx = localStorage.getItem('aruskas_manager_transactions');
-    const hasRealSheet = Boolean(sheetId && !sheetId.startsWith('local_'));
+    const savedTx = localStorage.getItem("aruskas_manager_transactions");
+    const hasRealSheet = Boolean(sheetId && !sheetId.startsWith("local_"));
     if (savedTx) {
       try {
         const parsed = JSON.parse(savedTx);
-        const isLegacyDummy = Array.isArray(parsed) && parsed.some((t: any) => t?.id === 'm1' && t?.debit === 18500000);
+        const isLegacyDummy =
+          Array.isArray(parsed) &&
+          parsed.some((t: any) => t?.id === "m1" && t?.debit === 18500000);
         if (isLegacyDummy && hasRealSheet) {
-          localStorage.removeItem('aruskas_manager_transactions');
+          localStorage.removeItem("aruskas_manager_transactions");
           setTransactions([]);
         } else {
           setTransactions(parsed);
@@ -454,40 +579,43 @@ export default function App() {
       }
     } else if (!hasRealSheet) {
       setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
-      localStorage.setItem('aruskas_manager_transactions', JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS));
+      localStorage.setItem(
+        "aruskas_manager_transactions",
+        JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS),
+      );
     }
 
-    if (role === 'barista') {
-      setActiveTab('omset_cogs');
-    } else if (role === 'manager') {
-      setActiveTab('employee_tasks');
+    if (role === "barista") {
+      setActiveTab("omset_cogs");
+    } else if (role === "manager") {
+      setActiveTab("employee_tasks");
     } else {
-      setActiveTab('dashboard');
+      setActiveTab("dashboard");
     }
 
     setShowPinModal(false);
     setRolePinError(null);
-    setRolePinInput('');
+    setRolePinInput("");
     setManagerPinError(null);
-    setManagerPinInput('');
+    setManagerPinInput("");
   };
 
   // Enter Manager mode backward-compatibility
   const handleEnterManagerMode = (pinCode?: string) => {
-    handleLoginWithRolePin('manager', pinCode);
+    handleLoginWithRolePin("manager", pinCode);
   };
 
   // Logout from any mode
   const handleLogoutManager = async () => {
     setIsManagerMode(false);
-    localStorage.removeItem('aruskas_is_manager_mode');
-    localStorage.removeItem('aruskas_user_role');
-    setUserRole('owner');
+    localStorage.removeItem("aruskas_is_manager_mode");
+    localStorage.removeItem("aruskas_user_role");
+    setUserRole("owner");
     setUser(null);
     setToken(null);
     setRolePinError(null);
-    setRolePinInput('');
-    setActiveTab('dashboard');
+    setRolePinInput("");
+    setActiveTab("dashboard");
     try {
       await logout();
     } catch {}
@@ -497,8 +625,8 @@ export default function App() {
   useEffect(() => {
     if (user && hasValidGoogleToken && !spreadsheetId) {
       checkForSpreadsheet(token!);
-    } else if (user && spreadsheetId && !spreadsheetId.startsWith('local_')) {
-      loadTransactionsFromSheet(spreadsheetId, token || '');
+    } else if (user && spreadsheetId && !spreadsheetId.startsWith("local_")) {
+      loadTransactionsFromSheet(spreadsheetId, token || "");
     }
   }, [user, token, hasValidGoogleToken, spreadsheetId]);
 
@@ -513,7 +641,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      setError('Gagal memeriksa file Google Drive Anda');
+      setError("Gagal memeriksa file Google Drive Anda");
     } finally {
       setIsSearchingSheet(false);
     }
@@ -527,7 +655,10 @@ export default function App() {
       const list = await fetchTransactions(id, accessToken);
       setTransactions(list);
       if (list.length > 0) {
-        localStorage.setItem('aruskas_manager_transactions', JSON.stringify(list));
+        localStorage.setItem(
+          "aruskas_manager_transactions",
+          JSON.stringify(list),
+        );
       }
 
       // Fetch custom categories from sheet
@@ -540,17 +671,32 @@ export default function App() {
       try {
         const remoteIngs = await fetchIngredientsFromSheet(id, accessToken);
         if (remoteIngs && remoteIngs.length > 0) {
-          localStorage.setItem('aruskas_cogs_ingredients', JSON.stringify(remoteIngs));
+          localStorage.setItem(
+            "aruskas_cogs_ingredients",
+            JSON.stringify(remoteIngs),
+          );
         }
 
-        const allOpname = await fetchAllStockOpnameReportsFromSheet(id, accessToken);
+        const allOpname = await fetchAllStockOpnameReportsFromSheet(
+          id,
+          accessToken,
+        );
         if (allOpname && allOpname.reports.length > 0) {
-          localStorage.setItem('basco_opname_reports_history', JSON.stringify(allOpname.reports));
+          localStorage.setItem(
+            "basco_opname_reports_history",
+            JSON.stringify(allOpname.reports),
+          );
           Object.entries(allOpname.monthlyEntries).forEach(([m, val]) => {
-            localStorage.setItem(`basco_opname_draft_${m}`, JSON.stringify(val.entries));
-            const report = allOpname.reports.find(r => r.periodeBulan === m);
+            localStorage.setItem(
+              `basco_opname_draft_${m}`,
+              JSON.stringify(val.entries),
+            );
+            const report = allOpname.reports.find((r) => r.periodeBulan === m);
             if (report) {
-              localStorage.setItem(`basco_opname_report_${m}`, JSON.stringify(report));
+              localStorage.setItem(
+                `basco_opname_report_${m}`,
+                JSON.stringify(report),
+              );
             }
           });
         }
@@ -560,9 +706,15 @@ export default function App() {
 
       // Fetch calendar notes & agenda from sheet on app entry
       try {
-        const remoteCalendar = await fetchCalendarNotesFromSheet(id, accessToken);
+        const remoteCalendar = await fetchCalendarNotesFromSheet(
+          id,
+          accessToken,
+        );
         if (remoteCalendar && remoteCalendar.length > 0) {
-          localStorage.setItem(CALENDAR_NOTES_STORAGE_KEY, JSON.stringify(remoteCalendar));
+          localStorage.setItem(
+            CALENDAR_NOTES_STORAGE_KEY,
+            JSON.stringify(remoteCalendar),
+          );
         }
       } catch (calErr) {
         console.warn("Could not sync calendar notes on app start:", calErr);
@@ -570,17 +722,30 @@ export default function App() {
 
       // Fetch shopping list from Sheet 4 on app entry
       try {
-        const remoteShopping = await fetchShoppingListFromSheet4(id, accessToken);
+        const remoteShopping = await fetchShoppingListFromSheet4(
+          id,
+          accessToken,
+        );
         if (remoteShopping && remoteShopping.items.length > 0) {
-          localStorage.setItem(SHOPPING_LIST_STORAGE_KEY, JSON.stringify(remoteShopping.items));
-          setShoppingUrgentCount(computeShoppingMetrics(remoteShopping.items).urgentCount);
+          localStorage.setItem(
+            SHOPPING_LIST_STORAGE_KEY,
+            JSON.stringify(remoteShopping.items),
+          );
+          setShoppingUrgentCount(
+            computeShoppingMetrics(remoteShopping.items).urgentCount,
+          );
         }
       } catch (shopErr) {
-        console.warn("Could not sync shopping list from Sheet 4 on app start:", shopErr);
+        console.warn(
+          "Could not sync shopping list from Sheet 4 on app start:",
+          shopErr,
+        );
       }
     } catch (err: any) {
       console.error(err);
-      setError('Gagal mengambil data dari spreadsheet. Hubungan spreadsheet Anda mungkin terputus.');
+      setError(
+        "Gagal mengambil data dari spreadsheet. Hubungan spreadsheet Anda mungkin terputus.",
+      );
     } finally {
       setIsLoadingData(false);
     }
@@ -591,11 +756,12 @@ export default function App() {
     setIsLoggingIn(true);
     setError(null);
     const chosenRole: AppRole =
-      typeof targetRole === 'string' && ['owner', 'manager', 'barista'].includes(targetRole)
+      typeof targetRole === "string" &&
+      ["owner", "manager", "barista"].includes(targetRole)
         ? targetRole
         : user
-        ? userRole
-        : loginRoleTab;
+          ? userRole
+          : loginRoleTab;
 
     try {
       const result = await googleSignIn();
@@ -603,53 +769,61 @@ export default function App() {
         setUser(result.user);
         setToken(result.accessToken);
         setUserRole(chosenRole);
-        localStorage.setItem('aruskas_user_role', chosenRole);
+        localStorage.setItem("aruskas_user_role", chosenRole);
         setIsManagerMode(false);
-        localStorage.removeItem('aruskas_is_manager_mode');
-        
+        localStorage.removeItem("aruskas_is_manager_mode");
+
         const sheetId = getInitialSheetId();
         const sheetName = getInitialSheetName();
         const sheetUrl = getInitialSheetUrl();
         setSpreadsheetId(sheetId);
         setSpreadsheetName(sheetName);
         setSpreadsheetUrl(sheetUrl);
-        localStorage.setItem('aruskas_sheet_id', sheetId);
-        localStorage.setItem('aruskas_sheet_name', sheetName);
-        localStorage.setItem('aruskas_sheet_url', sheetUrl);
+        localStorage.setItem("aruskas_sheet_id", sheetId);
+        localStorage.setItem("aruskas_sheet_name", sheetName);
+        localStorage.setItem("aruskas_sheet_url", sheetUrl);
 
-        fetch('/api/auth/shared-token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        fetch("/api/auth/shared-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             accessToken: result.accessToken,
             spreadsheetId: sheetId,
             spreadsheetName: sheetName,
-            spreadsheetUrl: sheetUrl
-          })
+            spreadsheetUrl: sheetUrl,
+          }),
         }).catch(() => {});
 
-        if (chosenRole === 'barista') {
-          setActiveTab('omset_cogs');
-        } else if (chosenRole === 'manager') {
-          setActiveTab('employee_tasks');
+        if (chosenRole === "barista") {
+          setActiveTab("omset_cogs");
+        } else if (chosenRole === "manager") {
+          setActiveTab("employee_tasks");
         } else {
-          setActiveTab('dashboard');
+          setActiveTab("dashboard");
         }
       }
     } catch (err: any) {
-      console.error('Google Sign-in error:', err);
-      const code = err?.code || '';
-      const message = err?.message || '';
-      if (code === 'auth/unauthorized-domain') {
-        setError(`Domain ${window.location.hostname} belum terdaftar di Authorized Domains Firebase.`);
-      } else if (code === 'auth/operation-not-allowed') {
-        setError('Google Sign-in belum diaktifkan di Firebase Console (Buka Firebase Console > Authentication > Sign-in method > pilih Google lalu klik Enable & Save).');
-      } else if (code === 'auth/popup-closed-by-user') {
-        setError('Jendela popup login Google ditutup sebelum selesai.');
-      } else if (code === 'auth/popup-blocked') {
-        setError('Jendela popup diblokir oleh browser. Harap izinkan pop-up di browser Anda.');
+      console.error("Google Sign-in error:", err);
+      const code = err?.code || "";
+      const message = err?.message || "";
+      if (code === "auth/unauthorized-domain") {
+        setError(
+          `Domain ${window.location.hostname} belum terdaftar di Authorized Domains Firebase.`,
+        );
+      } else if (code === "auth/operation-not-allowed") {
+        setError(
+          "Google Sign-in belum diaktifkan di Firebase Console (Buka Firebase Console > Authentication > Sign-in method > pilih Google lalu klik Enable & Save).",
+        );
+      } else if (code === "auth/popup-closed-by-user") {
+        setError("Jendela popup login Google ditutup sebelum selesai.");
+      } else if (code === "auth/popup-blocked") {
+        setError(
+          "Jendela popup diblokir oleh browser. Harap izinkan pop-up di browser Anda.",
+        );
       } else {
-        setError(`Gagal login (${code || 'Detail'}): ${message || 'Pastikan izin Google Sheets & Drive diberikan.'}`);
+        setError(
+          `Gagal login (${code || "Detail"}): ${message || "Pastikan izin Google Sheets & Drive diberikan."}`,
+        );
       }
     } finally {
       setIsLoggingIn(false);
@@ -663,31 +837,31 @@ export default function App() {
     setError(null);
     try {
       const sheet = await createSpreadsheet(token);
-      
+
       // Store in local states
       setSpreadsheetId(sheet.id);
-      setSpreadsheetName('Dasbor Arus Kas Keuangan');
+      setSpreadsheetName("Dasbor Arus Kas Keuangan");
       setSpreadsheetUrl(sheet.url);
 
       // Store in LocalStorage
-      localStorage.setItem('aruskas_sheet_id', sheet.id);
-      localStorage.setItem('aruskas_sheet_name', 'Dasbor Arus Kas Keuangan');
-      localStorage.setItem('aruskas_sheet_url', sheet.url);
+      localStorage.setItem("aruskas_sheet_id", sheet.id);
+      localStorage.setItem("aruskas_sheet_name", "Dasbor Arus Kas Keuangan");
+      localStorage.setItem("aruskas_sheet_url", sheet.url);
 
-      fetch('/api/auth/shared-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      fetch("/api/auth/shared-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           spreadsheetId: sheet.id,
-          spreadsheetName: 'Dasbor Arus Kas Keuangan',
-          spreadsheetUrl: sheet.url
-        })
+          spreadsheetName: "Dasbor Arus Kas Keuangan",
+          spreadsheetUrl: sheet.url,
+        }),
       }).catch(() => {});
 
       setFoundSheetInfo(null);
     } catch (err: any) {
       console.error(err);
-      setError('Gagal menginisialisasi spreadsheet baru di Google Drive');
+      setError("Gagal menginisialisasi spreadsheet baru di Google Drive");
     } finally {
       setIsInitializingSheet(false);
     }
@@ -700,18 +874,18 @@ export default function App() {
     const url = `https://docs.google.com/spreadsheets/d/${id}/edit`;
     setSpreadsheetUrl(url);
 
-    localStorage.setItem('aruskas_sheet_id', id);
-    localStorage.setItem('aruskas_sheet_name', name);
-    localStorage.setItem('aruskas_sheet_url', url);
+    localStorage.setItem("aruskas_sheet_id", id);
+    localStorage.setItem("aruskas_sheet_name", name);
+    localStorage.setItem("aruskas_sheet_url", url);
 
-    fetch('/api/auth/shared-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    fetch("/api/auth/shared-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         spreadsheetId: id,
         spreadsheetName: name,
-        spreadsheetUrl: url
-      })
+        spreadsheetUrl: url,
+      }),
     }).catch(() => {});
 
     setFoundSheetInfo(null);
@@ -726,10 +900,10 @@ export default function App() {
     try {
       const details = await getSpreadsheetDetails(customSheetInput, token);
       handleSelectExistingSheet(details.id, details.name);
-      setCustomSheetInput('');
+      setCustomSheetInput("");
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Gagal menautkan spreadsheet');
+      setError(err.message || "Gagal menautkan spreadsheet");
     } finally {
       setIsLinkingCustomSheet(false);
     }
@@ -737,16 +911,18 @@ export default function App() {
 
   // Disconnect Sheet
   const handleDisconnectSheet = () => {
-    const confirmation = window.confirm("Apakah Anda yakin ingin mengganti spreadsheet yang aktif? Data di Google Sheets Anda tidak akan terhapus, tetapi aplikasi akan kembali ke menu setup.");
+    const confirmation = window.confirm(
+      "Apakah Anda yakin ingin mengganti spreadsheet yang aktif? Data di Google Sheets Anda tidak akan terhapus, tetapi aplikasi akan kembali ke menu setup.",
+    );
     if (confirmation) {
       setSpreadsheetId(null);
       setSpreadsheetName(null);
       setSpreadsheetUrl(null);
       setTransactions([]);
       setFoundSheetInfo(null);
-      localStorage.removeItem('aruskas_sheet_id');
-      localStorage.removeItem('aruskas_sheet_name');
-      localStorage.removeItem('aruskas_sheet_url');
+      localStorage.removeItem("aruskas_sheet_id");
+      localStorage.removeItem("aruskas_sheet_name");
+      localStorage.removeItem("aruskas_sheet_url");
       if (hasValidGoogleToken && token) {
         checkForSpreadsheet(token);
       }
@@ -755,8 +931,8 @@ export default function App() {
 
   // Refresh manually
   const handleRefresh = async () => {
-    if (spreadsheetId && !spreadsheetId.startsWith('local_')) {
-      let activeToken = hasValidGoogleToken && token ? token : '';
+    if (spreadsheetId && !spreadsheetId.startsWith("local_")) {
+      let activeToken = hasValidGoogleToken && token ? token : "";
       if (!activeToken) {
         const sharedToken = await resolveSharedGoogleToken();
         if (sharedToken) {
@@ -769,23 +945,40 @@ export default function App() {
   };
 
   // Add / Edit submission
-  const handleFormSubmit = async (data: Omit<Transaction, 'id'>) => {
-    if (!hasValidGoogleToken || !spreadsheetId || spreadsheetId.startsWith('local_') || !token) {
+  const handleFormSubmit = async (data: Omit<Transaction, "id">) => {
+    if (
+      !hasValidGoogleToken ||
+      !spreadsheetId ||
+      spreadsheetId.startsWith("local_") ||
+      !token
+    ) {
       let updated: Transaction[];
       if (editingTransaction) {
-        updated = transactions.map(t => t.id === editingTransaction.id ? { ...data, id: editingTransaction.id } : t);
+        updated = transactions.map((t) =>
+          t.id === editingTransaction.id
+            ? { ...data, id: editingTransaction.id }
+            : t,
+        );
       } else {
         const newTx: Transaction = { ...data, id: String(Date.now()) };
         updated = [newTx, ...transactions];
       }
       setTransactions(updated);
-      localStorage.setItem('aruskas_manager_transactions', JSON.stringify(updated));
+      localStorage.setItem(
+        "aruskas_manager_transactions",
+        JSON.stringify(updated),
+      );
       return;
     }
 
     if (editingTransaction) {
       // Edit mode
-      await updateTransaction(spreadsheetId, editingTransaction.id, data, token);
+      await updateTransaction(
+        spreadsheetId,
+        editingTransaction.id,
+        data,
+        token,
+      );
     } else {
       // Add mode
       await addTransaction(spreadsheetId, data, token);
@@ -797,10 +990,18 @@ export default function App() {
 
   // Delete transaction action
   const handleDeleteTransaction = async (id: string) => {
-    if (!hasValidGoogleToken || !spreadsheetId || spreadsheetId.startsWith('local_') || !token) {
-      const updated = transactions.filter(t => t.id !== id);
+    if (
+      !hasValidGoogleToken ||
+      !spreadsheetId ||
+      spreadsheetId.startsWith("local_") ||
+      !token
+    ) {
+      const updated = transactions.filter((t) => t.id !== id);
       setTransactions(updated);
-      localStorage.setItem('aruskas_manager_transactions', JSON.stringify(updated));
+      localStorage.setItem(
+        "aruskas_manager_transactions",
+        JSON.stringify(updated),
+      );
       return;
     }
     try {
@@ -824,7 +1025,7 @@ export default function App() {
     }
     const updated = [...categories, trimmed];
     setCategories(updated);
-    
+
     if (spreadsheetId && token) {
       setIsLoadingData(true);
       try {
@@ -845,12 +1046,12 @@ export default function App() {
     if (categories.includes(trimmed)) {
       throw new Error("Kategori baru sudah ada");
     }
-    
-    const updatedCats = categories.map(c => c === oldCat ? trimmed : c);
+
+    const updatedCats = categories.map((c) => (c === oldCat ? trimmed : c));
     setCategories(updatedCats);
 
     // Update affected local transactions
-    const updatedTx = transactions.map(t => {
+    const updatedTx = transactions.map((t) => {
       let changed = false;
       let jp1 = t.jenisPengeluaran;
       let jp2 = t.jenisPengeluaran2 || "-";
@@ -862,7 +1063,9 @@ export default function App() {
         jp2 = trimmed;
         changed = true;
       }
-      return changed ? { ...t, jenisPengeluaran: jp1, jenisPengeluaran2: jp2 } : t;
+      return changed
+        ? { ...t, jenisPengeluaran: jp1, jenisPengeluaran2: jp2 }
+        : t;
     });
     setTransactions(updatedTx);
 
@@ -871,20 +1074,32 @@ export default function App() {
       try {
         await saveCategoriesToSheet(spreadsheetId, updatedCats, token);
         // Sync affected transaction rows to Google Sheets
-        const affected = transactions.filter(t => t.jenisPengeluaran === oldCat || t.jenisPengeluaran2 === oldCat);
+        const affected = transactions.filter(
+          (t) =>
+            t.jenisPengeluaran === oldCat || t.jenisPengeluaran2 === oldCat,
+        );
         for (const t of affected) {
-          const jp1 = t.jenisPengeluaran === oldCat ? trimmed : t.jenisPengeluaran;
-          const jp2 = (t.jenisPengeluaran2 || "-") === oldCat ? trimmed : (t.jenisPengeluaran2 || "-");
-          await updateTransaction(spreadsheetId, t.id, {
-            tanggal: t.tanggal,
-            debit: t.debit,
-            kredit: t.kredit,
-            kredit2: t.kredit2 || 0,
-            jenisPengeluaran: jp1,
-            jenisPengeluaran2: jp2,
-            keterangan: t.keterangan,
-            operasionalDanManajemen: t.operasionalDanManajemen || "-"
-          }, token);
+          const jp1 =
+            t.jenisPengeluaran === oldCat ? trimmed : t.jenisPengeluaran;
+          const jp2 =
+            (t.jenisPengeluaran2 || "-") === oldCat
+              ? trimmed
+              : t.jenisPengeluaran2 || "-";
+          await updateTransaction(
+            spreadsheetId,
+            t.id,
+            {
+              tanggal: t.tanggal,
+              debit: t.debit,
+              kredit: t.kredit,
+              kredit2: t.kredit2 || 0,
+              jenisPengeluaran: jp1,
+              jenisPengeluaran2: jp2,
+              keterangan: t.keterangan,
+              operasionalDanManajemen: t.operasionalDanManajemen || "-",
+            },
+            token,
+          );
         }
         await loadTransactionsFromSheet(spreadsheetId, token);
       } catch (err) {
@@ -898,13 +1113,13 @@ export default function App() {
 
   // Delete category action
   const handleDeleteCategory = async (catToDelete: string) => {
-    const updatedCats = categories.filter(c => c !== catToDelete);
+    const updatedCats = categories.filter((c) => c !== catToDelete);
     setCategories(updatedCats);
 
     const fallbackCat = updatedCats[0] || "Lain-lain";
 
     // Update affected local transactions
-    const updatedTx = transactions.map(t => {
+    const updatedTx = transactions.map((t) => {
       let changed = false;
       let jp1 = t.jenisPengeluaran;
       let jp2 = t.jenisPengeluaran2 || "-";
@@ -916,7 +1131,9 @@ export default function App() {
         jp2 = "-";
         changed = true;
       }
-      return changed ? { ...t, jenisPengeluaran: jp1, jenisPengeluaran2: jp2 } : t;
+      return changed
+        ? { ...t, jenisPengeluaran: jp1, jenisPengeluaran2: jp2 }
+        : t;
     });
     setTransactions(updatedTx);
 
@@ -925,20 +1142,35 @@ export default function App() {
       try {
         await saveCategoriesToSheet(spreadsheetId, updatedCats, token);
         // Update affected transaction rows in Google Sheets
-        const affected = transactions.filter(t => t.jenisPengeluaran === catToDelete || t.jenisPengeluaran2 === catToDelete);
+        const affected = transactions.filter(
+          (t) =>
+            t.jenisPengeluaran === catToDelete ||
+            t.jenisPengeluaran2 === catToDelete,
+        );
         for (const t of affected) {
-          const jp1 = t.jenisPengeluaran === catToDelete ? fallbackCat : t.jenisPengeluaran;
-          const jp2 = (t.jenisPengeluaran2 || "-") === catToDelete ? "-" : (t.jenisPengeluaran2 || "-");
-          await updateTransaction(spreadsheetId, t.id, {
-            tanggal: t.tanggal,
-            debit: t.debit,
-            kredit: t.kredit,
-            kredit2: t.kredit2 || 0,
-            jenisPengeluaran: jp1,
-            jenisPengeluaran2: jp2,
-            keterangan: t.keterangan,
-            operasionalDanManajemen: t.operasionalDanManajemen || "-"
-          }, token);
+          const jp1 =
+            t.jenisPengeluaran === catToDelete
+              ? fallbackCat
+              : t.jenisPengeluaran;
+          const jp2 =
+            (t.jenisPengeluaran2 || "-") === catToDelete
+              ? "-"
+              : t.jenisPengeluaran2 || "-";
+          await updateTransaction(
+            spreadsheetId,
+            t.id,
+            {
+              tanggal: t.tanggal,
+              debit: t.debit,
+              kredit: t.kredit,
+              kredit2: t.kredit2 || 0,
+              jenisPengeluaran: jp1,
+              jenisPengeluaran2: jp2,
+              keterangan: t.keterangan,
+              operasionalDanManajemen: t.operasionalDanManajemen || "-",
+            },
+            token,
+          );
         }
         await loadTransactionsFromSheet(spreadsheetId, token);
       } catch (err) {
@@ -987,13 +1219,12 @@ export default function App() {
   if (!user || !token) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-10 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
-        
         {/* App Title & Header */}
         <div className="sm:mx-auto sm:w-full sm:max-w-xl text-center z-10 px-4">
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-amber-400 shadow-md mb-3 border border-slate-800">
             <Coffee className="h-7 w-7" />
           </div>
-          
+
           <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-slate-900">
             Basco Cashflow & Cafe System
           </h2>
@@ -1004,7 +1235,6 @@ export default function App() {
 
         <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl z-10 px-4">
           <div className="bg-white py-7 px-5 sm:px-8 rounded-2xl border border-slate-200/90 shadow-lg">
-            
             {/* 3 ROLE SELECTOR TABS */}
             <div className="mb-6">
               <label className="text-[11px] font-black uppercase tracking-wider text-slate-500 block mb-2 text-center">
@@ -1014,14 +1244,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    setLoginRoleTab('owner');
+                    setLoginRoleTab("owner");
                     setRolePinError(null);
-                    setRolePinInput('');
+                    setRolePinInput("");
                   }}
                   className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    loginRoleTab === 'owner'
-                      ? 'bg-purple-600 text-white shadow-sm ring-2 ring-purple-600/30'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    loginRoleTab === "owner"
+                      ? "bg-purple-600 text-white shadow-sm ring-2 ring-purple-600/30"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
                   }`}
                 >
                   <span className="text-base sm:mr-1.5">👑</span>
@@ -1031,14 +1261,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    setLoginRoleTab('manager');
+                    setLoginRoleTab("manager");
                     setRolePinError(null);
-                    setRolePinInput('');
+                    setRolePinInput("");
                   }}
                   className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    loginRoleTab === 'manager'
-                      ? 'bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-500/30'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    loginRoleTab === "manager"
+                      ? "bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-500/30"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
                   }`}
                 >
                   <span className="text-base sm:mr-1.5">👔</span>
@@ -1048,14 +1278,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    setLoginRoleTab('barista');
+                    setLoginRoleTab("barista");
                     setRolePinError(null);
-                    setRolePinInput('');
+                    setRolePinInput("");
                   }}
                   className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                    loginRoleTab === 'barista'
-                      ? 'bg-sky-500 text-white shadow-sm ring-2 ring-sky-500/30'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    loginRoleTab === "barista"
+                      ? "bg-sky-500 text-white shadow-sm ring-2 ring-sky-500/30"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
                   }`}
                 >
                   <span className="text-base sm:mr-1.5">☕</span>
@@ -1080,7 +1310,7 @@ export default function App() {
             )}
 
             {/* TAB CONTENT: OWNER */}
-            {loginRoleTab === 'owner' && (
+            {loginRoleTab === "owner" && (
               <div className="space-y-5">
                 {/* Role description banner */}
                 <div className="p-4 bg-purple-50/80 rounded-xl border border-purple-200 text-purple-950">
@@ -1089,9 +1319,13 @@ export default function App() {
                       <Crown className="h-4 w-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-purple-950">Akses Penuh Owner (Pemilik Usaha)</h4>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-purple-950">
+                        Akses Penuh Owner (Pemilik Usaha)
+                      </h4>
                       <p className="text-[11px] text-purple-900/80 font-medium mt-0.5 leading-relaxed">
-                        Kendali lengkap: Dasbor Keuangan & Laba Bersih, Omset & HPP, Debt Tracker AI, Kontrol Roster Gaji, Analisis Biaya Tetap & BEP, dan Sinkronisasi Google Sheets.
+                        Kendali lengkap: Dasbor Keuangan & Laba Bersih, Omset &
+                        HPP, Debt Tracker AI, Kontrol Roster Gaji, Analisis
+                        Biaya Tetap & BEP, dan Sinkronisasi Google Sheets.
                       </p>
                     </div>
                   </div>
@@ -1099,7 +1333,7 @@ export default function App() {
 
                 {/* Option 1: Google OAuth */}
                 <div>
-                  <button 
+                  <button
                     type="button"
                     onClick={handleLogin}
                     disabled={isLoggingIn}
@@ -1112,18 +1346,38 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="flex items-center space-x-3">
-                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-4 w-4 shrink-0">
-                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                        <svg
+                          version="1.1"
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 48 48"
+                          className="h-4 w-4 shrink-0"
+                        >
+                          <path
+                            fill="#EA4335"
+                            d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                          ></path>
+                          <path
+                            fill="#4285F4"
+                            d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                          ></path>
+                          <path
+                            fill="#FBBC05"
+                            d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                          ></path>
+                          <path
+                            fill="#34A853"
+                            d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                          ></path>
                         </svg>
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">Masuk Akun Google (Sinkron Google Sheets)</span>
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">
+                          Masuk Akun Google (Sinkron Google Sheets)
+                        </span>
                       </div>
                     )}
                   </button>
                   <p className="text-[10px] text-slate-400 text-center font-medium mt-1.5">
-                    Memerlukan akun Google dengan izin Google Sheets personal Anda
+                    Memerlukan akun Google dengan izin Google Sheets personal
+                    Anda
                   </p>
                 </div>
 
@@ -1133,7 +1387,9 @@ export default function App() {
                     <div className="w-full border-t border-slate-200"></div>
                   </div>
                   <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest">
-                    <span className="bg-white px-3 text-slate-400">Atau Masuk Cepat dengan PIN Owner</span>
+                    <span className="bg-white px-3 text-slate-400">
+                      Atau Masuk Cepat dengan PIN Owner
+                    </span>
                   </div>
                 </div>
 
@@ -1141,7 +1397,7 @@ export default function App() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    handleLoginWithRolePin('owner', rolePinInput);
+                    handleLoginWithRolePin("owner", rolePinInput);
                   }}
                   className="space-y-3"
                 >
@@ -1171,7 +1427,7 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={() => handleLoginWithRolePin('owner', 'owner12')}
+                      onClick={() => handleLoginWithRolePin("owner", "owner12")}
                       className="py-2.5 px-3 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
                     >
                       <span>⚡ Cepat: PIN owner12</span>
@@ -1182,7 +1438,7 @@ export default function App() {
             )}
 
             {/* TAB CONTENT: MANAJER */}
-            {loginRoleTab === 'manager' && (
+            {loginRoleTab === "manager" && (
               <div className="space-y-5">
                 {/* Role description banner */}
                 <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 text-amber-950">
@@ -1191,9 +1447,13 @@ export default function App() {
                       <Briefcase className="h-4 w-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Akses Manajer Operasional Cafe</h4>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                        Akses Manajer Operasional Cafe
+                      </h4>
                       <p className="text-[11px] text-amber-900 font-medium mt-0.5 leading-relaxed">
-                        Kelola operasional: Tugas Karyawan, Catatan Kalender, Jadwal Operasional, Analisis COGS & Sales, Bahan Perlu Dibelanjakan, dan Stok Opname Bulanan.
+                        Kelola operasional: Tugas Karyawan, Catatan Kalender,
+                        Jadwal Operasional, Analisis COGS & Sales, Bahan Perlu
+                        Dibelanjakan, dan Stok Opname Bulanan.
                       </p>
                     </div>
                   </div>
@@ -1203,10 +1463,14 @@ export default function App() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold">
                     <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                    <span>Fitur Terbuka: Tugas Karyawan, Catatan Kalender, Jadwal Operasional, COGS & Sales, Belanja & Stok Opname</span>
+                    <span>
+                      Fitur Terbuka: Tugas Karyawan, Catatan Kalender, Jadwal
+                      Operasional, COGS & Sales, Belanja & Stok Opname
+                    </span>
                   </div>
                   <p className="text-[10px] text-slate-400 pl-5">
-                    Dasbor utama kas, kategori pengeluaran, hutang & simulasi fixed cost pemilik usaha dilindungi.
+                    Dasbor utama kas, kategori pengeluaran, hutang & simulasi
+                    fixed cost pemilik usaha dilindungi.
                   </p>
                 </div>
 
@@ -1214,7 +1478,7 @@ export default function App() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    handleLoginWithRolePin('manager', rolePinInput);
+                    handleLoginWithRolePin("manager", rolePinInput);
                   }}
                   className="space-y-3"
                 >
@@ -1244,7 +1508,9 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={() => handleLoginWithRolePin('manager', 'manager12')}
+                      onClick={() =>
+                        handleLoginWithRolePin("manager", "manager12")
+                      }
                       className="py-2.5 px-3 bg-amber-100/70 hover:bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
                     >
                       <span>⚡ Cepat: PIN manager12</span>
@@ -1256,7 +1522,7 @@ export default function App() {
                 <div className="pt-2 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => handleLogin('manager')}
+                    onClick={() => handleLogin("manager")}
                     disabled={isLoggingIn}
                     className="w-full flex justify-center items-center py-2 px-4 border border-amber-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-amber-50/50 transition cursor-pointer disabled:opacity-60 shadow-2xs"
                   >
@@ -1269,7 +1535,7 @@ export default function App() {
             )}
 
             {/* TAB CONTENT: BARISTA */}
-            {loginRoleTab === 'barista' && (
+            {loginRoleTab === "barista" && (
               <div className="space-y-5">
                 {/* Role description banner */}
                 <div className="p-4 bg-sky-50/80 rounded-xl border border-sky-200 text-sky-950">
@@ -1278,9 +1544,12 @@ export default function App() {
                       <Coffee className="h-4 w-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Akses Barista & Tim Bar</h4>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                        Akses Barista & Tim Bar
+                      </h4>
                       <p className="text-[11px] text-sky-950 font-medium mt-0.5 leading-relaxed">
-                        Area khusus barista: input pencatatan penjualan & jatah menu harian pada modul Analisis COGS & Sales.
+                        Area khusus barista: input pencatatan penjualan & jatah
+                        menu harian pada modul Analisis COGS & Sales.
                       </p>
                     </div>
                   </div>
@@ -1290,10 +1559,14 @@ export default function App() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold">
                     <CheckCircle2 className="h-3.5 w-3.5 text-sky-600 shrink-0" />
-                    <span>Fitur Terbuka: Analisis COGS & Sales (Bagian 1: Pencatatan Harian)</span>
+                    <span>
+                      Fitur Terbuka: Analisis COGS & Sales (Bagian 1: Pencatatan
+                      Harian)
+                    </span>
                   </div>
                   <p className="text-[10px] text-slate-400 pl-5">
-                    Aman & fokus khusus pencatatan penjualan menu harian barista.
+                    Aman & fokus khusus pencatatan penjualan menu harian
+                    barista.
                   </p>
                 </div>
 
@@ -1301,7 +1574,7 @@ export default function App() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    handleLoginWithRolePin('barista', rolePinInput);
+                    handleLoginWithRolePin("barista", rolePinInput);
                   }}
                   className="space-y-3"
                 >
@@ -1331,7 +1604,9 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={() => handleLoginWithRolePin('barista', 'barista12')}
+                      onClick={() =>
+                        handleLoginWithRolePin("barista", "barista12")
+                      }
                       className="py-2.5 px-3 bg-sky-100/70 hover:bg-sky-100 text-sky-950 border border-sky-300 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
                     >
                       <span>⚡ Cepat: PIN barista12</span>
@@ -1343,7 +1618,7 @@ export default function App() {
                 <div className="pt-2 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => handleLogin('barista')}
+                    onClick={() => handleLogin("barista")}
                     disabled={isLoggingIn}
                     className="w-full flex justify-center items-center py-2 px-4 border border-sky-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-sky-50/50 transition cursor-pointer disabled:opacity-60 shadow-2xs"
                   >
@@ -1358,12 +1633,12 @@ export default function App() {
             {/* Footer privacy guarantee */}
             <div className="mt-6 pt-4 border-t border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider text-center flex items-center justify-center space-x-1.5">
               <ShieldCheck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-              <span>Sistem Enkripsi Sesi Client-Side & Google Cloud Terproteksi</span>
+              <span>
+                Sistem Enkripsi Sesi Client-Side & Google Cloud Terproteksi
+              </span>
             </div>
-
           </div>
         </div>
-
       </div>
     );
   }
@@ -1372,9 +1647,7 @@ export default function App() {
   if (!spreadsheetId) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-        
         <div className="max-w-md mx-auto w-full px-4 text-center">
-          
           <div className="inline-flex h-14 w-14 items-center justify-center rounded bg-slate-100 text-slate-800 border border-slate-200 shadow-sm mb-5">
             <FileSpreadsheet className="h-7 w-7" />
           </div>
@@ -1383,16 +1656,18 @@ export default function App() {
             Hubungkan Spreadsheet Anda
           </h3>
           <p className="mt-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-widest max-w-xs mx-auto">
-            Untuk menyimpan riwayat Arus Kas secara otomatis, mari siapkan Google Spreadsheet Anda.
+            Untuk menyimpan riwayat Arus Kas secara otomatis, mari siapkan
+            Google Spreadsheet Anda.
           </p>
 
           <div className="mt-6 bg-white p-6 rounded border border-slate-200 shadow-sm text-left space-y-4">
-            
             {/* Loading Search State */}
             {isSearchingSheet && (
               <div className="py-4 text-center space-y-2">
                 <RefreshCw className="h-6 w-6 text-slate-900 animate-spin mx-auto" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Mencari spreadsheet di Google Drive Anda...</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Mencari spreadsheet di Google Drive Anda...
+                </p>
               </div>
             )}
 
@@ -1402,8 +1677,12 @@ export default function App() {
                 <div className="flex items-start space-x-2.5">
                   <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wide text-slate-900">Ditemukan Spreadsheet yang Cocok!</h4>
-                    <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Spreadsheet sebelumnya terdeteksi di Google Drive Anda:</p>
+                    <h4 className="text-xs font-bold uppercase tracking-wide text-slate-900">
+                      Ditemukan Spreadsheet yang Cocok!
+                    </h4>
+                    <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">
+                      Spreadsheet sebelumnya terdeteksi di Google Drive Anda:
+                    </p>
                     <p className="text-[11px] font-bold text-slate-750 mt-2 font-mono truncate max-w-[285px]">
                       📁 {foundSheetInfo.name}
                     </p>
@@ -1411,7 +1690,12 @@ export default function App() {
                 </div>
                 <div className="flex space-x-2.5 pt-1">
                   <button
-                    onClick={() => handleSelectExistingSheet(foundSheetInfo.id, foundSheetInfo.name)}
+                    onClick={() =>
+                      handleSelectExistingSheet(
+                        foundSheetInfo.id,
+                        foundSheetInfo.name,
+                      )
+                    }
                     className="flex-1 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px] uppercase tracking-wider rounded transition"
                   >
                     Gunakan Spreadsheet Ini
@@ -1431,9 +1715,17 @@ export default function App() {
             {!isSearchingSheet && !foundSheetInfo && (
               <div className="space-y-4">
                 <div className="p-4 bg-slate-50 rounded border border-slate-200">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Buat Spreadsheet Baru</h4>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    Buat Spreadsheet Baru
+                  </h4>
                   <p className="text-[10.5px] text-slate-400 font-medium mt-1">
-                    Kami akan membuat file spreadsheet baru bernama <span className="font-bold text-slate-800">"Dasbor Arus Kas Keuangan"</span> lengkap dengan kolom (Tanggal, Debit, Kredit, Jenis Pengeluaran, Keterangan) dan beberapa data contoh untuk visualisasi instan.
+                    Kami akan membuat file spreadsheet baru bernama{" "}
+                    <span className="font-bold text-slate-800">
+                      "Dasbor Arus Kas Keuangan"
+                    </span>{" "}
+                    lengkap dengan kolom (Tanggal, Debit, Kredit, Jenis
+                    Pengeluaran, Keterangan) dan beberapa data contoh untuk
+                    visualisasi instan.
                   </p>
                 </div>
 
@@ -1498,7 +1790,9 @@ export default function App() {
 
             {/* Action manual sign out if they want to cancel */}
             <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-[10px] font-bold uppercase tracking-wider">
-              <span className="text-slate-400 font-bold lowercase tracking-normal">Akun: {user.email}</span>
+              <span className="text-slate-400 font-bold lowercase tracking-normal">
+                Akun: {user.email}
+              </span>
               <button
                 onClick={() => logout()}
                 className="text-red-650 hover:underline font-bold flex items-center space-x-1"
@@ -1507,10 +1801,8 @@ export default function App() {
                 <span>Keluar</span>
               </button>
             </div>
-
           </div>
         </div>
-
       </div>
     );
   }
@@ -1518,56 +1810,99 @@ export default function App() {
   // ACTIVE DASHBOARD APPLICATION VIEW
   const tabTitles: Record<TabType, { title: string; subtitle: string }> = {
     dashboard: {
-      title: userRole === 'manager' ? 'Dashboard Pencatatan Harian' : 'Dasbor Utama & Arus Kas',
-      subtitle: userRole === 'manager' ? 'Pencatatan transaksi harian & arus kas operasional cafe' : 'Ringkasan pemasukan, pengeluaran & saldo harian cafe'
+      title:
+        userRole === "manager"
+          ? "Dashboard Pencatatan Harian"
+          : "Dasbor Utama & Arus Kas",
+      subtitle:
+        userRole === "manager"
+          ? "Pencatatan transaksi harian & arus kas operasional cafe"
+          : "Ringkasan pemasukan, pengeluaran & saldo harian cafe",
     },
     employee_tasks: {
-      title: userRole === 'barista' ? 'Tugas & SOP Barista' : userRole === 'manager' ? 'Tugas Karyawan' : 'Pencatatan Tugas Karyawan',
-      subtitle: userRole === 'barista' ? 'Checklist harian tugas barista & SOP operasional bar' : 'Manajemen tugas staf, alokasi upah/gaji & sinkronisasi Google Sheets'
+      title:
+        userRole === "barista"
+          ? "Tugas & SOP Barista"
+          : userRole === "manager"
+            ? "Tugas Karyawan"
+            : "Pencatatan Tugas Karyawan",
+      subtitle:
+        userRole === "barista"
+          ? "Checklist harian tugas barista & SOP operasional bar"
+          : "Manajemen tugas staf, alokasi upah/gaji & sinkronisasi Google Sheets",
     },
     calendar_notes: {
-      title: 'Catatan & Agenda Kalender',
-      subtitle: 'Kalender kegiatan cafe, checklist operasional, audit, dan pengingat H-1 otomatis'
+      title: "Catatan & Agenda Kalender",
+      subtitle:
+        "Kalender kegiatan cafe, checklist operasional, audit, dan pengingat H-1 otomatis",
     },
     barista_schedule: {
-      title: userRole === 'barista' ? 'Jadwal Shift & Slip Gaji' : userRole === 'manager' ? 'Jadwal Operasional' : 'Jadwal Operasional Basco Coffee',
-      subtitle: userRole === 'barista' ? 'Roster jam kerja, shift bar & unduh slip gaji' : 'Manajemen roster mingguan, pembagian shift bar & estimasi gaji tim'
+      title:
+        userRole === "barista"
+          ? "Jadwal Shift & Slip Gaji"
+          : userRole === "manager"
+            ? "Jadwal Operasional"
+            : "Jadwal Operasional Basco Coffee",
+      subtitle:
+        userRole === "barista"
+          ? "Roster jam kerja, shift bar & unduh slip gaji"
+          : "Manajemen roster mingguan, pembagian shift bar & estimasi gaji tim",
     },
     omset_cogs: {
-      title: userRole === 'barista' ? 'Pencatatan Penjualan & Jatah Harian' : userRole === 'manager' ? 'Penjualan Menu' : 'Analisis COGS & Sales (Aplikasi 2)',
-      subtitle: userRole === 'barista' ? 'Form input harian porsi terjual & jatah barista' : userRole === 'manager' ? 'Catatan penjualan menu harian, rekapitulasi porsi & integrasi Excel' : 'Laporan omset harian, food cost, margin keuntungan, dan target sales'
+      title:
+        userRole === "barista"
+          ? "Pencatatan Penjualan & Jatah Harian"
+          : userRole === "manager"
+            ? "Penjualan Menu"
+            : "Analisis COGS & Sales (Aplikasi 2)",
+      subtitle:
+        userRole === "barista"
+          ? "Form input harian porsi terjual & jatah barista"
+          : userRole === "manager"
+            ? "Catatan penjualan menu harian, rekapitulasi porsi & integrasi Excel"
+            : "Laporan omset harian, food cost, margin keuntungan, dan target sales",
     },
     cogs: {
-      title: userRole === 'barista' ? 'Stok Opname & Resep' : 'Stok Opname Bulanan',
-      subtitle: userRole === 'barista' ? 'Audit persediaan bahan baku bar & cek resep minuman' : 'Pencatatan persediaan bahan baku, stok masuk, stok akhir & audit bulanan'
+      title:
+        userRole === "barista" ? "Stok Opname & Resep" : "Stok Opname Bulanan",
+      subtitle:
+        userRole === "barista"
+          ? "Audit persediaan bahan baku bar & cek resep minuman"
+          : "Pencatatan persediaan bahan baku, stok masuk, stok akhir & audit bulanan",
     },
     shopping_report: {
-      title: 'Bahan yang Harus Dibelanjakan (Sheet 4)',
-      subtitle: 'Laporan pengadaan stok & notifikasi belanja bahan terintegrasi dengan spreadsheet Sheet 4'
+      title: "Bahan yang Harus Dibelanjakan (Sheet 4)",
+      subtitle:
+        "Laporan pengadaan stok & notifikasi belanja bahan terintegrasi dengan spreadsheet Sheet 4",
     },
     categories: {
-      title: 'Kategori Pengeluaran',
-      subtitle: 'Rincian alokasi biaya operasional, bahan baku, dan pemeliharaan bar'
+      title: "Kategori Pengeluaran",
+      subtitle:
+        "Rincian alokasi biaya operasional, bahan baku, dan pemeliharaan bar",
     },
     fixed_cost: {
-      title: 'Simulasi Biaya Tetap & BEP',
-      subtitle: 'Kalkulasi Break Even Point, sewa tempat, listrik & gaji tetap'
+      title: "Simulasi Biaya Tetap & BEP",
+      subtitle: "Kalkulasi Break Even Point, sewa tempat, listrik & gaji tetap",
     },
     debt_tracker: {
-      title: 'Pencatatan Hutang & Liabilitas Cafe',
-      subtitle: 'Kalkulasi cicilan bulanan & tahunan, notifikasi jatuh tempo pembayaran, serta otomasi AI kelayakan berhutang'
+      title: "Pencatatan Hutang & Liabilitas Cafe",
+      subtitle:
+        "Kalkulasi cicilan bulanan & tahunan, notifikasi jatuh tempo pembayaran, serta otomasi AI kelayakan berhutang",
     },
     ai_chat: {
-      title: 'Tanya AI Analyst Cafe',
-      subtitle: 'Asisten AI cerdas untuk efisiensi operasional & konsultasi finansial'
-    }
+      title: "Tanya AI Analyst Cafe",
+      subtitle:
+        "Asisten AI cerdas untuk efisiensi operasional & konsultasi finansial",
+    },
   };
 
   const currentTabInfo = tabTitles[activeTab] || tabTitles.dashboard;
 
   return (
-    <div className="min-h-screen bg-slate-100/70 font-sans flex text-slate-800" id="app-root">
-      
+    <div
+      className="min-h-screen bg-slate-100/70 font-sans flex text-slate-800"
+      id="app-root"
+    >
       {/* Left Sidebar Component (Desktop Sticky + Mobile Drawer) */}
       <Sidebar
         user={user!}
@@ -1590,14 +1925,14 @@ export default function App() {
       />
 
       {/* Main Content Area with Dynamic Left Padding on Desktop */}
-      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out ${
-        isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72'
-      }`}>
-        
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out ${
+          isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
+        }`}
+      >
         {/* Top Header Bar */}
         <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-2xs">
           <div className="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            
             {/* Left: Mobile Menu Toggle / Desktop Minimize Toggle & Title */}
             <div className="flex items-center space-x-3 min-w-0">
               {/* Mobile menu open button */}
@@ -1615,7 +1950,11 @@ export default function App() {
                 type="button"
                 onClick={handleToggleSidebarCollapse}
                 className="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition cursor-pointer group"
-                title={isSidebarCollapsed ? "Perluas Sidebar (Expand)" : "Kecilkan Sidebar (Minimize)"}
+                title={
+                  isSidebarCollapsed
+                    ? "Perluas Sidebar (Expand)"
+                    : "Kecilkan Sidebar (Minimize)"
+                }
                 aria-label="Toggle Sidebar Minimize"
               >
                 {isSidebarCollapsed ? (
@@ -1637,13 +1976,12 @@ export default function App() {
 
             {/* Right: Quick Status, Actions & Sheet Info */}
             <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
-              
               {/* Connected Google Sheet pill (Desktop) */}
-              {userRole !== 'barista' && spreadsheetName && (
+              {userRole !== "barista" && spreadsheetName && (
                 <div className="hidden md:flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl text-xs">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <a
-                    href={spreadsheetUrl || '#'}
+                    href={spreadsheetUrl || "#"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-bold text-slate-800 hover:text-emerald-700 truncate max-w-[140px] flex items-center space-x-1"
@@ -1656,7 +1994,7 @@ export default function App() {
               )}
 
               {/* Quick Backup JSON button (Available for Owner) */}
-              {userRole === 'owner' && (
+              {userRole === "owner" && (
                 <button
                   type="button"
                   onClick={() => setIsGlobalBackupModalOpen(true)}
@@ -1669,10 +2007,10 @@ export default function App() {
               )}
 
               {/* Shopping Notification Button (Sheet 4) */}
-              {userRole !== 'barista' && shoppingUrgentCount > 0 && (
+              {userRole !== "barista" && shoppingUrgentCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => setActiveTab('shopping_report')}
+                  onClick={() => setActiveTab("shopping_report")}
                   className="flex items-center space-x-1.5 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 rounded-xl text-xs font-bold transition cursor-pointer animate-pulse"
                   title={`${shoppingUrgentCount} bahan mendesak perlu dibelanjakan (Sheet 4)`}
                 >
@@ -1682,33 +2020,42 @@ export default function App() {
               )}
 
               {/* Sync Button */}
-              {userRole !== 'barista' && spreadsheetName && (
+              {userRole !== "barista" && spreadsheetName && (
                 <button
                   type="button"
                   onClick={handleRefresh}
                   disabled={isLoadingData}
                   className={`p-2 rounded-xl text-slate-700 hover:text-slate-950 hover:bg-slate-100 border border-slate-200 bg-white transition flex items-center justify-center cursor-pointer ${
-                    isLoadingData ? 'cursor-wait bg-slate-100' : ''
+                    isLoadingData ? "cursor-wait bg-slate-100" : ""
                   }`}
                   title="Sinkronisasi Data Google Sheets"
                   id="sync-button"
                 >
-                  <RefreshCw className={`h-4 w-4 ${isLoadingData ? 'animate-spin text-amber-600' : ''}`} />
+                  <RefreshCw
+                    className={`h-4 w-4 ${isLoadingData ? "animate-spin text-amber-600" : ""}`}
+                  />
                 </button>
               )}
 
               {/* Role Badge indicator */}
-              <div className={`hidden sm:flex items-center space-x-1 px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold uppercase tracking-wider border shadow-2xs ${
-                userRole === 'owner'
-                  ? 'bg-purple-100 border-purple-300 text-purple-900'
-                  : userRole === 'barista'
-                  ? 'bg-sky-100 border-sky-300 text-sky-900'
-                  : 'bg-amber-100 border-amber-300 text-amber-900'
-              }`}>
-                <span>{userRole === 'owner' ? '👑 Akses Owner' : userRole === 'barista' ? '☕ Akses Barista' : '👔 Akses Manajer'}</span>
+              <div
+                className={`hidden sm:flex items-center space-x-1 px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold uppercase tracking-wider border shadow-2xs ${
+                  userRole === "owner"
+                    ? "bg-purple-100 border-purple-300 text-purple-900"
+                    : userRole === "barista"
+                      ? "bg-sky-100 border-sky-300 text-sky-900"
+                      : "bg-amber-100 border-amber-300 text-amber-900"
+                }`}
+              >
+                <span>
+                  {userRole === "owner"
+                    ? "👑 Akses Owner"
+                    : userRole === "barista"
+                      ? "☕ Akses Barista"
+                      : "👔 Akses Manajer"}
+                </span>
               </div>
             </div>
-
           </div>
         </header>
 
@@ -1720,8 +2067,8 @@ export default function App() {
                 <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500 mt-0.5" />
                 <div className="flex-grow">
                   <span>{error}</span>
-                  <button 
-                    onClick={handleRefresh} 
+                  <button
+                    onClick={handleRefresh}
                     className="underline ml-2 text-red-800 font-bold hover:text-red-950 block sm:inline mt-1 sm:mt-0"
                   >
                     Coba Sinkronisasi Ulang
@@ -1734,9 +2081,11 @@ export default function App() {
           {isLoadingData && transactions.length === 0 ? (
             <div className="h-[400px] flex flex-col items-center justify-center space-y-3">
               <RefreshCw className="h-8 w-8 text-amber-600 animate-spin" />
-              <p className="text-xs font-bold text-slate-600">Mengambil data terbaru dari Google Sheets...</p>
+              <p className="text-xs font-bold text-slate-600">
+                Mengambil data terbaru dari Google Sheets...
+              </p>
             </div>
-          ) : activeTab === 'dashboard' ? (
+          ) : activeTab === "dashboard" ? (
             <Dashboard
               transactions={transactions}
               onAddTransaction={handleAddClick}
@@ -1745,20 +2094,26 @@ export default function App() {
               spreadsheetUrl={spreadsheetUrl}
               categories={categories}
               onManageCategories={() => setIsCategoryManagerOpen(true)}
-              onNavigateToDebt={userRole === 'owner' ? () => setActiveTab('debt_tracker') : undefined}
-              onNavigateToShopping={() => setActiveTab('shopping_report')}
+              onNavigateToDebt={
+                userRole === "owner"
+                  ? () => setActiveTab("debt_tracker")
+                  : undefined
+              }
+              onNavigateToShopping={() => setActiveTab("shopping_report")}
               onRefresh={handleRefresh}
               isLoadingData={isLoadingData}
             />
-          ) : activeTab === 'employee_tasks' ? (
+          ) : activeTab === "employee_tasks" ? (
             <EmployeeTaskPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={Boolean(!spreadsheetId || spreadsheetId.startsWith('local_'))}
+              isManagerMode={Boolean(
+                !spreadsheetId || spreadsheetId.startsWith("local_"),
+              )}
             />
-          ) : activeTab === 'omset_cogs' ? (
+          ) : activeTab === "omset_cogs" ? (
             <CogsDailySalesPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
@@ -1767,52 +2122,52 @@ export default function App() {
               user={user}
               userRole={userRole}
             />
-          ) : activeTab === 'barista_schedule' ? (
+          ) : activeTab === "barista_schedule" ? (
             <BaristaSchedulePage
               transactions={transactions}
               categories={categories}
               spreadsheetId={spreadsheetId}
               token={token}
             />
-          ) : activeTab === 'cogs' ? (
+          ) : activeTab === "cogs" ? (
             <StockOpnamePage
               transactions={transactions}
               spreadsheetId={spreadsheetId}
               token={token}
             />
-          ) : activeTab === 'shopping_report' ? (
+          ) : activeTab === "shopping_report" ? (
             <ShoppingReportPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={Boolean(!spreadsheetId || spreadsheetId.startsWith('local_'))}
-              onNavigateToIncomingGoods={() => setActiveTab('omset_cogs')}
+              isManagerMode={Boolean(
+                !spreadsheetId || spreadsheetId.startsWith("local_"),
+              )}
+              onNavigateToIncomingGoods={() => setActiveTab("omset_cogs")}
             />
-          ) : activeTab === 'calendar_notes' ? (
+          ) : activeTab === "calendar_notes" ? (
             <CalendarNotesPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={Boolean(!spreadsheetId || spreadsheetId.startsWith('local_'))}
+              isManagerMode={Boolean(
+                !spreadsheetId || spreadsheetId.startsWith("local_"),
+              )}
             />
-          ) : activeTab === 'categories' ? (
+          ) : activeTab === "categories" ? (
             <CategoryExpenses
               transactions={transactions}
               categories={categories}
-              onBackToDashboard={() => setActiveTab('dashboard')}
+              onBackToDashboard={() => setActiveTab("dashboard")}
             />
-          ) : activeTab === 'fixed_cost' ? (
+          ) : activeTab === "fixed_cost" ? (
             <FixedCostSimulator />
-          ) : activeTab === 'debt_tracker' ? (
-            <DebtTrackerPage
-              transactions={transactions}
-            />
-          ) : activeTab === 'ai_chat' ? (
-            <AiChat
-              transactions={transactions}
-            />
+          ) : activeTab === "debt_tracker" ? (
+            <DebtTrackerPage transactions={transactions} />
+          ) : activeTab === "ai_chat" ? (
+            <AiChat transactions={transactions} />
           ) : (
             <Dashboard
               transactions={transactions}
@@ -1822,8 +2177,12 @@ export default function App() {
               spreadsheetUrl={spreadsheetUrl}
               categories={categories}
               onManageCategories={() => setIsCategoryManagerOpen(true)}
-              onNavigateToDebt={userRole === 'owner' ? () => setActiveTab('debt_tracker') : undefined}
-              onNavigateToShopping={() => setActiveTab('shopping_report')}
+              onNavigateToDebt={
+                userRole === "owner"
+                  ? () => setActiveTab("debt_tracker")
+                  : undefined
+              }
+              onNavigateToShopping={() => setActiveTab("shopping_report")}
               onRefresh={handleRefresh}
               isLoadingData={isLoadingData}
             />
@@ -1862,15 +2221,18 @@ export default function App() {
         <footer className="bg-white border-t border-slate-200/80 py-4 text-center text-[11px] font-semibold text-slate-500 mt-auto">
           <div className="px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2.5">
             <div className="flex items-center space-x-1.5">
-              <span className="text-slate-900 font-bold font-sans">Basco Cashflow Dashboard</span>
+              <span className="text-slate-900 font-bold font-sans">
+                Basco Cashflow Dashboard
+              </span>
               <span>- Platform Manajemen Terpadu Cafe & Barista.</span>
             </div>
             <div>
-              <span className="text-slate-400">Terhubung Google Sheets API</span>
+              <span className="text-slate-400">
+                Terhubung Google Sheets API
+              </span>
             </div>
           </div>
         </footer>
-
       </div>
     </div>
   );
