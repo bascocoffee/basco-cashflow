@@ -24,8 +24,14 @@ provider.addScope('https://www.googleapis.com/auth/spreadsheets');
 provider.addScope('https://www.googleapis.com/auth/drive.file');
 provider.setCustomParameters({ prompt: 'select_account' });
 
-// Cache the access token in memory (never persistent in localStorage/sessionStorage for security)
-let cachedAccessToken: string | null = null;
+// Cache the access token in memory & localStorage so sessions persist across reloads and roles
+let cachedAccessToken: string | null = (() => {
+  try {
+    return localStorage.getItem('aruskas_google_access_token');
+  } catch {
+    return null;
+  }
+})();
 let isSigningIn = false;
 
 // Initialize auth listener
@@ -34,16 +40,11 @@ export const initAuth = (
   onAuthFailure: () => void
 ) => {
   return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        // If there's a user but no cached token, we can trigger sign-in or wait for explicit action
-        cachedAccessToken = null;
-        onAuthFailure();
-      }
-    } else {
-      cachedAccessToken = null;
+    const storedToken = cachedAccessToken || localStorage.getItem('aruskas_google_access_token');
+    if (user && storedToken) {
+      cachedAccessToken = storedToken;
+      onAuthSuccess(user, storedToken);
+    } else if (!isSigningIn) {
       onAuthFailure();
     }
   });
@@ -60,6 +61,19 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     }
 
     cachedAccessToken = credential.accessToken;
+    try {
+      localStorage.setItem('aruskas_google_access_token', cachedAccessToken);
+      fetch('/api/auth/shared-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: cachedAccessToken,
+          spreadsheetId: '1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM',
+          spreadsheetName: 'Copy of Dasbor Arus Kas Keuangan',
+          spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM/edit'
+        })
+      }).catch(() => {});
+    } catch {}
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
     console.error('Sign in error:', error);
@@ -71,7 +85,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
 // Retrieve current cached access token
 export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
+  return cachedAccessToken || localStorage.getItem('aruskas_google_access_token');
 };
 
 // Handle Log Out

@@ -477,4 +477,41 @@ Instruksi Laporan Analisis AI:
     }
   });
 
+  // Shared Google OAuth Token & Spreadsheet Config Sync across devices
+  let sharedAuthCache: {
+    accessToken: string | null;
+    spreadsheetId: string;
+    spreadsheetName: string;
+    spreadsheetUrl: string;
+    updatedAt: number;
+  } = {
+    accessToken: null,
+    spreadsheetId: "1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM",
+    spreadsheetName: "Copy of Dasbor Arus Kas Keuangan",
+    spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM/edit",
+    updatedAt: 0,
+  };
+
+  app.get("/api/auth/shared-token", (_req, res) => {
+    res.json(sharedAuthCache);
+  });
+
+  app.post("/api/auth/shared-token", (req, res) => {
+    const { accessToken, spreadsheetId, spreadsheetName, spreadsheetUrl } = req.body || {};
+    if (accessToken && !accessToken.endsWith("-local-token")) {
+      sharedAuthCache.accessToken = accessToken;
+      sharedAuthCache.updatedAt = Date.now();
+    }
+    if (spreadsheetId && !spreadsheetId.startsWith("local_")) {
+      sharedAuthCache.spreadsheetId = spreadsheetId;
+    }
+    if (spreadsheetName && !spreadsheetName.startsWith("Database Lokal")) {
+      sharedAuthCache.spreadsheetName = spreadsheetName;
+    }
+    if (spreadsheetUrl) {
+      sharedAuthCache.spreadsheetUrl = spreadsheetUrl;
+    }
+    res.json({ ok: true, sharedAuthCache });
+  });
+
 export default app;

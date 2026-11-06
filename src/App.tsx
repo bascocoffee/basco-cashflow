@@ -124,6 +124,53 @@ const ROLE_USERS: Record<AppRole, User> = {
   }
 };
 
+const DEFAULT_SHEET_ID = '1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM';
+const DEFAULT_SHEET_NAME = 'Copy of Dasbor Arus Kas Keuangan';
+const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM/edit';
+
+const getInitialSheetId = (): string => {
+  const saved = localStorage.getItem('aruskas_sheet_id');
+  if (saved && !saved.startsWith('local_')) return saved;
+  return DEFAULT_SHEET_ID;
+};
+
+const getInitialSheetName = (): string => {
+  const saved = localStorage.getItem('aruskas_sheet_name');
+  if (saved && !saved.startsWith('Database Lokal')) return saved;
+  return DEFAULT_SHEET_NAME;
+};
+
+const getInitialSheetUrl = (): string => {
+  const saved = localStorage.getItem('aruskas_sheet_url');
+  if (saved && saved.includes('docs.google.com/spreadsheets')) return saved;
+  return DEFAULT_SHEET_URL;
+};
+
+const resolveSharedGoogleToken = async (): Promise<string | null> => {
+  try {
+    const resp = await fetch('/api/auth/shared-token');
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data?.spreadsheetId && !data.spreadsheetId.startsWith('local_')) {
+        localStorage.setItem('aruskas_sheet_id', data.spreadsheetId);
+        if (data.spreadsheetName) localStorage.setItem('aruskas_sheet_name', data.spreadsheetName);
+        if (data.spreadsheetUrl) localStorage.setItem('aruskas_sheet_url', data.spreadsheetUrl);
+      }
+      if (data?.accessToken) {
+        localStorage.setItem('aruskas_google_access_token', data.accessToken);
+        return data.accessToken;
+      }
+    }
+  } catch {
+    // ignore network errors
+  }
+  const localToken = await getAccessToken();
+  if (localToken && !localToken.endsWith('-local-token')) {
+    return localToken;
+  }
+  return null;
+};
+
 const DEFAULT_MANAGER_TRANSACTIONS: Transaction[] = [
   { id: '1', tanggal: '2026-06-01', debit: 24500000, kredit: 0, kredit2: 0, jenisPengeluaran: '-', jenisPengeluaran2: '-', keterangan: 'Pemasukan Penjualan Kasir POS (Minggu 1 Juni)', operasionalDanManajemen: '-' },
   { id: '2', tanggal: '2026-06-03', debit: 0, kredit: 4800000, kredit2: 0, jenisPengeluaran: 'Bahan Baku & HPP (COGS)', jenisPengeluaran2: '-', keterangan: 'Susu Fresh Milk, Biji Kopi Blend, Sirup Karamel', operasionalDanManajemen: 'Operasional' },
@@ -162,15 +209,17 @@ export default function App() {
   const [managerPinInput, setManagerPinInput] = useState('');
   const [managerPinError, setManagerPinError] = useState<string | null>(null);
 
-  // Spreadsheet State
-  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(null);
-  const [spreadsheetName, setSpreadsheetName] = useState<string | null>(null);
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(null);
+  // Spreadsheet State (Defaults automatically to primary Google Sheet across all devices)
+  const [spreadsheetId, setSpreadsheetId] = useState<string | null>(() => getInitialSheetId());
+  const [spreadsheetName, setSpreadsheetName] = useState<string | null>(() => getInitialSheetName());
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState<string | null>(() => getInitialSheetUrl());
   const [isSearchingSheet, setIsSearchingSheet] = useState(false);
   const [isInitializingSheet, setIsInitializingSheet] = useState(false);
   const [foundSheetInfo, setFoundSheetInfo] = useState<{ id: string; name: string } | null>(null);
   const [customSheetInput, setCustomSheetInput] = useState('');
   const [isLinkingCustomSheet, setIsLinkingCustomSheet] = useState(false);
+
+  const hasValidGoogleToken = Boolean(token && !token.endsWith('-local-token'));
 
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -237,21 +286,41 @@ export default function App() {
     const unsubscribe = initAuth(
       async (firebaseUser, cachedToken) => {
         setUser(firebaseUser);
-        setToken(cachedToken);
-        setAuthChecking(false);
-        // Look for stored spreadsheet details
-        const storedId = localStorage.getItem('aruskas_sheet_id');
-        const storedName = localStorage.getItem('aruskas_sheet_name');
-        const storedUrl = localStorage.getItem('aruskas_sheet_url');
-        if (storedId) {
-          setSpreadsheetId(storedId);
-          setSpreadsheetName(storedName || 'Dasbor Arus Kas Keuangan');
-          setSpreadsheetUrl(storedUrl || `https://docs.google.com/spreadsheets/d/${storedId}/edit`);
+        const sheetId = getInitialSheetId();
+        const sheetName = getInitialSheetName();
+        const sheetUrl = getInitialSheetUrl();
+        setSpreadsheetId(sheetId);
+        setSpreadsheetName(sheetName);
+        setSpreadsheetUrl(sheetUrl);
+        localStorage.setItem('aruskas_sheet_id', sheetId);
+        localStorage.setItem('aruskas_sheet_name', sheetName);
+        localStorage.setItem('aruskas_sheet_url', sheetUrl);
+
+        let activeToken = cachedToken;
+        if (!activeToken || activeToken.endsWith('-local-token')) {
+          activeToken = await resolveSharedGoogleToken();
+        } else {
+          fetch('/api/auth/shared-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accessToken: activeToken,
+              spreadsheetId: sheetId,
+              spreadsheetName: sheetName,
+              spreadsheetUrl: sheetUrl
+            })
+          }).catch(() => {});
         }
+        setToken(activeToken);
+        setAuthChecking(false);
       },
-      () => {
-        setUser(null);
-        setToken(null);
+      async () => {
+        // Pre-fetch shared Google token & sheet from backend so PIN logins on new devices immediately connect
+        await resolveSharedGoogleToken();
+        if (!localStorage.getItem('aruskas_is_manager_mode')) {
+          setUser(null);
+          setToken(null);
+        }
         setAuthChecking(false);
       }
     );
@@ -259,21 +328,24 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Role Mode effect (Bypass Email Login with Role)
+  // Role Mode effect (PIN Login with Automatic Shared Google Sheet Sync)
   useEffect(() => {
     if (isManagerMode) {
+      let isMounted = true;
       const activeUser = ROLE_USERS[userRole] || ROLE_USERS.manager;
       setUser(activeUser);
-      setToken(`${userRole}-local-token`);
-      const storedId = localStorage.getItem('aruskas_sheet_id');
-      const storedName = localStorage.getItem('aruskas_sheet_name');
-      const storedUrl = localStorage.getItem('aruskas_sheet_url');
-      
-      setSpreadsheetId(storedId || `local_${userRole}_db`);
-      setSpreadsheetName(storedName || `Database Lokal ${userRole === 'owner' ? 'Owner' : userRole === 'barista' ? 'Barista' : 'Manajer'}`);
-      setSpreadsheetUrl(storedUrl || null);
 
-      // Load transactions from localStorage or default
+      const sheetId = getInitialSheetId();
+      const sheetName = getInitialSheetName();
+      const sheetUrl = getInitialSheetUrl();
+      setSpreadsheetId(sheetId);
+      setSpreadsheetName(sheetName);
+      setSpreadsheetUrl(sheetUrl);
+      localStorage.setItem('aruskas_sheet_id', sheetId);
+      localStorage.setItem('aruskas_sheet_name', sheetName);
+      localStorage.setItem('aruskas_sheet_url', sheetUrl);
+
+      // Load cached transactions immediately while Google Sheet syncs
       const savedTx = localStorage.getItem('aruskas_manager_transactions');
       if (savedTx) {
         try {
@@ -285,7 +357,20 @@ export default function App() {
         setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
         localStorage.setItem('aruskas_manager_transactions', JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS));
       }
-      setAuthChecking(false);
+
+      resolveSharedGoogleToken().then((sharedToken) => {
+        if (!isMounted) return;
+        if (sharedToken) {
+          setToken(sharedToken);
+        } else {
+          setToken((prev) => (prev && !prev.endsWith('-local-token') ? prev : `${userRole}-local-token`));
+        }
+        setAuthChecking(false);
+      });
+
+      return () => {
+        isMounted = false;
+      };
     }
   }, [isManagerMode, userRole]);
 
@@ -311,7 +396,7 @@ export default function App() {
   }, [userRole, activeTab]);
 
   // Unified Role PIN Login Handler (Owner, Manager, Barista)
-  const handleLoginWithRolePin = (role: AppRole, pinCode?: string) => {
+  const handleLoginWithRolePin = async (role: AppRole, pinCode?: string) => {
     const inputClean = (pinCode || rolePinInput || '').trim().toLowerCase();
     
     // Master fallback PIN: basco12
@@ -330,15 +415,19 @@ export default function App() {
     setIsManagerMode(true);
     localStorage.setItem('aruskas_is_manager_mode', 'true');
     setUser(ROLE_USERS[role]);
-    setToken(`${role}-local-token`);
 
-    const storedId = localStorage.getItem('aruskas_sheet_id');
-    const storedName = localStorage.getItem('aruskas_sheet_name');
-    const storedUrl = localStorage.getItem('aruskas_sheet_url');
+    const sheetId = getInitialSheetId();
+    const sheetName = getInitialSheetName();
+    const sheetUrl = getInitialSheetUrl();
+    setSpreadsheetId(sheetId);
+    setSpreadsheetName(sheetName);
+    setSpreadsheetUrl(sheetUrl);
+    localStorage.setItem('aruskas_sheet_id', sheetId);
+    localStorage.setItem('aruskas_sheet_name', sheetName);
+    localStorage.setItem('aruskas_sheet_url', sheetUrl);
 
-    setSpreadsheetId(storedId || `local_${role}_db`);
-    setSpreadsheetName(storedName || `Database Lokal ${role === 'owner' ? 'Owner' : role === 'barista' ? 'Barista' : 'Manajer'}`);
-    setSpreadsheetUrl(storedUrl || null);
+    const sharedToken = await resolveSharedGoogleToken();
+    setToken(sharedToken || `${role}-local-token`);
 
     const savedTx = localStorage.getItem('aruskas_manager_transactions');
     if (savedTx) {
@@ -373,30 +462,29 @@ export default function App() {
   };
 
   // Logout from any mode
-  const handleLogoutManager = () => {
+  const handleLogoutManager = async () => {
     setIsManagerMode(false);
     localStorage.removeItem('aruskas_is_manager_mode');
     localStorage.removeItem('aruskas_user_role');
     setUserRole('owner');
     setUser(null);
     setToken(null);
-    setSpreadsheetId(null);
-    setSpreadsheetName(null);
     setRolePinError(null);
     setRolePinInput('');
     setActiveTab('dashboard');
+    try {
+      await logout();
+    } catch {}
   };
 
-  // Drive and Sheets logic when authenticated via Google
+  // Drive and Sheets logic whenever a valid Google token & Spreadsheet ID are active (any role)
   useEffect(() => {
-    if (user && token && !isManagerMode && !spreadsheetId) {
-      // Look for spreadsheet automatically on drive first
-      checkForSpreadsheet(token);
-    } else if (user && token && !isManagerMode && spreadsheetId) {
-      // Fetch transaction log data from sheet
-      loadTransactionsFromSheet(spreadsheetId, token);
+    if (user && hasValidGoogleToken && !spreadsheetId) {
+      checkForSpreadsheet(token!);
+    } else if (user && hasValidGoogleToken && spreadsheetId && !spreadsheetId.startsWith('local_')) {
+      loadTransactionsFromSheet(spreadsheetId, token!);
     }
-  }, [user, token, isManagerMode, spreadsheetId]);
+  }, [user, token, hasValidGoogleToken, spreadsheetId]);
 
   // Check if spreadsheet already exists on user's drive
   const checkForSpreadsheet = async (accessToken: string) => {
@@ -479,28 +567,54 @@ export default function App() {
     }
   };
 
-  // Google Login click handler
-  const handleLogin = async () => {
+  // Google Login click handler (Supports Owner, Manajer, or Barista role)
+  const handleLogin = async (targetRole?: AppRole | React.MouseEvent) => {
     setIsLoggingIn(true);
     setError(null);
+    const chosenRole: AppRole =
+      typeof targetRole === 'string' && ['owner', 'manager', 'barista'].includes(targetRole)
+        ? targetRole
+        : user
+        ? userRole
+        : loginRoleTab;
+
     try {
       const result = await googleSignIn();
       if (result) {
         setUser(result.user);
         setToken(result.accessToken);
-        setUserRole('owner');
-        localStorage.setItem('aruskas_user_role', 'owner');
+        setUserRole(chosenRole);
+        localStorage.setItem('aruskas_user_role', chosenRole);
         setIsManagerMode(false);
         localStorage.removeItem('aruskas_is_manager_mode');
         
-        // Restore local storage if present
-        const storedId = localStorage.getItem('aruskas_sheet_id');
-        const storedName = localStorage.getItem('aruskas_sheet_name');
-        const storedUrl = localStorage.getItem('aruskas_sheet_url');
-        if (storedId) {
-          setSpreadsheetId(storedId);
-          setSpreadsheetName(storedName || 'Dasbor Arus Kas Keuangan');
-          setSpreadsheetUrl(storedUrl || `https://docs.google.com/spreadsheets/d/${storedId}/edit`);
+        const sheetId = getInitialSheetId();
+        const sheetName = getInitialSheetName();
+        const sheetUrl = getInitialSheetUrl();
+        setSpreadsheetId(sheetId);
+        setSpreadsheetName(sheetName);
+        setSpreadsheetUrl(sheetUrl);
+        localStorage.setItem('aruskas_sheet_id', sheetId);
+        localStorage.setItem('aruskas_sheet_name', sheetName);
+        localStorage.setItem('aruskas_sheet_url', sheetUrl);
+
+        fetch('/api/auth/shared-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accessToken: result.accessToken,
+            spreadsheetId: sheetId,
+            spreadsheetName: sheetName,
+            spreadsheetUrl: sheetUrl
+          })
+        }).catch(() => {});
+
+        if (chosenRole === 'barista') {
+          setActiveTab('omset_cogs');
+        } else if (chosenRole === 'manager') {
+          setActiveTab('employee_tasks');
+        } else {
+          setActiveTab('dashboard');
         }
       }
     } catch (err: any) {
@@ -541,6 +655,16 @@ export default function App() {
       localStorage.setItem('aruskas_sheet_name', 'Dasbor Arus Kas Keuangan');
       localStorage.setItem('aruskas_sheet_url', sheet.url);
 
+      fetch('/api/auth/shared-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheetId: sheet.id,
+          spreadsheetName: 'Dasbor Arus Kas Keuangan',
+          spreadsheetUrl: sheet.url
+        })
+      }).catch(() => {});
+
       setFoundSheetInfo(null);
     } catch (err: any) {
       console.error(err);
@@ -560,6 +684,16 @@ export default function App() {
     localStorage.setItem('aruskas_sheet_id', id);
     localStorage.setItem('aruskas_sheet_name', name);
     localStorage.setItem('aruskas_sheet_url', url);
+
+    fetch('/api/auth/shared-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        spreadsheetId: id,
+        spreadsheetName: name,
+        spreadsheetUrl: url
+      })
+    }).catch(() => {});
 
     setFoundSheetInfo(null);
   };
@@ -594,7 +728,7 @@ export default function App() {
       localStorage.removeItem('aruskas_sheet_id');
       localStorage.removeItem('aruskas_sheet_name');
       localStorage.removeItem('aruskas_sheet_url');
-      if (token) {
+      if (hasValidGoogleToken && token) {
         checkForSpreadsheet(token);
       }
     }
@@ -602,27 +736,30 @@ export default function App() {
 
   // Refresh manually
   const handleRefresh = async () => {
-    if (spreadsheetId && token) {
+    if (spreadsheetId && hasValidGoogleToken && token) {
       await loadTransactionsFromSheet(spreadsheetId, token);
+    } else {
+      const sharedToken = await resolveSharedGoogleToken();
+      if (sharedToken && spreadsheetId) {
+        setToken(sharedToken);
+        await loadTransactionsFromSheet(spreadsheetId, sharedToken);
+      }
     }
   };
 
   // Add / Edit submission
   const handleFormSubmit = async (data: Omit<Transaction, 'id'>) => {
-    if (isManagerMode || !spreadsheetId || !token) {
-      if (isManagerMode) {
-        let updated: Transaction[];
-        if (editingTransaction) {
-          updated = transactions.map(t => t.id === editingTransaction.id ? { ...data, id: editingTransaction.id } : t);
-        } else {
-          const newTx: Transaction = { ...data, id: String(Date.now()) };
-          updated = [newTx, ...transactions];
-        }
-        setTransactions(updated);
-        localStorage.setItem('aruskas_manager_transactions', JSON.stringify(updated));
-        return;
+    if (!hasValidGoogleToken || !spreadsheetId || spreadsheetId.startsWith('local_') || !token) {
+      let updated: Transaction[];
+      if (editingTransaction) {
+        updated = transactions.map(t => t.id === editingTransaction.id ? { ...data, id: editingTransaction.id } : t);
+      } else {
+        const newTx: Transaction = { ...data, id: String(Date.now()) };
+        updated = [newTx, ...transactions];
       }
-      throw new Error("Sesi Google Sheets terputus");
+      setTransactions(updated);
+      localStorage.setItem('aruskas_manager_transactions', JSON.stringify(updated));
+      return;
     }
 
     if (editingTransaction) {
@@ -639,13 +776,10 @@ export default function App() {
 
   // Delete transaction action
   const handleDeleteTransaction = async (id: string) => {
-    if (isManagerMode || !spreadsheetId || !token) {
-      if (isManagerMode) {
-        const updated = transactions.filter(t => t.id !== id);
-        setTransactions(updated);
-        localStorage.setItem('aruskas_manager_transactions', JSON.stringify(updated));
-        return;
-      }
+    if (!hasValidGoogleToken || !spreadsheetId || spreadsheetId.startsWith('local_') || !token) {
+      const updated = transactions.filter(t => t.id !== id);
+      setTransactions(updated);
+      localStorage.setItem('aruskas_manager_transactions', JSON.stringify(updated));
       return;
     }
     try {
@@ -1096,6 +1230,20 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+
+                {/* Option 2: Google OAuth for Manager */}
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => handleLogin('manager')}
+                    disabled={isLoggingIn}
+                    className="w-full flex justify-center items-center py-2 px-4 border border-amber-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-amber-50/50 transition cursor-pointer disabled:opacity-60 shadow-2xs"
+                  >
+                    <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700">
+                      🔗 Masuk Manajer via Akun Google (Sinkron Otomatis)
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1169,6 +1317,20 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+
+                {/* Option 2: Google OAuth for Barista */}
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => handleLogin('barista')}
+                    disabled={isLoggingIn}
+                    className="w-full flex justify-center items-center py-2 px-4 border border-sky-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-sky-50/50 transition cursor-pointer disabled:opacity-60 shadow-2xs"
+                  >
+                    <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-700">
+                      🔗 Masuk Barista via Akun Google (Sinkron Otomatis)
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1571,7 +1733,7 @@ export default function App() {
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={isManagerMode}
+              isManagerMode={!hasValidGoogleToken}
             />
           ) : activeTab === 'omset_cogs' ? (
             <CogsDailySalesPage
@@ -1601,7 +1763,7 @@ export default function App() {
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={isManagerMode}
+              isManagerMode={!hasValidGoogleToken}
               onNavigateToIncomingGoods={() => setActiveTab('omset_cogs')}
             />
           ) : activeTab === 'calendar_notes' ? (
@@ -1610,7 +1772,7 @@ export default function App() {
               spreadsheetName={spreadsheetName}
               spreadsheetUrl={spreadsheetUrl}
               token={token}
-              isManagerMode={isManagerMode}
+              isManagerMode={!hasValidGoogleToken}
             />
           ) : activeTab === 'categories' ? (
             <CategoryExpenses
