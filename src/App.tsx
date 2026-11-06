@@ -533,7 +533,6 @@ export default function App() {
     } else if (userRole === "manager") {
       const allowedManagerTabs: TabType[] = [
         "employee_tasks",
-        "calendar_notes",
         "barista_schedule",
         "omset_cogs",
         "shopping_report",
@@ -1493,9 +1492,8 @@ export default function App() {
                         Akses Manajer Operasional Cafe
                       </h4>
                       <p className="text-[11px] text-emerald-900/80 font-medium mt-0.5 leading-relaxed">
-                        Kelola operasional: Tugas Karyawan, Catatan Kalender,
-                        Jadwal Operasional, Sales, Bahan Perlu
-                        Dibelanjakan, dan Stok Opname Bulanan.
+                        Kelola operasional: Tugas Karyawan, Jadwal Operasional,
+                        Sales, Bahan Perlu Dibelanjakan, dan Stok Opname Bulanan.
                       </p>
                     </div>
                   </div>
@@ -1506,13 +1504,13 @@ export default function App() {
                   <div className="flex items-center space-x-2 text-slate-800 font-bold">
                     <CheckCircle2 className="h-3.5 w-3.5 text-[#14532d] shrink-0" />
                     <span>
-                      Fitur Terbuka: Tugas Karyawan, Catatan Kalender, Jadwal
-                      Operasional, COGS & Sales, Belanja & Stok Opname
+                      Fitur Terbuka: Tugas Karyawan, Jadwal Operasional, COGS &
+                      Sales, Belanja & Stok Opname
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400 pl-5">
-                    Dasbor utama kas, kategori pengeluaran, hutang & simulasi
-                    fixed cost pemilik usaha dilindungi.
+                    Dasbor utama kas, catatan kalender, kategori pengeluaran,
+                    hutang & simulasi fixed cost pemilik usaha dilindungi.
                   </p>
                 </div>
 
@@ -2028,8 +2026,8 @@ export default function App() {
 
             {/* Right: Quick Status, Actions & Sheet Info */}
             <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
-              {/* Connected Google Sheet pill (Desktop) */}
-              {userRole !== "barista" && spreadsheetName && (
+              {/* Connected Google Sheet pill (Desktop - Owner only) */}
+              {userRole === "owner" && spreadsheetName && (
                 <div className="hidden md:flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl text-xs">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <a
@@ -2159,7 +2157,7 @@ export default function App() {
             <EmployeeTaskPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
-              spreadsheetUrl={spreadsheetUrl}
+              spreadsheetUrl={userRole === "owner" ? spreadsheetUrl : null}
               token={token}
               isManagerMode={Boolean(
                 !spreadsheetId || spreadsheetId.startsWith("local_"),
@@ -2169,7 +2167,7 @@ export default function App() {
             <CogsDailySalesPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
-              spreadsheetUrl={spreadsheetUrl}
+              spreadsheetUrl={userRole === "owner" ? spreadsheetUrl : null}
               token={token}
               user={user}
               userRole={userRole}
@@ -2191,7 +2189,7 @@ export default function App() {
             <ShoppingReportPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
-              spreadsheetUrl={spreadsheetUrl}
+              spreadsheetUrl={userRole === "owner" ? spreadsheetUrl : null}
               token={token}
               isManagerMode={Boolean(
                 !spreadsheetId || spreadsheetId.startsWith("local_"),

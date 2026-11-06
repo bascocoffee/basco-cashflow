@@ -198,14 +198,6 @@ export default function Sidebar({
               description: 'Jobdesk, upah & tugas staf'
             },
             { 
-              id: 'calendar_notes' as TabType, 
-              label: 'Catatan Kalender', 
-              icon: Calendar,
-              badge: h1AlertCount > 0 ? `${h1AlertCount} H-1` : undefined,
-              badgeColor: h1AlertCount > 0 ? ('rose' as const) : undefined,
-              description: 'Agenda, catatan & notifikasi H-1'
-            },
-            { 
               id: 'barista_schedule' as TabType, 
               label: 'Jadwal Operasional', 
               icon: Users, 
@@ -590,8 +582,8 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* Google Sheets Connection Card (Hidden for Barista) */}
-          {userRole !== 'barista' && spreadsheetName && (
+          {/* Google Sheets Connection Card (Only visible for Owner) */}
+          {userRole === 'owner' && spreadsheetName && (
             isCollapsed ? (
               <div className="pt-1 flex flex-col items-center">
                 <a
