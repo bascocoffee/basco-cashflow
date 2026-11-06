@@ -1263,7 +1263,7 @@ export default function App() {
             Basco Cashflow & Cafe System
           </h2>
           <p className="mt-1 text-xs text-emerald-100/80 max-w-md mx-auto font-bold uppercase tracking-wider">
-            Sistem Pemantau Keuangan & Operasional Cafe Real-Time
+            Sistem Pemantau Keuangan & Operasional
           </p>
         </div>
 
@@ -1272,7 +1272,7 @@ export default function App() {
             {/* 3 ROLE SELECTOR TABS */}
             <div className="mb-6">
               <label className="text-[11px] font-black uppercase tracking-wider text-emerald-950/70 block mb-2 text-center">
-                Pilih Peran Masuk (Role Akun)
+                Pilih Aksi
               </label>
               <div className="grid grid-cols-3 gap-2 p-1.5 bg-emerald-950/5 rounded-xl border border-emerald-900/15">
                 <button
