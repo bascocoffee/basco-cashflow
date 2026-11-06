@@ -1360,9 +1360,7 @@ export default function App() {
                         Akses Penuh Owner (Pemilik Usaha)
                       </h4>
                       <p className="text-[11px] text-emerald-900/80 font-medium mt-0.5 leading-relaxed">
-                        Kendali lengkap: Dasbor Keuangan & Laba Bersih, Omset &
-                        HPP, Debt Tracker AI, Kontrol Roster Gaji, Analisis
-                        Biaya Tetap & BEP, dan Sinkronisasi Google Sheets.
+                        Kendali lengkap perhitungan
                       </p>
                     </div>
                   </div>
@@ -1496,7 +1494,7 @@ export default function App() {
                       </h4>
                       <p className="text-[11px] text-emerald-900/80 font-medium mt-0.5 leading-relaxed">
                         Kelola operasional: Tugas Karyawan, Catatan Kalender,
-                        Jadwal Operasional, Analisis COGS & Sales, Bahan Perlu
+                        Jadwal Operasional, Sales, Bahan Perlu
                         Dibelanjakan, dan Stok Opname Bulanan.
                       </p>
                     </div>
