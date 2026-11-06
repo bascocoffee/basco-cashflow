@@ -385,6 +385,10 @@ export default function CogsDailySalesPage({
     }
   }, [userRole, activeSubTab]);
 
+  // Barista minimalist form filter states
+  const [baristaSearch, setBaristaSearch] = useState<string>('');
+  const [baristaCategory, setBaristaCategory] = useState<'ALL' | 'Minuman' | 'Makanan' | 'Snack'>('ALL');
+
   // Ensure view starts at the top navigation when entering this page
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -2842,6 +2846,320 @@ export default function CogsDailySalesPage({
     });
   }, [filteredSalesForOmset, dailySales, chartViewType, selectedOmsetMonth, hppPerCup]);
 
+  // MINIMALIST & MOBILE-FIRST FORM VIEW FOR BARISTA ROLE
+  if (userRole === 'barista') {
+    const baristaFilteredMenus = sortedMenuItems.filter(m => {
+      const matchCat = baristaCategory === 'ALL' || m.kategori === baristaCategory;
+      const matchQuery = !baristaSearch.trim() || m.nama.toLowerCase().includes(baristaSearch.trim().toLowerCase());
+      return matchCat && matchQuery;
+    });
+
+    return (
+      <div className="max-w-3xl mx-auto px-1 sm:px-4 py-2 sm:py-5 font-sans">
+        <form
+          onSubmit={handleSaveItemizedDaily}
+          className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-6 space-y-4 sm:space-y-5"
+        >
+          {/* Minimalist Form Header */}
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl shrink-0">
+                <CheckSquare className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-wide text-slate-900 leading-tight">
+                  Form Catatan Penjualan & Jatah Harian
+                </h2>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  Input jumlah porsi terjual & jatah barista per menu harian
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Date Picker & Live Summary Counters (Mobile Responsive Grid) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+            <div className="col-span-2 sm:col-span-1 flex items-center space-x-2.5 bg-white p-2.5 rounded-lg border border-slate-200">
+              <Calendar className="h-4.5 w-4.5 text-indigo-600 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <label className="block text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
+                  Tanggal Laporan
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-full bg-transparent text-xs font-black font-mono text-slate-900 focus:outline-none cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="bg-amber-50/80 border border-amber-200/80 p-2.5 rounded-lg flex flex-col justify-center">
+              <span className="text-[9.5px] font-bold uppercase tracking-wider text-amber-700">
+                Total Terjual
+              </span>
+              <span className="text-sm sm:text-base font-black font-mono text-amber-950">
+                {itemizedCalculations.totalCups} <span className="text-[10px] font-bold">Porsi</span>
+              </span>
+            </div>
+
+            <div className="bg-indigo-50/80 border border-indigo-200/80 p-2.5 rounded-lg flex flex-col justify-center">
+              <span className="text-[9.5px] font-bold uppercase tracking-wider text-indigo-700">
+                Total Jatah
+              </span>
+              <span className="text-sm sm:text-base font-black font-mono text-indigo-950">
+                {itemizedCalculations.totalJatah} <span className="text-[10px] font-bold">Porsi</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Search, Category Filter & Quick Reset Toolbar */}
+          <div className="space-y-2.5">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={baristaSearch}
+                  onChange={(e) => setBaristaSearch(e.target.value)}
+                  placeholder="Cari nama menu..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-amber-400 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
+                {(['ALL', 'Minuman', 'Makanan', 'Snack'] as const).map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setBaristaCategory(cat)}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold whitespace-nowrap transition cursor-pointer ${
+                      baristaCategory === cat
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat === 'ALL' ? 'Semua' : cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleFillSalesFromJatah}
+                  className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold rounded-lg text-[11px] transition cursor-pointer"
+                >
+                  Isi Sales = Jatah
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetSalesToZero}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] transition cursor-pointer"
+                >
+                  Reset Sales = 0
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetJatahToDefault}
+                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold rounded-lg text-[11px] transition cursor-pointer"
+                >
+                  Reset Jatah = 0
+                </button>
+              </div>
+
+              <select
+                value={menuSortMode}
+                onChange={(e) => setMenuSortMode(e.target.value as any)}
+                className="px-2.5 py-1.5 bg-slate-100 text-slate-700 font-bold rounded-lg text-[11px] border border-slate-200 focus:outline-none cursor-pointer"
+              >
+                <option value="bestseller_qty">Urut: Paling Laku</option>
+                <option value="alphabetical">Urut: Abjad (A-Z)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Minimalist Mobile-Responsive Menu Input List */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+            {/* Desktop / Tablet Column Header */}
+            <div className="hidden sm:grid sm:grid-cols-12 bg-slate-100 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-600">
+              <div className="col-span-6">Nama Menu</div>
+              <div className="col-span-3 text-center text-amber-900">Penjualan (Terjual)</div>
+              <div className="col-span-3 text-center text-indigo-900">Jatah Barista</div>
+            </div>
+
+            {baristaFilteredMenus.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-400 font-semibold">
+                Menu tidak ditemukan untuk pencarian "{baristaSearch}".
+              </div>
+            ) : (
+              baristaFilteredMenus.map((m) => {
+                const currentInput = itemizedInputs[m.id] || { jatah: m.defaultJatah, terjual: 0 };
+                const isFilledSales = currentInput.terjual > 0;
+                const isFilledJatah = currentInput.jatah > 0;
+                const isRowFilled = isFilledSales || isFilledJatah;
+
+                const updateTerjual = (nextVal: number) => {
+                  const val = Math.max(0, nextVal);
+                  setItemizedInputs(prev => ({
+                    ...prev,
+                    [m.id]: { ...(prev[m.id] || { jatah: m.defaultJatah }), terjual: val }
+                  }));
+                };
+
+                const updateJatah = (nextVal: number) => {
+                  const val = Math.max(0, nextVal);
+                  setItemizedInputs(prev => ({
+                    ...prev,
+                    [m.id]: { ...(prev[m.id] || { terjual: 0 }), jatah: val }
+                  }));
+                };
+
+                return (
+                  <div
+                    key={m.id}
+                    className={`p-3 sm:px-4 sm:py-2.5 flex flex-col sm:grid sm:grid-cols-12 sm:items-center gap-2.5 sm:gap-2 transition-colors ${
+                      isRowFilled ? 'bg-emerald-50/30' : 'bg-white hover:bg-slate-50/80'
+                    }`}
+                  >
+                    {/* Menu Name & Category */}
+                    <div className="sm:col-span-6 flex items-center justify-between sm:justify-start gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            isRowFilled ? 'bg-emerald-500' : 'bg-slate-200'
+                          }`}
+                        />
+                        <span className={`text-xs sm:text-sm truncate ${isRowFilled ? 'font-black text-slate-900' : 'font-bold text-slate-700'}`}>
+                          {m.nama}
+                        </span>
+                      </div>
+                      <span className="text-[9.5px] font-bold uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 shrink-0">
+                        {m.kategori}
+                      </span>
+                    </div>
+
+                    {/* Mobile & Desktop Input Controls (Terjual & Jatah) */}
+                    <div className="grid grid-cols-2 sm:col-span-6 gap-2.5 sm:gap-3">
+                      {/* Terjual Input with +/- Stepper */}
+                      <div className="bg-amber-50/60 sm:bg-transparent p-2 sm:p-0 rounded-xl border border-amber-200/60 sm:border-0 flex flex-col items-center">
+                        <span className="sm:hidden text-[9.5px] font-extrabold uppercase text-amber-800 mb-1">
+                          Terjual (Porsi)
+                        </span>
+                        <div className="flex items-center justify-center space-x-1 w-full">
+                          <button
+                            type="button"
+                            onClick={() => updateTerjual(currentInput.terjual - 1)}
+                            className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white hover:bg-amber-100 border border-slate-200 text-slate-700 font-black text-sm flex items-center justify-center active:scale-95 transition cursor-pointer shrink-0"
+                            aria-label="Kurangi Terjual"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min="0"
+                            value={currentInput.terjual === 0 ? '' : currentInput.terjual}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const rawVal = e.target.value;
+                              updateTerjual(rawVal === '' ? 0 : parseInt(rawVal, 10) || 0);
+                            }}
+                            className={`w-full max-w-[68px] h-8 sm:h-7 px-1 rounded-lg text-center font-mono text-xs sm:text-sm transition-all focus:outline-none ${
+                              isFilledSales
+                                ? 'bg-amber-400 text-amber-950 font-black border-2 border-amber-500 shadow-2xs'
+                                : 'bg-white text-slate-600 border border-slate-200 focus:border-amber-400'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateTerjual(currentInput.terjual + 1)}
+                            className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-sm flex items-center justify-center active:scale-95 transition cursor-pointer shrink-0"
+                            aria-label="Tambah Terjual"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Jatah Input with +/- Stepper */}
+                      <div className="bg-indigo-50/60 sm:bg-transparent p-2 sm:p-0 rounded-xl border border-indigo-200/60 sm:border-0 flex flex-col items-center">
+                        <span className="sm:hidden text-[9.5px] font-extrabold uppercase text-indigo-800 mb-1">
+                          Jatah Barista
+                        </span>
+                        <div className="flex items-center justify-center space-x-1 w-full">
+                          <button
+                            type="button"
+                            onClick={() => updateJatah(currentInput.jatah - 1)}
+                            className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-white hover:bg-indigo-100 border border-slate-200 text-slate-700 font-black text-sm flex items-center justify-center active:scale-95 transition cursor-pointer shrink-0"
+                            aria-label="Kurangi Jatah"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min="0"
+                            value={currentInput.jatah === 0 ? '' : currentInput.jatah}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const rawVal = e.target.value;
+                              updateJatah(rawVal === '' ? 0 : parseInt(rawVal, 10) || 0);
+                            }}
+                            className={`w-full max-w-[68px] h-8 sm:h-7 px-1 rounded-lg text-center font-mono text-xs sm:text-sm transition-all focus:outline-none ${
+                              isFilledJatah
+                                ? 'bg-indigo-100 text-indigo-950 font-black border-2 border-indigo-400 shadow-2xs'
+                                : 'bg-white text-slate-600 border border-slate-200 focus:border-indigo-400'
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateJatah(currentInput.jatah + 1)}
+                            className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm flex items-center justify-center active:scale-95 transition cursor-pointer shrink-0"
+                            aria-label="Tambah Jatah"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Catatan Shift & Save Button */}
+          <div className="space-y-3 pt-1">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Catatan Shift / Operasional (Opsional)
+              </label>
+              <input
+                type="text"
+                placeholder="Contoh: Shift Pagi / Malam..."
+                value={dailyNotes}
+                onChange={(e) => setDailyNotes(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:border-slate-400 focus:outline-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSyncingSheet}
+              className="w-full py-3.5 px-5 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-xs sm:text-sm uppercase tracking-wider rounded-xl shadow-md transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+            >
+              <CheckCircle className="h-4.5 w-4.5 text-emerald-400 shrink-0" />
+              <span>{isSyncingSheet ? 'Menyimpan...' : 'Simpan Catatan Penjualan & Jatah Harian'}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 font-sans">
       
@@ -2912,19 +3230,17 @@ export default function CogsDailySalesPage({
 
         {/* SUB-NAVIGATION TABS (Aplikasi 2) */}
         <div className="mt-6 pt-4 border-t border-slate-800 flex flex-wrap gap-2">
-          {userRole !== 'barista' && (
-            <button
-              onClick={() => setActiveSubTab('all')}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-                activeSubTab === 'all'
-                  ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-              }`}
-            >
-              <Sliders className="h-4 w-4" />
-              <span>Gabung Semua Modul</span>
-            </button>
-          )}
+          <button
+            onClick={() => setActiveSubTab('all')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+              activeSubTab === 'all'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            <Sliders className="h-4 w-4" />
+            <span>Gabung Semua Modul</span>
+          </button>
 
           <button
             onClick={() => {
@@ -2944,107 +3260,101 @@ export default function CogsDailySalesPage({
             <span>1. Pencatatan Harian</span>
           </button>
 
-          {userRole !== 'barista' && (
-            <>
-              <button
-                onClick={() => {
-                  if (activeSubTab === 'all') {
-                    document.getElementById('sec-penjualan-menu')?.scrollIntoView({ behavior: 'smooth' });
-                  } else {
-                    setActiveSubTab('penjualan_menu');
-                  }
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeSubTab === 'penjualan_menu'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <BookOpen className="h-4 w-4" />
-                <span>2. Penjualan Menu</span>
-              </button>
+          <button
+            onClick={() => {
+              if (activeSubTab === 'all') {
+                document.getElementById('sec-penjualan-menu')?.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                setActiveSubTab('penjualan_menu');
+              }
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+              activeSubTab === 'penjualan_menu'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            <BookOpen className="h-4 w-4" />
+            <span>2. Penjualan Menu</span>
+          </button>
 
-              <button
-                onClick={() => {
-                  if (activeSubTab === 'all') {
-                    document.getElementById('sec-kalkulator-cogs')?.scrollIntoView({ behavior: 'smooth' });
-                  } else {
-                    setActiveSubTab('kalkulator_cogs');
-                  }
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeSubTab === 'kalkulator_cogs'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <Calculator className="h-4 w-4" />
-                <span>3. Kalkulator COGS</span>
-              </button>
+          <button
+            onClick={() => {
+              if (activeSubTab === 'all') {
+                document.getElementById('sec-kalkulator-cogs')?.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                setActiveSubTab('kalkulator_cogs');
+              }
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+              activeSubTab === 'kalkulator_cogs'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            <Calculator className="h-4 w-4" />
+            <span>3. Kalkulator COGS</span>
+          </button>
 
-              <button
-                onClick={() => {
-                  if (activeSubTab === 'all') {
-                    document.getElementById('sec-penggunaan-bahan')?.scrollIntoView({ behavior: 'smooth' });
-                  } else {
-                    setActiveSubTab('penggunaan_bahan');
-                  }
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeSubTab === 'penggunaan_bahan'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <Layers className="h-4 w-4" />
-                <span>4. Penggunaan Bahan Baku</span>
-              </button>
+          <button
+            onClick={() => {
+              if (activeSubTab === 'all') {
+                document.getElementById('sec-penggunaan-bahan')?.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                setActiveSubTab('penggunaan_bahan');
+              }
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+              activeSubTab === 'penggunaan_bahan'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            <Layers className="h-4 w-4" />
+            <span>4. Penggunaan Bahan Baku</span>
+          </button>
 
-              <button
-                onClick={() => {
-                  if (activeSubTab === 'all') {
-                    document.getElementById('sec-barang-masuk')?.scrollIntoView({ behavior: 'smooth' });
-                  } else {
-                    setActiveSubTab('barang_masuk');
-                  }
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeSubTab === 'barang_masuk'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <PackagePlus className="h-4 w-4 text-emerald-400" />
-                <span>5. Barang Masuk</span>
-                <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-black text-[9px] rounded-full">{incomingBatches.length}</span>
-              </button>
+          <button
+            onClick={() => {
+              if (activeSubTab === 'all') {
+                document.getElementById('sec-barang-masuk')?.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                setActiveSubTab('barang_masuk');
+              }
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+              activeSubTab === 'barang_masuk'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            <PackagePlus className="h-4 w-4 text-emerald-400" />
+            <span>5. Barang Masuk</span>
+            <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-black text-[9px] rounded-full">{incomingBatches.length}</span>
+          </button>
 
-              <button
-                onClick={() => {
-                  if (activeSubTab === 'all') {
-                    document.getElementById('sec-forum-ai-hpp')?.scrollIntoView({ behavior: 'smooth' });
-                  } else {
-                    setActiveSubTab('forum_ai_hpp');
-                  }
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeSubTab === 'forum_ai_hpp'
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-                }`}
-              >
-                <Bot className="h-4 w-4 text-amber-400" />
-                <span>6. Forum AI Database HPP</span>
-                <span className="px-1.5 py-0.5 bg-slate-950 text-amber-400 font-black text-[8px] rounded uppercase">AI</span>
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => {
+              if (activeSubTab === 'all') {
+                document.getElementById('sec-forum-ai-hpp')?.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                setActiveSubTab('forum_ai_hpp');
+              }
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+              activeSubTab === 'forum_ai_hpp'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+            }`}
+          >
+            <Bot className="h-4 w-4 text-amber-400" />
+            <span>6. Forum AI Database HPP</span>
+            <span className="px-1.5 py-0.5 bg-slate-950 text-amber-400 font-black text-[8px] rounded uppercase">AI</span>
+          </button>
         </div>
       </div>
 
-      {/* Pilihan Bulan untuk Omset & Summary Keuangan (Hidden for Barista) */}
-      {userRole !== 'barista' && (
-      <>
+      {/* Pilihan Bulan untuk Omset & Summary Keuangan */}
       <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <div className="p-2.5 bg-amber-100 text-amber-900 rounded-2xl">
@@ -3279,8 +3589,6 @@ export default function CogsDailySalesPage({
           </div>
         </div>
       </div>
-      </>
-      )}
 
       {/* ========================================================================= */}
       {/* SUBTAB 1: PENCATATAN HARIAN */}

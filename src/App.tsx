@@ -1351,8 +1351,8 @@ export default function App() {
       subtitle: userRole === 'barista' ? 'Roster jam kerja, shift bar & unduh slip gaji' : 'Manajemen roster mingguan, pembagian shift bar & estimasi gaji tim'
     },
     omset_cogs: {
-      title: userRole === 'manager' ? 'Penjualan Menu' : 'Analisis COGS & Sales (Aplikasi 2)',
-      subtitle: userRole === 'manager' ? 'Catatan penjualan menu harian, rekapitulasi porsi & integrasi Excel' : 'Laporan omset harian, food cost, margin keuntungan, dan target sales'
+      title: userRole === 'barista' ? 'Pencatatan Penjualan & Jatah Harian' : userRole === 'manager' ? 'Penjualan Menu' : 'Analisis COGS & Sales (Aplikasi 2)',
+      subtitle: userRole === 'barista' ? 'Form input harian porsi terjual & jatah barista' : userRole === 'manager' ? 'Catatan penjualan menu harian, rekapitulasi porsi & integrasi Excel' : 'Laporan omset harian, food cost, margin keuntungan, dan target sales'
     },
     cogs: {
       title: userRole === 'barista' ? 'Stok Opname & Resep' : 'Stok Opname Bulanan',

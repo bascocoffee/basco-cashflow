@@ -169,15 +169,15 @@ export default function Sidebar({
     if (userRole === 'barista') {
       return [
         {
-          groupTitle: 'Dasbor & Operasional Bar',
+          groupTitle: 'Pencatatan Harian Barista',
           items: [
             { 
               id: 'omset_cogs' as TabType, 
-              label: 'Analisis COGS & Sales', 
+              label: 'Pencatatan Harian', 
               icon: Coffee, 
-              badge: 'Pencatatan Harian', 
+              badge: 'Form', 
               highlight: true,
-              description: 'Pencatatan harian sales & jatah menu'
+              description: 'Form input penjualan & jatah menu'
             },
           ]
         }
