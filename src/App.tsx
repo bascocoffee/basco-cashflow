@@ -1456,7 +1456,7 @@ export default function App() {
             <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
               
               {/* Connected Google Sheet pill (Desktop) */}
-              {spreadsheetName && (
+              {userRole !== 'barista' && spreadsheetName && (
                 <div className="hidden md:flex items-center space-x-2 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-xl text-xs">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <a
@@ -1499,7 +1499,7 @@ export default function App() {
               )}
 
               {/* Sync Button */}
-              {spreadsheetName && (
+              {userRole !== 'barista' && spreadsheetName && (
                 <button
                   type="button"
                   onClick={handleRefresh}

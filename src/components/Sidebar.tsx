@@ -590,8 +590,8 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* Google Sheets Connection Card */}
-          {spreadsheetName && (
+          {/* Google Sheets Connection Card (Hidden for Barista) */}
+          {userRole !== 'barista' && spreadsheetName && (
             isCollapsed ? (
               <div className="pt-1 flex flex-col items-center">
                 <a
@@ -732,7 +732,7 @@ export default function Sidebar({
               </div>
 
               <div className="flex items-center space-x-1 shrink-0">
-                {isManagerMode && onLoginGoogle && (
+                {userRole !== 'barista' && isManagerMode && onLoginGoogle && (
                   <button
                     type="button"
                     onClick={onLoginGoogle}
