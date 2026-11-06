@@ -169,45 +169,75 @@ export default function Sidebar({
     if (userRole === 'barista') {
       return [
         {
-          groupTitle: 'Area Barista & Operasional',
+          groupTitle: 'Dasbor & Operasional Bar',
           items: [
             { 
-              id: 'barista_schedule' as TabType, 
-              label: 'Jadwal Shift & Slip Gaji', 
-              icon: Users, 
-              badge: 'Shift',
-              badgeColor: 'amber' as const,
-              description: 'Roster jam kerja & unduh slip gaji'
+              id: 'omset_cogs' as TabType, 
+              label: 'Analisis COGS & Sales', 
+              icon: Coffee, 
+              badge: 'Pencatatan Harian', 
+              highlight: true,
+              description: 'Pencatatan harian sales & jatah menu'
             },
+          ]
+        }
+      ];
+    }
+
+    if (userRole === 'manager') {
+      return [
+        {
+          groupTitle: 'Dasbor & Operasional Bar',
+          items: [
             { 
               id: 'employee_tasks' as TabType, 
-              label: 'Tugas & SOP Barista', 
+              label: 'Tugas Karyawan', 
               icon: UserCheck, 
-              badge: 'Checklist',
-              badgeColor: 'emerald' as const,
-              description: 'Checklist tugas harian & SOP bar'
-            },
-            { 
-              id: 'cogs' as TabType, 
-              label: 'Stok Opname & Resep', 
-              icon: ClipboardList,
-              description: 'Audit stok bahan baku & resep menu'
-            },
-            { 
-              id: 'shopping_report' as TabType, 
-              label: 'Permintaan Belanja Bahan', 
-              icon: ShoppingCart,
-              badge: shoppingUrgentCount > 0 ? `${shoppingUrgentCount} Urgent` : undefined,
-              badgeColor: 'rose' as const,
-              description: 'Catat bahan habis & stok menipis'
+              badge: 'Baru',
+              badgeColor: 'amber' as const,
+              description: 'Jobdesk, upah & tugas staf'
             },
             { 
               id: 'calendar_notes' as TabType, 
-              label: 'Catatan & Agenda Kafe', 
+              label: 'Catatan Kalender', 
               icon: Calendar,
               badge: h1AlertCount > 0 ? `${h1AlertCount} H-1` : undefined,
-              badgeColor: 'rose' as const,
-              description: 'Pengumuman event & agenda operasional'
+              badgeColor: h1AlertCount > 0 ? ('rose' as const) : undefined,
+              description: 'Agenda, catatan & notifikasi H-1'
+            },
+            { 
+              id: 'barista_schedule' as TabType, 
+              label: 'Jadwal Operasional', 
+              icon: Users, 
+              badge: 'Basco',
+              description: 'Roster & shift Basco Coffee'
+            },
+            { 
+              id: 'omset_cogs' as TabType, 
+              label: 'Analisis COGS & Sales', 
+              icon: Coffee, 
+              badge: 'Aplikasi 2', 
+              highlight: true,
+              description: 'Penjualan menu & laba kotor'
+            },
+          ]
+        },
+        {
+          groupTitle: 'Manajemen Finansial & Stok',
+          items: [
+            { 
+              id: 'shopping_report' as TabType, 
+              label: 'Bahan Perlu Dibelanjakan', 
+              icon: ShoppingCart,
+              badge: shoppingUrgentCount > 0 ? `${shoppingUrgentCount} Urgent` : (shoppingNeedCount > 0 ? `${shoppingNeedCount} Butuh` : undefined),
+              badgeColor: shoppingUrgentCount > 0 ? ('rose' as const) : ('amber' as const),
+              description: 'Laporan belanja & notifikasi Sheet 4'
+            },
+            { 
+              id: 'cogs' as TabType, 
+              label: 'Stok Opname Bulanan', 
+              icon: ClipboardList,
+              description: 'Audit bahan baku & inventory'
             },
           ]
         }
@@ -280,16 +310,14 @@ export default function Sidebar({
             icon: Layers,
             description: 'Alokasi pos belanja cafe'
           },
-          ...(userRole === 'owner' ? [
-            { 
-              id: 'debt_tracker' as TabType, 
-              label: 'Pencatatan Hutang & AI', 
-              icon: CreditCard,
-              badge: debtAlertCount > 0 ? `${debtAlertCount} Tempo` : 'Owner',
-              badgeColor: debtAlertCount > 0 ? ('rose' as const) : ('amber' as const),
-              description: 'Hutang bulanan, tahunan & AI'
-            }
-          ] : []),
+          { 
+            id: 'debt_tracker' as TabType, 
+            label: 'Pencatatan Hutang & AI', 
+            icon: CreditCard,
+            badge: debtAlertCount > 0 ? `${debtAlertCount} Tempo` : 'Owner',
+            badgeColor: debtAlertCount > 0 ? ('rose' as const) : ('amber' as const),
+            description: 'Hutang bulanan, tahunan & AI'
+          },
           { 
             id: 'fixed_cost' as TabType, 
             label: 'Simulasi Fixed Cost', 
@@ -525,7 +553,7 @@ export default function Sidebar({
           ))}
 
           {/* Quick Utility Shortcut: Backup JSON */}
-          {onOpenBackupModal && (
+          {userRole === 'owner' && onOpenBackupModal && (
             <div className="pt-2">
               {isCollapsed ? (
                 <button

@@ -289,12 +289,23 @@ export default function App() {
     }
   }, [isManagerMode, userRole]);
 
-  // Route protection for Barista role (Barista cannot access owner-only financial tabs)
+  // Route protection for Manager and Barista roles
   useEffect(() => {
     if (userRole === 'barista') {
-      const allowedBaristaTabs: TabType[] = ['barista_schedule', 'employee_tasks', 'cogs', 'shopping_report'];
-      if (!allowedBaristaTabs.includes(activeTab)) {
-        setActiveTab('barista_schedule');
+      if (activeTab !== 'omset_cogs') {
+        setActiveTab('omset_cogs');
+      }
+    } else if (userRole === 'manager') {
+      const allowedManagerTabs: TabType[] = [
+        'employee_tasks',
+        'calendar_notes',
+        'barista_schedule',
+        'omset_cogs',
+        'shopping_report',
+        'cogs'
+      ];
+      if (!allowedManagerTabs.includes(activeTab)) {
+        setActiveTab('employee_tasks');
       }
     }
   }, [userRole, activeTab]);
@@ -342,7 +353,9 @@ export default function App() {
     }
 
     if (role === 'barista') {
-      setActiveTab('barista_schedule');
+      setActiveTab('omset_cogs');
+    } else if (role === 'manager') {
+      setActiveTab('employee_tasks');
     } else {
       setActiveTab('dashboard');
     }
@@ -1025,7 +1038,7 @@ export default function App() {
                     <div>
                       <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Akses Manajer Operasional Cafe</h4>
                       <p className="text-[11px] text-amber-900 font-medium mt-0.5 leading-relaxed">
-                        Kelola operasional: input kas masuk/keluar harian, omset penjualan menu harian (COGS), pantau jadwal shift barista, audit stok opname, dan laporan belanja bahan.
+                        Kelola operasional: Tugas Karyawan, Catatan Kalender, Jadwal Operasional, Analisis COGS & Sales, Bahan Perlu Dibelanjakan, dan Stok Opname Bulanan.
                       </p>
                     </div>
                   </div>
@@ -1035,10 +1048,10 @@ export default function App() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold">
                     <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                    <span>Fitur Terbuka: Dashboard Kasir POS, Omset Penjualan, Roster Shift & Stok Opname</span>
+                    <span>Fitur Terbuka: Tugas Karyawan, Catatan Kalender, Jadwal Operasional, COGS & Sales, Belanja & Stok Opname</span>
                   </div>
                   <p className="text-[10px] text-slate-400 pl-5">
-                    Data sensitif pinjaman & simulasi BEP pemilik usaha dilindungi.
+                    Dasbor utama kas, kategori pengeluaran, hutang & simulasi fixed cost pemilik usaha dilindungi.
                   </p>
                 </div>
 
@@ -1098,7 +1111,7 @@ export default function App() {
                     <div>
                       <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Akses Barista & Tim Bar</h4>
                       <p className="text-[11px] text-sky-950 font-medium mt-0.5 leading-relaxed">
-                        Area khusus tim bar: cek jadwal roster shift harian & mingguan, unduh slip gaji, checklist tugas SOP bar, dan cek kartu resep & stok opname bahan baku.
+                        Area khusus barista: input pencatatan penjualan & jatah menu harian pada modul Analisis COGS & Sales.
                       </p>
                     </div>
                   </div>
@@ -1108,10 +1121,10 @@ export default function App() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold">
                     <CheckCircle2 className="h-3.5 w-3.5 text-sky-600 shrink-0" />
-                    <span>Fitur Terbuka: Jadwal Shift Barista, Slip Gaji, SOP Tugas & Resep Minuman</span>
+                    <span>Fitur Terbuka: Analisis COGS & Sales (Bagian 1: Pencatatan Harian)</span>
                   </div>
                   <p className="text-[10px] text-slate-400 pl-5">
-                    Aman & fokus tanpa gangguan menu finansial pemilik.
+                    Aman & fokus khusus pencatatan penjualan menu harian barista.
                   </p>
                 </div>
 
@@ -1473,7 +1486,7 @@ export default function App() {
               )}
 
               {/* Shopping Notification Button (Sheet 4) */}
-              {shoppingUrgentCount > 0 && (
+              {userRole !== 'barista' && shoppingUrgentCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setActiveTab('shopping_report')}
@@ -1567,6 +1580,7 @@ export default function App() {
               spreadsheetUrl={spreadsheetUrl}
               token={token}
               user={user}
+              userRole={userRole}
             />
           ) : activeTab === 'barista_schedule' ? (
             <BaristaSchedulePage

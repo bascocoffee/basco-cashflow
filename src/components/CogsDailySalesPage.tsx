@@ -62,7 +62,7 @@ import {
   Legend 
 } from 'recharts';
 import { formatRupiah } from '../utils';
-import { IncomingIngredientBatch } from '../types';
+import { IncomingIngredientBatch, AppRole } from '../types';
 import IncomingGoodsModule from './IncomingGoodsModule';
 import { 
   fetchMenuCatalogFromSheet, 
@@ -363,6 +363,7 @@ export interface CogsDailySalesPageProps {
   spreadsheetUrl?: string | null;
   token?: string | null;
   user?: any;
+  userRole?: AppRole;
 }
 
 export default function CogsDailySalesPage({
@@ -370,10 +371,19 @@ export default function CogsDailySalesPage({
   spreadsheetName,
   spreadsheetUrl,
   token,
-  user
+  user,
+  userRole = 'owner'
 }: CogsDailySalesPageProps = {}) {
-  // Navigation Subtab State inside App 2 (default 'all' to combine COGS & Sales modules)
-  const [activeSubTab, setActiveSubTab] = useState<'pencatatan_harian' | 'penjualan_menu' | 'kalkulator_cogs' | 'penggunaan_bahan' | 'barang_masuk' | 'forum_ai_hpp' | 'all'>('all');
+  // Navigation Subtab State inside App 2 (for Barista: locked to 'pencatatan_harian')
+  const [activeSubTab, setActiveSubTab] = useState<'pencatatan_harian' | 'penjualan_menu' | 'kalkulator_cogs' | 'penggunaan_bahan' | 'barang_masuk' | 'forum_ai_hpp' | 'all'>(
+    userRole === 'barista' ? 'pencatatan_harian' : 'all'
+  );
+
+  useEffect(() => {
+    if (userRole === 'barista' && activeSubTab !== 'pencatatan_harian') {
+      setActiveSubTab('pencatatan_harian');
+    }
+  }, [userRole, activeSubTab]);
 
   // Ensure view starts at the top navigation when entering this page
   useEffect(() => {
@@ -2902,17 +2912,19 @@ export default function CogsDailySalesPage({
 
         {/* SUB-NAVIGATION TABS (Aplikasi 2) */}
         <div className="mt-6 pt-4 border-t border-slate-800 flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveSubTab('all')}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-              activeSubTab === 'all'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-            }`}
-          >
-            <Sliders className="h-4 w-4" />
-            <span>Gabung Semua Modul</span>
-          </button>
+          {userRole !== 'barista' && (
+            <button
+              onClick={() => setActiveSubTab('all')}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+                activeSubTab === 'all'
+                  ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+              }`}
+            >
+              <Sliders className="h-4 w-4" />
+              <span>Gabung Semua Modul</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -2932,101 +2944,107 @@ export default function CogsDailySalesPage({
             <span>1. Pencatatan Harian</span>
           </button>
 
-          <button
-            onClick={() => {
-              if (activeSubTab === 'all') {
-                document.getElementById('sec-penjualan-menu')?.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                setActiveSubTab('penjualan_menu');
-              }
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-              activeSubTab === 'penjualan_menu'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-            }`}
-          >
-            <BookOpen className="h-4 w-4" />
-            <span>2. Penjualan Menu</span>
-          </button>
+          {userRole !== 'barista' && (
+            <>
+              <button
+                onClick={() => {
+                  if (activeSubTab === 'all') {
+                    document.getElementById('sec-penjualan-menu')?.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    setActiveSubTab('penjualan_menu');
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeSubTab === 'penjualan_menu'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <BookOpen className="h-4 w-4" />
+                <span>2. Penjualan Menu</span>
+              </button>
 
-          <button
-            onClick={() => {
-              if (activeSubTab === 'all') {
-                document.getElementById('sec-kalkulator-cogs')?.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                setActiveSubTab('kalkulator_cogs');
-              }
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-              activeSubTab === 'kalkulator_cogs'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-            }`}
-          >
-            <Calculator className="h-4 w-4" />
-            <span>3. Kalkulator COGS</span>
-          </button>
+              <button
+                onClick={() => {
+                  if (activeSubTab === 'all') {
+                    document.getElementById('sec-kalkulator-cogs')?.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    setActiveSubTab('kalkulator_cogs');
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeSubTab === 'kalkulator_cogs'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <Calculator className="h-4 w-4" />
+                <span>3. Kalkulator COGS</span>
+              </button>
 
-          <button
-            onClick={() => {
-              if (activeSubTab === 'all') {
-                document.getElementById('sec-penggunaan-bahan')?.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                setActiveSubTab('penggunaan_bahan');
-              }
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-              activeSubTab === 'penggunaan_bahan'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-            }`}
-          >
-            <Layers className="h-4 w-4" />
-            <span>4. Penggunaan Bahan Baku</span>
-          </button>
+              <button
+                onClick={() => {
+                  if (activeSubTab === 'all') {
+                    document.getElementById('sec-penggunaan-bahan')?.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    setActiveSubTab('penggunaan_bahan');
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeSubTab === 'penggunaan_bahan'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <Layers className="h-4 w-4" />
+                <span>4. Penggunaan Bahan Baku</span>
+              </button>
 
-          <button
-            onClick={() => {
-              if (activeSubTab === 'all') {
-                document.getElementById('sec-barang-masuk')?.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                setActiveSubTab('barang_masuk');
-              }
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-              activeSubTab === 'barang_masuk'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-            }`}
-          >
-            <PackagePlus className="h-4 w-4 text-emerald-400" />
-            <span>5. Barang Masuk</span>
-            <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-black text-[9px] rounded-full">{incomingBatches.length}</span>
-          </button>
+              <button
+                onClick={() => {
+                  if (activeSubTab === 'all') {
+                    document.getElementById('sec-barang-masuk')?.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    setActiveSubTab('barang_masuk');
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeSubTab === 'barang_masuk'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <PackagePlus className="h-4 w-4 text-emerald-400" />
+                <span>5. Barang Masuk</span>
+                <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-black text-[9px] rounded-full">{incomingBatches.length}</span>
+              </button>
 
-          <button
-            onClick={() => {
-              if (activeSubTab === 'all') {
-                document.getElementById('sec-forum-ai-hpp')?.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                setActiveSubTab('forum_ai_hpp');
-              }
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
-              activeSubTab === 'forum_ai_hpp'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-            }`}
-          >
-            <Bot className="h-4 w-4 text-amber-400" />
-            <span>6. Forum AI Database HPP</span>
-            <span className="px-1.5 py-0.5 bg-slate-950 text-amber-400 font-black text-[8px] rounded uppercase">AI</span>
-          </button>
+              <button
+                onClick={() => {
+                  if (activeSubTab === 'all') {
+                    document.getElementById('sec-forum-ai-hpp')?.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    setActiveSubTab('forum_ai_hpp');
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeSubTab === 'forum_ai_hpp'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <Bot className="h-4 w-4 text-amber-400" />
+                <span>6. Forum AI Database HPP</span>
+                <span className="px-1.5 py-0.5 bg-slate-950 text-amber-400 font-black text-[8px] rounded uppercase">AI</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Pilihan Bulan untuk Omset & Summary Keuangan */}
+      {/* Pilihan Bulan untuk Omset & Summary Keuangan (Hidden for Barista) */}
+      {userRole !== 'barista' && (
+      <>
       <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <div className="p-2.5 bg-amber-100 text-amber-900 rounded-2xl">
@@ -3261,6 +3279,8 @@ export default function CogsDailySalesPage({
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* ========================================================================= */}
       {/* SUBTAB 1: PENCATATAN HARIAN */}
