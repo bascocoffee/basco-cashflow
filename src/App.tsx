@@ -140,19 +140,43 @@ const DEFAULT_SHEET_NAME = "Dasbor Arus Kas Keuangan";
 const DEFAULT_SHEET_URL =
   "https://docs.google.com/spreadsheets/d/1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc/edit?gid=0#gid=0";
 
+const syncCodeDefaultSheetToStorage = () => {
+  try {
+    const lastCodeDefault = localStorage.getItem("aruskas_code_default_sheet_id");
+    const savedId = localStorage.getItem("aruskas_sheet_id");
+    if (
+      lastCodeDefault !== DEFAULT_SHEET_ID ||
+      savedId === "1jIhpD_JWJWAJdI5rdCTbYYBSlPw4De3H2EMW91fxjNM"
+    ) {
+      localStorage.setItem("aruskas_code_default_sheet_id", DEFAULT_SHEET_ID);
+      localStorage.setItem("aruskas_sheet_id", DEFAULT_SHEET_ID);
+      localStorage.setItem("aruskas_sheet_name", DEFAULT_SHEET_NAME);
+      localStorage.setItem("aruskas_sheet_url", DEFAULT_SHEET_URL);
+      localStorage.removeItem("aruskas_manager_transactions");
+    }
+  } catch {
+    // ignore storage errors
+  }
+};
+
+syncCodeDefaultSheetToStorage();
+
 const getInitialSheetId = (): string => {
+  syncCodeDefaultSheetToStorage();
   const saved = localStorage.getItem("aruskas_sheet_id");
   if (saved && !saved.startsWith("local_")) return saved;
   return DEFAULT_SHEET_ID;
 };
 
 const getInitialSheetName = (): string => {
+  syncCodeDefaultSheetToStorage();
   const saved = localStorage.getItem("aruskas_sheet_name");
   if (saved && !saved.startsWith("Database Lokal")) return saved;
   return DEFAULT_SHEET_NAME;
 };
 
 const getInitialSheetUrl = (): string => {
+  syncCodeDefaultSheetToStorage();
   const saved = localStorage.getItem("aruskas_sheet_url");
   if (saved && saved.includes("docs.google.com/spreadsheets")) return saved;
   return DEFAULT_SHEET_URL;
@@ -743,9 +767,15 @@ export default function App() {
       }
     } catch (err: any) {
       console.error(err);
-      setError(
-        "Gagal mengambil data dari spreadsheet. Hubungan spreadsheet Anda mungkin terputus.",
-      );
+      if (!hasValidGoogleToken) {
+        setError(
+          'Gagal membaca Google Sheets karena akses file masih "Dibatasi" (Private). Buka Google Sheets → klik "Bagikan" (Share) → ubah Akses Umum menjadi "Siapa saja yang memiliki link", atau klik tombol "Google" di pojok kiri bawah untuk menghubungkan akun Google.',
+        );
+      } else {
+        setError(
+          "Gagal mengambil data dari spreadsheet. Hubungan spreadsheet Anda mungkin terputus.",
+        );
+      }
     } finally {
       setIsLoadingData(false);
     }
