@@ -627,4 +627,45 @@ app.post("/api/auth/shared-token", (req, res) => {
   res.json({ ok: true, sharedAuthCache });
 });
 
+// Shared Daily Sales & Jatah Sync across roles (Barista -> Owner & Manager)
+let sharedDailySalesCache: {
+  recordsByDate: Record<string, any>;
+  lastSelectedDate: string | null;
+  updatedAt: number;
+} = {
+  recordsByDate: {},
+  lastSelectedDate: null,
+  updatedAt: 0,
+};
+
+app.get("/api/cogs/shared-sales", (_req, res) => {
+  res.json(sharedDailySalesCache);
+});
+
+app.post("/api/cogs/shared-sales", (req, res) => {
+  const { record, records, selectedDate } = req.body || {};
+  if (selectedDate && typeof selectedDate === "string") {
+    sharedDailySalesCache.lastSelectedDate = selectedDate;
+  }
+  if (record && record.tanggal) {
+    sharedDailySalesCache.recordsByDate[record.tanggal] = {
+      ...record,
+      updatedAt: Date.now(),
+    };
+    sharedDailySalesCache.updatedAt = Date.now();
+  }
+  if (Array.isArray(records)) {
+    records.forEach((r: any) => {
+      if (r && r.tanggal) {
+        sharedDailySalesCache.recordsByDate[r.tanggal] = {
+          ...r,
+          updatedAt: r.updatedAt || Date.now(),
+        };
+      }
+    });
+    sharedDailySalesCache.updatedAt = Date.now();
+  }
+  res.json({ ok: true, sharedDailySalesCache });
+});
+
 export default app;

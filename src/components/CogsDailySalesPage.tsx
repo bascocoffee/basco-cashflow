@@ -595,7 +595,7 @@ export default function CogsDailySalesPage({
   const [comparisonDailySortMode, setComparisonDailySortMode] = useState<'date_desc' | 'sales_desc' | 'hpp_desc' | 'profit_desc' | 'margin_desc'>('date_desc');
   const [isMinComparisonSection, setIsMinComparisonSection] = useState<boolean>(false);
 
-  // Function to sync with Google Sheets Cloud (Realtime all data)
+  // Function to sync with Google Sheets Cloud & Shared Server Cache (Realtime all data across roles)
   const syncDataToCloud = async (
     currentMenu = menuItems, 
     currentSales = dailySales,
@@ -603,14 +603,48 @@ export default function CogsDailySalesPage({
     currentBiaya = biayaList,
     currentIncoming = incomingBatches
   ) => {
-    if (!spreadsheetId || !token) return;
+    // 1. Always push dailySales to shared server cache so Barista -> Owner/Manajer syncs instantly
+    try {
+      await fetch('/api/cogs/shared-sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          records: currentSales,
+          selectedDate: normalizeDateString(selectedDate) || selectedDate
+        })
+      });
+    } catch {
+      // ignore offline error
+    }
+
+    if (!spreadsheetId) return;
+
+    // Resolve valid OAuth token (fallback to shared Google OAuth token if logged in via role password)
+    let activeOAuthToken = token && !token.endsWith('-local-token') ? token : (localStorage.getItem('aruskas_google_access_token') || '');
+    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) {
+      try {
+        const resp = await fetch('/api/auth/shared-token');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.accessToken && !data.accessToken.endsWith('-local-token')) {
+            activeOAuthToken = data.accessToken;
+            localStorage.setItem('aruskas_google_access_token', data.accessToken);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) return;
+
     setIsSyncingSheet(true);
     try {
-      await saveMenuCatalogToSheet(spreadsheetId, currentMenu, token);
-      await saveDailySalesToSheet(spreadsheetId, currentSales, token, currentMenu);
-      await saveIngredientsToSheet(spreadsheetId, currentIngs, token);
-      await saveBiayaListToSheet(spreadsheetId, currentBiaya, token);
-      await saveIncomingBatchesToSheet(spreadsheetId, currentIncoming, token);
+      await saveMenuCatalogToSheet(spreadsheetId, currentMenu, activeOAuthToken);
+      await saveDailySalesToSheet(spreadsheetId, currentSales, activeOAuthToken, currentMenu);
+      await saveIngredientsToSheet(spreadsheetId, currentIngs, activeOAuthToken);
+      await saveBiayaListToSheet(spreadsheetId, currentBiaya, activeOAuthToken);
+      await saveIncomingBatchesToSheet(spreadsheetId, currentIncoming, activeOAuthToken);
       setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
       console.error('Error syncing data to Google Sheets:', err);
@@ -719,9 +753,27 @@ export default function CogsDailySalesPage({
             localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(cloudMenu));
           }
 
-          // 4. Fetch Remote Daily Sales
+          // 4. Fetch Shared Server Daily Sales (Barista <-> Owner/Manager) & Remote Google Sheet Daily Sales
+          let sharedServerRecords: DailySalesRecord[] = [];
+          try {
+            const sharedResp = await fetch('/api/cogs/shared-sales');
+            if (sharedResp.ok) {
+              const sharedData = await sharedResp.json();
+              if (sharedData?.lastSelectedDate) {
+                const normSharedDate = normalizeDateString(sharedData.lastSelectedDate) || sharedData.lastSelectedDate;
+                localStorage.setItem('aruskas_cogs_selected_date', normSharedDate);
+                setSelectedDate(normSharedDate);
+              }
+              if (sharedData?.recordsByDate && typeof sharedData.recordsByDate === 'object') {
+                sharedServerRecords = Object.values(sharedData.recordsByDate) as DailySalesRecord[];
+              }
+            }
+          } catch {
+            // ignore
+          }
+
           const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, token, activeMenu);
-          if (cloudSales && cloudSales.length > 0) {
+          if ((cloudSales && cloudSales.length > 0) || sharedServerRecords.length > 0) {
             setDailySales(prevSales => {
               const mergedMap = new Map<string, DailySalesRecord>();
               
@@ -731,25 +783,45 @@ export default function CogsDailySalesPage({
                 mergedMap.set(normDate, rec);
               });
 
-              // Smart merge with cloudSales
-              cloudSales.forEach(cRec => {
+              // Merge shared server records (from Barista / Manager / Owner session)
+              sharedServerRecords.forEach(sRec => {
+                if (!sRec || !sRec.tanggal) return;
+                const normDate = normalizeDateString(sRec.tanggal) || sRec.tanggal;
+                const existing = mergedMap.get(normDate) as any;
+                const sUpdated = (sRec as any).updatedAt || 0;
+                const exUpdated = existing?.updatedAt || 0;
+                if (!existing || sUpdated >= exUpdated) {
+                  mergedMap.set(normDate, { ...sRec, tanggal: normDate });
+                }
+              });
+
+              // Smart merge with cloudSales (preserving newer local/Barista entries!)
+              (cloudSales || []).forEach(cRec => {
                 const normDate = normalizeDateString(cRec.tanggal) || cRec.tanggal;
-                const existing = mergedMap.get(normDate);
+                const existing = mergedMap.get(normDate) as any;
                 
                 if (!existing) {
                   mergedMap.set(normDate, cRec);
                 } else {
-                  // Merge menuSales arrays preserving non-zero local jatah & terjual if cloud is missing
-                  const mergedMenuSales = (cRec.menuSales || []).map((cMs: any) => {
+                  const hasLocalUpdate = Boolean(existing.updatedAt);
+                  const baseList = (cRec.menuSales && cRec.menuSales.length > 0)
+                    ? cRec.menuSales
+                    : (existing.menuSales || []);
+
+                  const mergedMenuSales = baseList.map((cMs: any) => {
                     const localMs = existing.menuSales?.find((lMs: any) => 
                       lMs.menuId === cMs.menuId || (lMs.nama && cMs.nama && lMs.nama.trim().toLowerCase() === cMs.nama.trim().toLowerCase())
                     );
-                    const finalJatah = (typeof cMs.jatah === 'number' && cMs.jatah > 0) 
-                      ? cMs.jatah 
-                      : (localMs?.jatah ?? cMs.jatah ?? 0);
-                    const finalTerjual = (typeof cMs.terjual === 'number' && cMs.terjual > 0)
-                      ? cMs.terjual
-                      : (localMs?.terjual ?? cMs.terjual ?? 0);
+                    const finalJatah = hasLocalUpdate && localMs !== undefined
+                      ? (localMs.jatah ?? cMs.jatah ?? 0)
+                      : (typeof cMs.jatah === 'number' && cMs.jatah > 0) 
+                        ? cMs.jatah 
+                        : (localMs?.jatah ?? cMs.jatah ?? 0);
+                    const finalTerjual = hasLocalUpdate && localMs !== undefined
+                      ? (localMs.terjual ?? cMs.terjual ?? 0)
+                      : (typeof cMs.terjual === 'number' && cMs.terjual > 0)
+                        ? cMs.terjual
+                        : (localMs?.terjual ?? cMs.terjual ?? 0);
 
                     return {
                       ...cMs,
@@ -758,11 +830,40 @@ export default function CogsDailySalesPage({
                     };
                   });
 
+                  // Also preserve any menu items present in existing.menuSales that weren't in cRec.menuSales
+                  if (existing.menuSales && Array.isArray(existing.menuSales)) {
+                    existing.menuSales.forEach((lMs: any) => {
+                      const inMerged = mergedMenuSales.some((mMs: any) =>
+                        mMs.menuId === lMs.menuId || (mMs.nama && lMs.nama && mMs.nama.trim().toLowerCase() === lMs.nama.trim().toLowerCase())
+                      );
+                      if (!inMerged) {
+                        mergedMenuSales.push(lMs);
+                      }
+                    });
+                  }
+
+                  const finalMenuSales = mergedMenuSales.length > 0 ? mergedMenuSales : (existing.menuSales || cRec.menuSales || []);
+                  const calcCups = finalMenuSales.reduce((s: number, ms: any) => s + (Number(ms.terjual) || 0), 0);
+                  const calcOmset = finalMenuSales.reduce((s: number, ms: any) => {
+                    const matched = activeMenu.find(m => m.id === ms.menuId || (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase());
+                    const harga = Number(ms.hargaJual) || matched?.hargaJual || 0;
+                    return s + ((Number(ms.terjual) || 0) * harga);
+                  }, 0);
+                  const calcHpp = finalMenuSales.reduce((s: number, ms: any) => {
+                    const matched = activeMenu.find(m => m.id === ms.menuId || (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase());
+                    const hppUnit = Number(ms.hpp) || matched?.hpp || 0;
+                    return s + (((Number(ms.terjual) || 0) + (Number(ms.jatah) || 0)) * hppUnit);
+                  }, 0);
+
                   mergedMap.set(normDate, {
                     ...cRec,
-                    notes: cRec.notes || existing.notes || '',
-                    menuSales: mergedMenuSales.length > 0 ? mergedMenuSales : (existing.menuSales || cRec.menuSales)
-                  });
+                    ...(hasLocalUpdate ? { updatedAt: existing.updatedAt } : {}),
+                    cups: calcCups > 0 || hasLocalUpdate ? calcCups : (cRec.cups || existing.cups || 0),
+                    omset: calcOmset > 0 || hasLocalUpdate ? calcOmset : (cRec.omset || existing.omset || 0),
+                    hppTotal: calcHpp > 0 || hasLocalUpdate ? calcHpp : (cRec.hppTotal || existing.hppTotal || 0),
+                    notes: (hasLocalUpdate && existing.notes) ? existing.notes : (cRec.notes || existing.notes || ''),
+                    menuSales: finalMenuSales
+                  } as DailySalesRecord);
                 }
               });
 
@@ -884,12 +985,103 @@ export default function CogsDailySalesPage({
   // Daily Entry Mode: 'itemized' (Per Menu & Jatah) vs 'quick' (Total Direct Input)
   const [entryMode, setEntryMode] = useState<'itemized' | 'quick'>('itemized');
 
-  // Form State for Itemized Daily Entry
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Form State for Itemized Daily Entry (persisted across Barista, Manager & Owner roles)
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const savedDate = localStorage.getItem('aruskas_cogs_selected_date');
+    if (savedDate) return normalizeDateString(savedDate) || savedDate;
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
   const [dailyNotes, setDailyNotes] = useState<string>('');
+
+  useEffect(() => {
+    const norm = normalizeDateString(selectedDate) || selectedDate;
+    if (norm) {
+      localStorage.setItem('aruskas_cogs_selected_date', norm);
+    }
+  }, [selectedDate]);
+
+  // Listen for cross-tab / cross-role updates from Barista -> Owner & Manager
+  useEffect(() => {
+    const handleStorageSync = (e: StorageEvent) => {
+      if (e.key === 'aruskas_cogs_page_daily_sales' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setDailySales(parsed);
+          }
+        } catch {}
+      } else if (e.key === 'aruskas_cogs_selected_date' && e.newValue) {
+        setSelectedDate(e.newValue);
+      }
+    };
+    window.addEventListener('storage', handleStorageSync);
+    return () => window.removeEventListener('storage', handleStorageSync);
+  }, []);
   
   // State for daily itemized inputs (menuId -> { jatah, terjual })
   const [itemizedInputs, setItemizedInputs] = useState<Record<string, { jatah: number; terjual: number }>>({});
+
+  // Helper to immediately persist any form input changes into dailySales & shared storage so Owner/Manager sees Barista inputs automatically
+  const commitItemizedInputsLive = (
+    nextInputs: Record<string, { jatah: number; terjual: number }>,
+    dateStr = selectedDate,
+    notesStr = dailyNotes
+  ) => {
+    const normSelected = normalizeDateString(dateStr) || dateStr;
+    localStorage.setItem('aruskas_cogs_selected_date', normSelected);
+
+    const menuSalesList: DailyMenuItemSale[] = menuItems.map(item => {
+      const input = nextInputs[item.id] || { jatah: item.defaultJatah, terjual: 0 };
+      return {
+        menuId: item.id,
+        nama: item.nama,
+        kategori: item.kategori,
+        hargaJual: item.hargaJual,
+        hpp: item.hpp,
+        jatah: Number(input.jatah) || 0,
+        terjual: Number(input.terjual) || 0
+      };
+    });
+
+    const cups = menuSalesList.reduce((s, ms) => s + (ms.terjual || 0), 0);
+    const omset = menuSalesList.reduce((s, ms) => s + ((ms.terjual || 0) * (ms.hargaJual || 0)), 0);
+    const hppTotal = menuSalesList.reduce((s, ms) => s + (((ms.terjual || 0) + (ms.jatah || 0)) * (ms.hpp || 0)), 0);
+
+    setDailySales(prev => {
+      const existingIndex = prev.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
+      const newRecord: DailySalesRecord & { updatedAt?: number } = {
+        id: existingIndex >= 0 ? prev[existingIndex].id : `ds-${Date.now()}`,
+        tanggal: normSelected,
+        cups,
+        omset,
+        hppTotal,
+        notes: (notesStr || '').trim(),
+        menuSales: menuSalesList,
+        updatedAt: Date.now()
+      };
+
+      let nextList: DailySalesRecord[];
+      if (existingIndex >= 0) {
+        nextList = [...prev];
+        nextList[existingIndex] = newRecord;
+      } else {
+        nextList = [...prev, newRecord].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+      }
+
+      localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(nextList));
+      fetch('/api/cogs/shared-sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record: newRecord, selectedDate: normSelected })
+      }).catch(() => {});
+
+      return nextList;
+    });
+  };
 
   // Quick form states
   const [quickJatah, setQuickJatah] = useState<string>('0');
@@ -904,29 +1096,7 @@ export default function CogsDailySalesPage({
       nextInputs[m.id] = { jatah: jatahVal, terjual: jatahVal };
     });
     setItemizedInputs(nextInputs);
-
-    const normSelected = normalizeDateString(selectedDate) || selectedDate;
-    const existingIndex = dailySales.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
-    if (existingIndex >= 0) {
-      const updatedSales = [...dailySales];
-      const rec = updatedSales[existingIndex];
-      const updatedMenuSales = (rec.menuSales || []).map(ms => {
-        const curJatah = nextInputs[ms.menuId]?.jatah ?? ms.jatah ?? 0;
-        return { ...ms, terjual: curJatah };
-      });
-      const totCups = updatedMenuSales.reduce((s, ms) => s + (ms.terjual || 0), 0);
-      const totOmset = updatedMenuSales.reduce((s, ms) => {
-        const item = menuItems.find(m => m.id === ms.menuId || (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase());
-        return s + ((ms.terjual || 0) * (item?.hargaJual || 0));
-      }, 0);
-      updatedSales[existingIndex] = {
-        ...rec,
-        cups: totCups,
-        omset: totOmset,
-        menuSales: updatedMenuSales
-      };
-      setDailySales(updatedSales);
-    }
+    commitItemizedInputsLive(nextInputs);
   };
 
   const handleResetSalesToZero = () => {
@@ -936,21 +1106,7 @@ export default function CogsDailySalesPage({
       nextInputs[m.id] = { jatah: jatahVal, terjual: 0 };
     });
     setItemizedInputs(nextInputs);
-
-    const normSelected = normalizeDateString(selectedDate) || selectedDate;
-    const existingIndex = dailySales.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
-    if (existingIndex >= 0) {
-      const updatedSales = [...dailySales];
-      const rec = updatedSales[existingIndex];
-      const updatedMenuSales = (rec.menuSales || []).map(ms => ({ ...ms, terjual: 0 }));
-      updatedSales[existingIndex] = {
-        ...rec,
-        cups: 0,
-        omset: 0,
-        menuSales: updatedMenuSales
-      };
-      setDailySales(updatedSales);
-    }
+    commitItemizedInputsLive(nextInputs);
   };
 
   const handleResetJatahToDefault = () => {
@@ -961,24 +1117,7 @@ export default function CogsDailySalesPage({
     });
     setItemizedInputs(nextInputs);
     setQuickJatah('0');
-
-    const normSelected = normalizeDateString(selectedDate) || selectedDate;
-    const existingIndex = dailySales.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
-    if (existingIndex >= 0) {
-      const updatedSales = [...dailySales];
-      const rec = updatedSales[existingIndex];
-      const updatedMenuSales = (rec.menuSales || []).map(ms => ({ ...ms, jatah: 0 }));
-      const totHpp = updatedMenuSales.reduce((s, ms) => {
-        const item = menuItems.find(m => m.id === ms.menuId || (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase());
-        return s + (((ms.terjual || 0) + (ms.jatah || 0)) * (item?.hpp || 0));
-      }, 0);
-      updatedSales[existingIndex] = {
-        ...rec,
-        hppTotal: totHpp,
-        menuSales: updatedMenuSales
-      };
-      setDailySales(updatedSales);
-    }
+    commitItemizedInputsLive(nextInputs);
   };
 
   const handleResetAllJatahToZeroAllMonths = () => {
@@ -2142,8 +2281,8 @@ export default function CogsDailySalesPage({
         kategori: item.kategori,
         hargaJual: item.hargaJual,
         hpp: item.hpp,
-        jatah: input.jatah,
-        terjual: input.terjual
+        jatah: Number(input.jatah) || 0,
+        terjual: Number(input.terjual) || 0
       };
     });
 
@@ -2151,22 +2290,25 @@ export default function CogsDailySalesPage({
     const omset = itemizedCalculations.totalOmset;
     const hppTotal = itemizedCalculations.totalHpp;
 
-    if (cups <= 0 && omset <= 0) {
-      if (!window.confirm('Jumlah porsi terjual masih 0. Simpan catatan harian ini?')) {
+    if (cups <= 0 && omset <= 0 && itemizedCalculations.totalJatah <= 0) {
+      if (!window.confirm('Jumlah porsi terjual & jatah masih 0. Simpan catatan harian ini?')) {
         return;
       }
     }
 
     const normSelected = normalizeDateString(selectedDate) || selectedDate;
+    localStorage.setItem('aruskas_cogs_selected_date', normSelected);
+
     const existingIndex = dailySales.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
-    const newRecord: DailySalesRecord = {
+    const newRecord: DailySalesRecord & { updatedAt?: number } = {
       id: existingIndex >= 0 ? dailySales[existingIndex].id : `ds-${Date.now()}`,
       tanggal: normSelected,
       cups,
       omset,
       hppTotal,
       notes: dailyNotes.trim(),
-      menuSales: menuSalesList
+      menuSales: menuSalesList,
+      updatedAt: Date.now()
     };
 
     let nextDailySales: DailySalesRecord[] = [];
@@ -2179,11 +2321,10 @@ export default function CogsDailySalesPage({
       setDailySales(nextDailySales);
     }
 
-    if (spreadsheetId && token) {
-      syncDataToCloud(menuItems, nextDailySales);
-    }
+    localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(nextDailySales));
+    syncDataToCloud(menuItems, nextDailySales);
 
-    alert(`Data penjualan & jatah menu harian tanggal ${selectedDate} berhasil disimpan!`);
+    alert(`Data penjualan & jatah menu harian tanggal ${selectedDate} berhasil disimpan dan otomatis tersinkron ke Owner & Manajer!`);
   };
 
   // AI Menu Margin Analysis Handler
@@ -3003,18 +3144,26 @@ export default function CogsDailySalesPage({
 
                 const updateTerjual = (nextVal: number) => {
                   const val = Math.max(0, nextVal);
-                  setItemizedInputs(prev => ({
-                    ...prev,
-                    [m.id]: { ...(prev[m.id] || { jatah: m.defaultJatah }), terjual: val }
-                  }));
+                  setItemizedInputs(prev => {
+                    const next = {
+                      ...prev,
+                      [m.id]: { ...(prev[m.id] || { jatah: m.defaultJatah }), terjual: val }
+                    };
+                    commitItemizedInputsLive(next);
+                    return next;
+                  });
                 };
 
                 const updateJatah = (nextVal: number) => {
                   const val = Math.max(0, nextVal);
-                  setItemizedInputs(prev => ({
-                    ...prev,
-                    [m.id]: { ...(prev[m.id] || { terjual: 0 }), jatah: val }
-                  }));
+                  setItemizedInputs(prev => {
+                    const next = {
+                      ...prev,
+                      [m.id]: { ...(prev[m.id] || { terjual: 0 }), jatah: val }
+                    };
+                    commitItemizedInputsLive(next);
+                    return next;
+                  });
                 };
 
                 return (
@@ -3876,10 +4025,14 @@ export default function CogsDailySalesPage({
                                 onChange={(e) => {
                                   const rawVal = e.target.value;
                                   const val = rawVal === '' ? 0 : Math.max(0, parseInt(rawVal, 10) || 0);
-                                  setItemizedInputs(prev => ({
-                                    ...prev,
-                                    [m.id]: { ...(prev[m.id] || { jatah: m.defaultJatah }), terjual: val }
-                                  }));
+                                  setItemizedInputs(prev => {
+                                    const next = {
+                                      ...prev,
+                                      [m.id]: { ...(prev[m.id] || { jatah: m.defaultJatah }), terjual: val }
+                                    };
+                                    commitItemizedInputsLive(next);
+                                    return next;
+                                  });
                                 }}
                                 placeholder="0"
                                 className={`w-24 px-2 py-1 rounded text-center font-mono transition-all focus:outline-none ${
@@ -3897,10 +4050,14 @@ export default function CogsDailySalesPage({
                                 onChange={(e) => {
                                   const rawVal = e.target.value;
                                   const val = rawVal === '' ? 0 : Math.max(0, parseInt(rawVal, 10) || 0);
-                                  setItemizedInputs(prev => ({
-                                    ...prev,
-                                    [m.id]: { ...(prev[m.id] || { terjual: 0 }), jatah: val }
-                                  }));
+                                  setItemizedInputs(prev => {
+                                    const next = {
+                                      ...prev,
+                                      [m.id]: { ...(prev[m.id] || { terjual: 0 }), jatah: val }
+                                    };
+                                    commitItemizedInputsLive(next);
+                                    return next;
+                                  });
                                 }}
                                 placeholder="0"
                                 className={`w-20 px-2 py-1 rounded text-center font-mono transition-all focus:outline-none ${
