@@ -1,3 +1,5 @@
+export type AppRole = 'owner' | 'manager' | 'barista';
+
 export interface Transaction {
   id: string; // Row index or unique ID
   tanggal: string; // format YYYY-MM-DD

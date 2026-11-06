@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { logout } from '../firebase';
 
+import { AppRole } from '../types';
+
 export type TabType = 'dashboard' | 'barista_schedule' | 'omset_cogs' | 'cogs' | 'categories' | 'fixed_cost' | 'ai_chat';
 
 interface NavbarProps {
@@ -29,6 +31,7 @@ interface NavbarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   isManagerMode?: boolean;
+  userRole?: AppRole;
   onLogoutManager?: () => void;
   onLoginGoogle?: () => void;
   onOpenBackupModal?: () => void;
@@ -44,6 +47,7 @@ export default function Navbar({
   activeTab,
   setActiveTab,
   isManagerMode = false,
+  userRole = 'owner',
   onLogoutManager,
   onLoginGoogle,
   onOpenBackupModal
@@ -69,11 +73,16 @@ export default function Navbar({
     }
   };
 
-  const navItems: { id: TabType; label: string; icon: any; badge?: string; highlight?: boolean }[] = isManagerMode ? [
+  const navItems: { id: TabType; label: string; icon: any; badge?: string; highlight?: boolean }[] = userRole === 'barista' ? [
+    { id: 'barista_schedule', label: 'Jadwal Shift & Gaji', icon: Users, badge: 'Shift' },
+    { id: 'cogs', label: 'Stok Opname & Resep', icon: ClipboardList },
+  ] : (userRole === 'manager' || isManagerMode) ? [
     { id: 'dashboard', label: 'Dashboard Pencatatan Harian', icon: TrendingUp },
     { id: 'omset_cogs', label: 'Penjualan Menu', icon: Coffee, highlight: true },
     { id: 'barista_schedule', label: 'Jadwal Operasional', icon: Users, badge: 'Shift' },
     { id: 'cogs', label: 'Stok Opname Bulanan', icon: ClipboardList },
+    { id: 'categories', label: 'Kategori Pengeluaran', icon: Layers },
+    { id: 'ai_chat', label: 'Tanya AI Analyst', icon: Bot, badge: 'AI' },
   ] : [
     { id: 'dashboard', label: 'Dasbor Utama', icon: TrendingUp },
     { id: 'barista_schedule', label: 'Jadwal Barista', icon: Users, badge: 'Shift Bar' },

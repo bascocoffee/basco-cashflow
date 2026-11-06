@@ -43,7 +43,7 @@ import {
 } from './sheetsService';
 import { CALENDAR_NOTES_STORAGE_KEY } from './utils/calendarNotesData';
 import { SHOPPING_LIST_STORAGE_KEY, DEFAULT_SHOPPING_ITEMS, computeShoppingMetrics } from './utils/shoppingListData';
-import { Transaction, CATEGORIES } from './types';
+import { Transaction, CATEGORIES, AppRole } from './types';
 
 // Components
 import Sidebar, { TabType } from './components/Sidebar';
@@ -62,26 +62,66 @@ import DebtTrackerPage from './components/DebtTrackerPage';
 import ShoppingReportPage from './components/ShoppingReportPage';
 import BackupRestoreModal from './components/BackupRestoreModal';
 import EmployeeTaskPage from './components/EmployeeTaskPage';
-import { KeyRound, UserCheck, Lock } from 'lucide-react';
+import { KeyRound, UserCheck, Lock, Crown, Briefcase, CheckCircle2 } from 'lucide-react';
 
-const MANAGER_USER: User = {
-  uid: 'manager-local-uid',
-  displayName: 'Manager Cafe',
-  email: 'Tanpa Email (Akses Manager)',
-  photoURL: null,
-  emailVerified: true,
-  isAnonymous: true,
-  metadata: {} as any,
-  providerData: [],
-  refreshToken: '',
-  tenantId: null,
-  delete: async () => Promise.resolve(),
-  getIdToken: async () => Promise.resolve(''),
-  getIdTokenResult: async () => Promise.resolve({} as any),
-  reload: async () => Promise.resolve(),
-  toJSON: () => ({}),
-  phoneNumber: null,
-  providerId: 'manager'
+const ROLE_USERS: Record<AppRole, User> = {
+  owner: {
+    uid: 'owner-local-uid',
+    displayName: 'Owner Basco Coffee',
+    email: 'Akses Owner (Pemilik)',
+    photoURL: null,
+    emailVerified: true,
+    isAnonymous: true,
+    metadata: {} as any,
+    providerData: [],
+    refreshToken: '',
+    tenantId: null,
+    delete: async () => Promise.resolve(),
+    getIdToken: async () => Promise.resolve(''),
+    getIdTokenResult: async () => Promise.resolve({} as any),
+    reload: async () => Promise.resolve(),
+    toJSON: () => ({}),
+    phoneNumber: null,
+    providerId: 'owner'
+  },
+  manager: {
+    uid: 'manager-local-uid',
+    displayName: 'Manager Cafe',
+    email: 'Akses Manager (Operasional)',
+    photoURL: null,
+    emailVerified: true,
+    isAnonymous: true,
+    metadata: {} as any,
+    providerData: [],
+    refreshToken: '',
+    tenantId: null,
+    delete: async () => Promise.resolve(),
+    getIdToken: async () => Promise.resolve(''),
+    getIdTokenResult: async () => Promise.resolve({} as any),
+    reload: async () => Promise.resolve(),
+    toJSON: () => ({}),
+    phoneNumber: null,
+    providerId: 'manager'
+  },
+  barista: {
+    uid: 'barista-local-uid',
+    displayName: 'Barista Basco',
+    email: 'Akses Barista (Staff)',
+    photoURL: null,
+    emailVerified: true,
+    isAnonymous: true,
+    metadata: {} as any,
+    providerData: [],
+    refreshToken: '',
+    tenantId: null,
+    delete: async () => Promise.resolve(),
+    getIdToken: async () => Promise.resolve(''),
+    getIdTokenResult: async () => Promise.resolve({} as any),
+    reload: async () => Promise.resolve(),
+    toJSON: () => ({}),
+    phoneNumber: null,
+    providerId: 'barista'
+  }
 };
 
 const DEFAULT_MANAGER_TRANSACTIONS: Transaction[] = [
@@ -101,6 +141,18 @@ export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // User Role State ('owner' | 'manager' | 'barista')
+  const [userRole, setUserRole] = useState<AppRole>(() => {
+    const saved = localStorage.getItem('aruskas_user_role') as AppRole;
+    if (saved && ['owner', 'manager', 'barista'].includes(saved)) return saved;
+    return localStorage.getItem('aruskas_is_manager_mode') === 'true' ? 'manager' : 'owner';
+  });
+
+  // Selected Role Tab on Landing Page
+  const [loginRoleTab, setLoginRoleTab] = useState<AppRole>('owner');
+  const [rolePinInput, setRolePinInput] = useState('');
+  const [rolePinError, setRolePinError] = useState<string | null>(null);
 
   // Manager Mode State (Akses Tanpa Email)
   const [isManagerMode, setIsManagerMode] = useState<boolean>(() => {
@@ -207,17 +259,18 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Manager Mode effect (Bypass Email Login)
+  // Role Mode effect (Bypass Email Login with Role)
   useEffect(() => {
     if (isManagerMode) {
-      setUser(MANAGER_USER);
-      setToken('manager-local-token');
+      const activeUser = ROLE_USERS[userRole] || ROLE_USERS.manager;
+      setUser(activeUser);
+      setToken(`${userRole}-local-token`);
       const storedId = localStorage.getItem('aruskas_sheet_id');
       const storedName = localStorage.getItem('aruskas_sheet_name');
       const storedUrl = localStorage.getItem('aruskas_sheet_url');
       
-      setSpreadsheetId(storedId || 'local_manager_db');
-      setSpreadsheetName(storedName || 'Database Lokal Manager');
+      setSpreadsheetId(storedId || `local_${userRole}_db`);
+      setSpreadsheetName(storedName || `Database Lokal ${userRole === 'owner' ? 'Owner' : userRole === 'barista' ? 'Barista' : 'Manajer'}`);
       setSpreadsheetUrl(storedUrl || null);
 
       // Load transactions from localStorage or default
@@ -234,35 +287,91 @@ export default function App() {
       }
       setAuthChecking(false);
     }
-  }, [isManagerMode]);
+  }, [isManagerMode, userRole]);
 
-  // Enter Manager mode without email login (Password PIN: basco12)
-  const handleEnterManagerMode = (pinCode?: string) => {
-    const inputClean = (pinCode || '').trim();
-    const storedPin = localStorage.getItem('aruskas_manager_pin') || 'basco12';
+  // Route protection for Barista role (Barista cannot access owner-only financial tabs)
+  useEffect(() => {
+    if (userRole === 'barista') {
+      const allowedBaristaTabs: TabType[] = ['barista_schedule', 'employee_tasks', 'cogs', 'shopping_report'];
+      if (!allowedBaristaTabs.includes(activeTab)) {
+        setActiveTab('barista_schedule');
+      }
+    }
+  }, [userRole, activeTab]);
+
+  // Unified Role PIN Login Handler (Owner, Manager, Barista)
+  const handleLoginWithRolePin = (role: AppRole, pinCode?: string) => {
+    const inputClean = (pinCode || rolePinInput || '').trim().toLowerCase();
     
-    if (inputClean.toLowerCase() !== 'basco12' && inputClean !== storedPin) {
-      setManagerPinError('PIN / Password Salah! Password Manager adalah basco12');
+    // Master fallback PIN: basco12
+    // Role-specific default PINs: owner12, manager12, barista12
+    const defaultRolePin = role === 'owner' ? 'owner12' : role === 'manager' ? 'manager12' : 'barista12';
+    const storedPin = localStorage.getItem(`aruskas_${role}_pin`) || defaultRolePin;
+    const validPins = ['basco12', defaultRolePin, storedPin.toLowerCase()];
+
+    if (!inputClean || !validPins.includes(inputClean)) {
+      setRolePinError(`PIN Salah! Masukkan PIN default ${defaultRolePin} atau basco12`);
       return;
     }
-    
+
+    setUserRole(role);
+    localStorage.setItem('aruskas_user_role', role);
     setIsManagerMode(true);
     localStorage.setItem('aruskas_is_manager_mode', 'true');
-    localStorage.setItem('aruskas_manager_pin', 'basco12');
-    setActiveTab('dashboard');
+    setUser(ROLE_USERS[role]);
+    setToken(`${role}-local-token`);
+
+    const storedId = localStorage.getItem('aruskas_sheet_id');
+    const storedName = localStorage.getItem('aruskas_sheet_name');
+    const storedUrl = localStorage.getItem('aruskas_sheet_url');
+
+    setSpreadsheetId(storedId || `local_${role}_db`);
+    setSpreadsheetName(storedName || `Database Lokal ${role === 'owner' ? 'Owner' : role === 'barista' ? 'Barista' : 'Manajer'}`);
+    setSpreadsheetUrl(storedUrl || null);
+
+    const savedTx = localStorage.getItem('aruskas_manager_transactions');
+    if (savedTx) {
+      try {
+        setTransactions(JSON.parse(savedTx));
+      } catch (e) {
+        setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
+      }
+    } else {
+      setTransactions(DEFAULT_MANAGER_TRANSACTIONS);
+      localStorage.setItem('aruskas_manager_transactions', JSON.stringify(DEFAULT_MANAGER_TRANSACTIONS));
+    }
+
+    if (role === 'barista') {
+      setActiveTab('barista_schedule');
+    } else {
+      setActiveTab('dashboard');
+    }
+
     setShowPinModal(false);
+    setRolePinError(null);
+    setRolePinInput('');
     setManagerPinError(null);
     setManagerPinInput('');
   };
 
-  // Logout from Manager mode
+  // Enter Manager mode backward-compatibility
+  const handleEnterManagerMode = (pinCode?: string) => {
+    handleLoginWithRolePin('manager', pinCode);
+  };
+
+  // Logout from any mode
   const handleLogoutManager = () => {
     setIsManagerMode(false);
     localStorage.removeItem('aruskas_is_manager_mode');
+    localStorage.removeItem('aruskas_user_role');
+    setUserRole('owner');
     setUser(null);
     setToken(null);
     setSpreadsheetId(null);
     setSpreadsheetName(null);
+    setRolePinError(null);
+    setRolePinInput('');
+    setActiveTab('dashboard');
   };
 
   // Drive and Sheets logic when authenticated via Google
@@ -366,6 +475,10 @@ export default function App() {
       if (result) {
         setUser(result.user);
         setToken(result.accessToken);
+        setUserRole('owner');
+        localStorage.setItem('aruskas_user_role', 'owner');
+        setIsManagerMode(false);
+        localStorage.removeItem('aruskas_is_manager_mode');
         
         // Restore local storage if present
         const storedId = localStorage.getItem('aruskas_sheet_id');
@@ -702,213 +815,358 @@ export default function App() {
     );
   }
 
-  // SIGN IN LANDING SCREEN (If not logged in)
+  // SIGN IN LANDING SCREEN (If not logged in) - 3 Roles: Owner, Manajer, Barista
   if (!user || !token) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-10 sm:px-6 lg:px-8 font-sans relative overflow-hidden">
         
-        <div className="sm:mx-auto sm:w-full sm:max-w-md text-center z-10 px-4">
-          {/* Logo */}
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded bg-slate-900 text-white shadow-sm mb-5 border border-slate-950">
-            <TrendingUp className="h-7 w-7" />
+        {/* App Title & Header */}
+        <div className="sm:mx-auto sm:w-full sm:max-w-xl text-center z-10 px-4">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-amber-400 shadow-md mb-3 border border-slate-800">
+            <Coffee className="h-7 w-7" />
           </div>
           
-          <h2 className="text-xl font-black uppercase tracking-widest text-slate-955">
-            ArusKas Dashboard
+          <h2 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-slate-900">
+            Basco Cashflow & Cafe System
           </h2>
-          <p className="mt-2 text-xs text-slate-500 max-w-sm mx-auto font-bold uppercase tracking-wider">
-            Sistem Pemantau Keuangan Real-Time Terotomatisasi
+          <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto font-bold uppercase tracking-wider">
+            Sistem Pemantau Keuangan & Operasional Cafe Real-Time
           </p>
         </div>
 
-        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md z-10 px-4">
-          <div className="bg-white py-8 px-6 sm:px-10 rounded border border-slate-200 shadow-sm">
+        <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl z-10 px-4">
+          <div className="bg-white py-7 px-5 sm:px-8 rounded-2xl border border-slate-200/90 shadow-lg">
             
-            {/* Features list */}
-            <div className="space-y-4 mb-8 text-xs font-semibold text-slate-650">
-              <div className="flex items-start space-x-3.5">
-                <div className="bg-emerald-100 text-emerald-800 p-1.5 rounded shrink-0 border border-emerald-200">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-slate-900 font-extrabold uppercase tracking-wide text-[11px]">Sinkronisasi Google Sheets Otomatis</p>
-                  <p className="text-[10.5px] text-slate-400 font-medium mt-0.5">Setiap data form masuk langsung terarsip dengan aman di akun spreadsheet personal Anda.</p>
-                </div>
-              </div>
+            {/* 3 ROLE SELECTOR TABS */}
+            <div className="mb-6">
+              <label className="text-[11px] font-black uppercase tracking-wider text-slate-500 block mb-2 text-center">
+                Pilih Peran Masuk (Role Akun)
+              </label>
+              <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginRoleTab('owner');
+                    setRolePinError(null);
+                    setRolePinInput('');
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    loginRoleTab === 'owner'
+                      ? 'bg-purple-600 text-white shadow-sm ring-2 ring-purple-600/30'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <span className="text-base sm:mr-1.5">👑</span>
+                  <span>Owner</span>
+                </button>
 
-              <div className="flex items-start space-x-3.5">
-                <div className="bg-indigo-100 text-indigo-800 p-1.5 rounded shrink-0 border border-indigo-200">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-slate-900 font-extrabold uppercase tracking-wide text-[11px]">Visualisasi Arus Kas Interaktif</p>
-                  <p className="text-[10.5px] text-slate-400 font-medium mt-0.5">Visual grafik tren bulanan otomatis untuk memantau selisih Debit & Kredit.</p>
-                </div>
-              </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginRoleTab('manager');
+                    setRolePinError(null);
+                    setRolePinInput('');
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    loginRoleTab === 'manager'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm ring-2 ring-amber-500/30'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <span className="text-base sm:mr-1.5">👔</span>
+                  <span>Manajer</span>
+                </button>
 
-              <div className="flex items-start space-x-3.5">
-                <div className="bg-amber-100 text-amber-800 p-1.5 rounded shrink-0 border border-amber-200">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-slate-900 font-extrabold uppercase tracking-wide text-[11px]">Filter Kategori & Analisis</p>
-                  <p className="text-[10.5px] text-slate-400 font-medium mt-0.5">Kelompokkan pengeluaran Anda dengan filter tanggal terperinci & analisis bento.</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginRoleTab('barista');
+                    setRolePinError(null);
+                    setRolePinInput('');
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center py-2.5 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                    loginRoleTab === 'barista'
+                      ? 'bg-sky-500 text-white shadow-sm ring-2 ring-sky-500/30'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <span className="text-base sm:mr-1.5">☕</span>
+                  <span>Barista</span>
+                </button>
               </div>
             </div>
 
+            {/* Error alerts if any */}
+            {rolePinError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-700 mb-5 flex items-start space-x-2">
+                <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500 mt-0.5" />
+                <span>{rolePinError}</span>
+              </div>
+            )}
+
             {error && (
-              <div className="p-3 bg-red-50 border border-red-150 rounded text-xs font-bold text-red-700 mb-5 flex items-start space-x-2">
-                <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500" />
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-700 mb-5 flex items-start space-x-2">
+                <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
 
-            {/* CSI Google Login Button */}
-            <button 
-              onClick={handleLogin}
-              disabled={isLoggingIn}
-              className="w-full flex justify-center items-center py-2.5 px-4 border border-slate-200 rounded text-xs font-bold bg-white text-slate-700 hover:bg-slate-50 transition cursor-pointer disabled:opacity-60 shadow-2xs"
-            >
-              {isLoggingIn ? (
-                <div className="flex items-center space-x-2">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-500" />
-                  <span>Menghubungkan akun...</span>
+            {/* TAB CONTENT: OWNER */}
+            {loginRoleTab === 'owner' && (
+              <div className="space-y-5">
+                {/* Role description banner */}
+                <div className="p-4 bg-purple-50/80 rounded-xl border border-purple-200 text-purple-950">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 bg-purple-600 text-white rounded-lg shrink-0 shadow-xs">
+                      <Crown className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-purple-950">Akses Penuh Owner (Pemilik Usaha)</h4>
+                      <p className="text-[11px] text-purple-900/80 font-medium mt-0.5 leading-relaxed">
+                        Kendali lengkap: Dasbor Keuangan & Laba Bersih, Omset & HPP, Debt Tracker AI, Kontrol Roster Gaji, Analisis Biaya Tetap & BEP, dan Sinkronisasi Google Sheets.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="flex items-center space-x-3">
-                  <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-4 w-4 shrink-0">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                  </svg>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-800">Masuk dengan Akun Google</span>
-                </div>
-              )}
-            </button>
 
-            {/* Divider */}
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200"></div>
-              </div>
-              <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest">
-                <span className="bg-white px-3 text-slate-400">Atau Akses Manager</span>
-              </div>
-            </div>
-
-            {/* MANAGER ACCESS SECTION */}
-            <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 space-y-3">
-              <div className="flex items-center space-x-2">
-                <div className="p-1.5 bg-amber-500 text-slate-950 rounded-lg shrink-0">
-                  <KeyRound className="h-4 w-4" />
-                </div>
+                {/* Option 1: Google OAuth */}
                 <div>
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Akses Khusus Manager</h4>
-                  <p className="text-[10.5px] text-amber-900 font-medium">Masuk operasional dengan PIN password: <span className="font-mono font-bold text-amber-950">basco12</span></p>
+                  <button 
+                    type="button"
+                    onClick={handleLogin}
+                    disabled={isLoggingIn}
+                    className="w-full flex justify-center items-center py-2.5 px-4 border border-purple-200 rounded-xl text-xs font-bold bg-white text-slate-800 hover:bg-purple-50/50 transition cursor-pointer disabled:opacity-60 shadow-xs hover:border-purple-300"
+                  >
+                    {isLoggingIn ? (
+                      <div className="flex items-center space-x-2">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                        <span>Menghubungkan akun Google...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-3">
+                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-4 w-4 shrink-0">
+                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                        </svg>
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">Masuk Akun Google (Sinkron Google Sheets)</span>
+                      </div>
+                    )}
+                  </button>
+                  <p className="text-[10px] text-slate-400 text-center font-medium mt-1.5">
+                    Memerlukan akun Google dengan izin Google Sheets personal Anda
+                  </p>
                 </div>
-              </div>
 
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManagerPinError(null);
-                    setManagerPinInput('');
-                    setShowPinModal(true);
+                {/* Divider */}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest">
+                    <span className="bg-white px-3 text-slate-400">Atau Masuk Cepat dengan PIN Owner</span>
+                  </div>
+                </div>
+
+                {/* Option 2: Owner PIN Form */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleLoginWithRolePin('owner', rolePinInput);
                   }}
-                  className="w-full py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center space-x-2 transition cursor-pointer shadow-xs"
+                  className="space-y-3"
                 >
-                  <Lock className="h-4 w-4" />
-                  <span>Masuk Akses Manager (PIN: basco12)</span>
-                </button>
-              </div>
-              <p className="text-[9.5px] text-slate-500 text-center font-bold">
-                Menu Terbuka: Dashboard Pencatatan Harian, Penjualan Menu, Jadwal Operasional & Stok Opname Bulanan
-              </p>
-            </div>
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <Lock className="h-4 w-4" />
+                      </div>
+                      <input
+                        type="password"
+                        value={rolePinInput}
+                        onChange={(e) => setRolePinInput(e.target.value)}
+                        placeholder="Masukkan PIN Owner (owner12 atau basco12)"
+                        className="w-full pl-9 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
 
-            <div className="mt-5 text-[9px] text-slate-400 font-bold uppercase tracking-widest text-center flex items-center justify-center space-x-1">
-              <Info className="h-3 w-3 shrink-0" />
-              <span>Berjalan client-side secara privat & aman.</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="submit"
+                      className="py-2.5 px-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center space-x-1.5"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Masuk dengan PIN</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleLoginWithRolePin('owner', 'owner12')}
+                      className="py-2.5 px-3 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
+                    >
+                      <span>⚡ Cepat: PIN owner12</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* TAB CONTENT: MANAJER */}
+            {loginRoleTab === 'manager' && (
+              <div className="space-y-5">
+                {/* Role description banner */}
+                <div className="p-4 bg-amber-50/80 rounded-xl border border-amber-200 text-amber-950">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 bg-amber-500 text-slate-950 rounded-lg shrink-0 shadow-xs">
+                      <Briefcase className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Akses Manajer Operasional Cafe</h4>
+                      <p className="text-[11px] text-amber-900 font-medium mt-0.5 leading-relaxed">
+                        Kelola operasional: input kas masuk/keluar harian, omset penjualan menu harian (COGS), pantau jadwal shift barista, audit stok opname, dan laporan belanja bahan.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manager Features Checklist */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
+                  <div className="flex items-center space-x-2 text-slate-800 font-bold">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <span>Fitur Terbuka: Dashboard Kasir POS, Omset Penjualan, Roster Shift & Stok Opname</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 pl-5">
+                    Data sensitif pinjaman & simulasi BEP pemilik usaha dilindungi.
+                  </p>
+                </div>
+
+                {/* Manager PIN Form */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleLoginWithRolePin('manager', rolePinInput);
+                  }}
+                  className="space-y-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <Lock className="h-4 w-4" />
+                      </div>
+                      <input
+                        type="password"
+                        value={rolePinInput}
+                        onChange={(e) => setRolePinInput(e.target.value)}
+                        placeholder="Masukkan PIN Manajer (manager12 atau basco12)"
+                        className="w-full pl-9 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="submit"
+                      className="py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center space-x-1.5"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Masuk Manajer</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleLoginWithRolePin('manager', 'manager12')}
+                      className="py-2.5 px-3 bg-amber-100/70 hover:bg-amber-100 text-amber-950 border border-amber-300 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
+                    >
+                      <span>⚡ Cepat: PIN manager12</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* TAB CONTENT: BARISTA */}
+            {loginRoleTab === 'barista' && (
+              <div className="space-y-5">
+                {/* Role description banner */}
+                <div className="p-4 bg-sky-50/80 rounded-xl border border-sky-200 text-sky-950">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 bg-sky-500 text-white rounded-lg shrink-0 shadow-xs">
+                      <Coffee className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Akses Barista & Tim Bar</h4>
+                      <p className="text-[11px] text-sky-950 font-medium mt-0.5 leading-relaxed">
+                        Area khusus tim bar: cek jadwal roster shift harian & mingguan, unduh slip gaji, checklist tugas SOP bar, dan cek kartu resep & stok opname bahan baku.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Barista Features Checklist */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1.5 font-medium">
+                  <div className="flex items-center space-x-2 text-slate-800 font-bold">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                    <span>Fitur Terbuka: Jadwal Shift Barista, Slip Gaji, SOP Tugas & Resep Minuman</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 pl-5">
+                    Aman & fokus tanpa gangguan menu finansial pemilik.
+                  </p>
+                </div>
+
+                {/* Barista PIN Form */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleLoginWithRolePin('barista', rolePinInput);
+                  }}
+                  className="space-y-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <Lock className="h-4 w-4" />
+                      </div>
+                      <input
+                        type="password"
+                        value={rolePinInput}
+                        onChange={(e) => setRolePinInput(e.target.value)}
+                        placeholder="Masukkan PIN Barista (barista12 atau basco12)"
+                        className="w-full pl-9 pr-3 py-2 text-xs font-mono font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="submit"
+                      className="py-2.5 px-3 bg-sky-500 hover:bg-sky-600 text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center space-x-1.5"
+                    >
+                      <Lock className="h-3.5 w-3.5" />
+                      <span>Masuk Barista</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleLoginWithRolePin('barista', 'barista12')}
+                      className="py-2.5 px-3 bg-sky-100/70 hover:bg-sky-100 text-sky-950 border border-sky-300 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5"
+                    >
+                      <span>⚡ Cepat: PIN barista12</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Footer privacy guarantee */}
+            <div className="mt-6 pt-4 border-t border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider text-center flex items-center justify-center space-x-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <span>Sistem Enkripsi Sesi Client-Side & Google Cloud Terproteksi</span>
             </div>
 
           </div>
         </div>
-
-        {/* MODAL PIN MANAGER */}
-        {showPinModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-            <div className="bg-white rounded-2xl max-w-sm w-full p-6 border border-slate-200 shadow-xl space-y-4 animate-scale-up">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <div className="flex items-center space-x-2">
-                  <div className="p-1.5 bg-amber-100 text-amber-900 rounded-lg">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">Verifikasi PIN Manager</h3>
-                    <p className="text-[10px] text-slate-400 font-medium">PIN Password: basco12</p>
-                  </div>
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => { setShowPinModal(false); setManagerPinError(null); }}
-                  className="text-slate-400 hover:text-slate-600 font-bold text-sm"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {managerPinError && (
-                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs font-bold text-red-700 text-center">
-                  {managerPinError}
-                </div>
-              )}
-
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleEnterManagerMode(managerPinInput);
-                }}
-                className="space-y-4"
-              >
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-600 block">
-                    Masukkan PIN / Password Manager
-                  </label>
-                  <input
-                    type="password"
-                    value={managerPinInput}
-                    onChange={(e) => setManagerPinInput(e.target.value)}
-                    placeholder="Masukkan basco12"
-                    className="w-full px-3 py-2.5 text-center text-lg tracking-widest font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold"
-                    autoFocus
-                  />
-                  <p className="text-[10.5px] text-slate-400 text-center">
-                    Gunakan password: <span className="font-mono font-bold text-amber-800">basco12</span>
-                  </p>
-                </div>
-
-                <div className="flex space-x-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => { setShowPinModal(false); setManagerPinError(null); }}
-                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl transition shadow-2xs"
-                  >
-                    Masuk Manager
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
       </div>
     );
@@ -1064,28 +1322,28 @@ export default function App() {
   // ACTIVE DASHBOARD APPLICATION VIEW
   const tabTitles: Record<TabType, { title: string; subtitle: string }> = {
     dashboard: {
-      title: isManagerMode ? 'Dashboard Pencatatan Harian' : 'Dasbor Utama & Arus Kas',
-      subtitle: isManagerMode ? 'Pencatatan transaksi harian & arus kas operasional cafe' : 'Ringkasan pemasukan, pengeluaran & saldo harian cafe'
+      title: userRole === 'manager' ? 'Dashboard Pencatatan Harian' : 'Dasbor Utama & Arus Kas',
+      subtitle: userRole === 'manager' ? 'Pencatatan transaksi harian & arus kas operasional cafe' : 'Ringkasan pemasukan, pengeluaran & saldo harian cafe'
     },
     employee_tasks: {
-      title: isManagerMode ? 'Tugas Karyawan' : 'Pencatatan Tugas Karyawan',
-      subtitle: isManagerMode ? 'Catatan tugas operasional staf & jobdesk cafe' : 'Manajemen tugas staf, alokasi upah/gaji & sinkronisasi Google Sheets'
+      title: userRole === 'barista' ? 'Tugas & SOP Barista' : userRole === 'manager' ? 'Tugas Karyawan' : 'Pencatatan Tugas Karyawan',
+      subtitle: userRole === 'barista' ? 'Checklist harian tugas barista & SOP operasional bar' : 'Manajemen tugas staf, alokasi upah/gaji & sinkronisasi Google Sheets'
     },
     calendar_notes: {
       title: 'Catatan & Agenda Kalender',
       subtitle: 'Kalender kegiatan cafe, checklist operasional, audit, dan pengingat H-1 otomatis'
     },
     barista_schedule: {
-      title: isManagerMode ? 'Jadwal Operasional' : 'Jadwal Operasional Basco Coffee',
-      subtitle: isManagerMode ? 'Roster shift kerja barista dan operasional harian Basco Coffee' : 'Manajemen roster mingguan, pembagian shift bar & estimasi gaji tim'
+      title: userRole === 'barista' ? 'Jadwal Shift & Slip Gaji' : userRole === 'manager' ? 'Jadwal Operasional' : 'Jadwal Operasional Basco Coffee',
+      subtitle: userRole === 'barista' ? 'Roster jam kerja, shift bar & unduh slip gaji' : 'Manajemen roster mingguan, pembagian shift bar & estimasi gaji tim'
     },
     omset_cogs: {
-      title: isManagerMode ? 'Penjualan Menu' : 'Analisis COGS & Sales (Aplikasi 2)',
-      subtitle: isManagerMode ? 'Catatan penjualan menu harian, rekapitulasi porsi & integrasi Excel' : 'Laporan omset harian, food cost, margin keuntungan, dan target sales'
+      title: userRole === 'manager' ? 'Penjualan Menu' : 'Analisis COGS & Sales (Aplikasi 2)',
+      subtitle: userRole === 'manager' ? 'Catatan penjualan menu harian, rekapitulasi porsi & integrasi Excel' : 'Laporan omset harian, food cost, margin keuntungan, dan target sales'
     },
     cogs: {
-      title: 'Stok Opname Bulanan',
-      subtitle: 'Pencatatan persediaan bahan baku, stok masuk, stok akhir & audit bulanan'
+      title: userRole === 'barista' ? 'Stok Opname & Resep' : 'Stok Opname Bulanan',
+      subtitle: userRole === 'barista' ? 'Audit persediaan bahan baku bar & cek resep minuman' : 'Pencatatan persediaan bahan baku, stok masuk, stok akhir & audit bulanan'
     },
     shopping_report: {
       title: 'Bahan yang Harus Dibelanjakan (Sheet 4)',
@@ -1125,6 +1383,7 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isManagerMode={isManagerMode}
+        userRole={userRole}
         onLogoutManager={handleLogoutManager}
         onLoginGoogle={handleLogin}
         onOpenBackupModal={() => setIsGlobalBackupModalOpen(true)}
@@ -1200,8 +1459,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* Quick Backup JSON button (Hidden in Manager Mode) */}
-              {!isManagerMode && (
+              {/* Quick Backup JSON button (Available for Owner) */}
+              {userRole === 'owner' && (
                 <button
                   type="button"
                   onClick={() => setIsGlobalBackupModalOpen(true)}
@@ -1213,8 +1472,8 @@ export default function App() {
                 </button>
               )}
 
-              {/* Shopping Notification Button (Sheet 4) - Hidden in Manager Mode */}
-              {!isManagerMode && shoppingUrgentCount > 0 && (
+              {/* Shopping Notification Button (Sheet 4) */}
+              {shoppingUrgentCount > 0 && (
                 <button
                   type="button"
                   onClick={() => setActiveTab('shopping_report')}
@@ -1242,13 +1501,16 @@ export default function App() {
                 </button>
               )}
 
-              {/* Manager Badge indicator */}
-              {isManagerMode && (
-                <div className="hidden sm:flex items-center space-x-1 px-2.5 py-1 bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-[10.5px] font-extrabold uppercase tracking-wider">
-                  <ShieldCheck className="h-3.5 w-3.5 text-amber-700" />
-                  <span>Akses Manager</span>
-                </div>
-              )}
+              {/* Role Badge indicator */}
+              <div className={`hidden sm:flex items-center space-x-1 px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold uppercase tracking-wider border shadow-2xs ${
+                userRole === 'owner'
+                  ? 'bg-purple-100 border-purple-300 text-purple-900'
+                  : userRole === 'barista'
+                  ? 'bg-sky-100 border-sky-300 text-sky-900'
+                  : 'bg-amber-100 border-amber-300 text-amber-900'
+              }`}>
+                <span>{userRole === 'owner' ? '👑 Akses Owner' : userRole === 'barista' ? '☕ Akses Barista' : '👔 Akses Manajer'}</span>
+              </div>
             </div>
 
           </div>
@@ -1287,8 +1549,8 @@ export default function App() {
               spreadsheetUrl={spreadsheetUrl}
               categories={categories}
               onManageCategories={() => setIsCategoryManagerOpen(true)}
-              onNavigateToDebt={!isManagerMode ? () => setActiveTab('debt_tracker') : undefined}
-              onNavigateToShopping={!isManagerMode ? () => setActiveTab('shopping_report') : undefined}
+              onNavigateToDebt={userRole === 'owner' ? () => setActiveTab('debt_tracker') : undefined}
+              onNavigateToShopping={() => setActiveTab('shopping_report')}
             />
           ) : activeTab === 'employee_tasks' ? (
             <EmployeeTaskPage
@@ -1319,7 +1581,7 @@ export default function App() {
               spreadsheetId={spreadsheetId}
               token={token}
             />
-          ) : !isManagerMode && activeTab === 'shopping_report' ? (
+          ) : activeTab === 'shopping_report' ? (
             <ShoppingReportPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
@@ -1328,7 +1590,7 @@ export default function App() {
               isManagerMode={isManagerMode}
               onNavigateToIncomingGoods={() => setActiveTab('omset_cogs')}
             />
-          ) : !isManagerMode && activeTab === 'calendar_notes' ? (
+          ) : activeTab === 'calendar_notes' ? (
             <CalendarNotesPage
               spreadsheetId={spreadsheetId}
               spreadsheetName={spreadsheetName}
@@ -1336,19 +1598,19 @@ export default function App() {
               token={token}
               isManagerMode={isManagerMode}
             />
-          ) : !isManagerMode && activeTab === 'categories' ? (
+          ) : activeTab === 'categories' ? (
             <CategoryExpenses
               transactions={transactions}
               categories={categories}
               onBackToDashboard={() => setActiveTab('dashboard')}
             />
-          ) : !isManagerMode && activeTab === 'fixed_cost' ? (
+          ) : activeTab === 'fixed_cost' ? (
             <FixedCostSimulator />
-          ) : !isManagerMode && activeTab === 'debt_tracker' ? (
+          ) : activeTab === 'debt_tracker' ? (
             <DebtTrackerPage
               transactions={transactions}
             />
-          ) : !isManagerMode && activeTab === 'ai_chat' ? (
+          ) : activeTab === 'ai_chat' ? (
             <AiChat
               transactions={transactions}
             />
@@ -1361,8 +1623,8 @@ export default function App() {
               spreadsheetUrl={spreadsheetUrl}
               categories={categories}
               onManageCategories={() => setIsCategoryManagerOpen(true)}
-              onNavigateToDebt={!isManagerMode ? () => setActiveTab('debt_tracker') : undefined}
-              onNavigateToShopping={!isManagerMode ? () => setActiveTab('shopping_report') : undefined}
+              onNavigateToDebt={userRole === 'owner' ? () => setActiveTab('debt_tracker') : undefined}
+              onNavigateToShopping={() => setActiveTab('shopping_report')}
               onRefresh={handleRefresh}
               isLoadingData={isLoadingData}
             />

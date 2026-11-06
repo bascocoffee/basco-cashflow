@@ -33,6 +33,7 @@ import { logout } from '../firebase';
 import { CALENDAR_NOTES_STORAGE_KEY, DEFAULT_CALENDAR_ACTIVITIES, computeH1Alerts } from '../utils/calendarNotesData';
 import { getStoredDebts, getDueDateStatus } from '../utils/debtUtils';
 import { SHOPPING_LIST_STORAGE_KEY, DEFAULT_SHOPPING_ITEMS, computeShoppingMetrics } from '../utils/shoppingListData';
+import { AppRole } from '../types';
 
 export type TabType = 'dashboard' | 'employee_tasks' | 'calendar_notes' | 'barista_schedule' | 'omset_cogs' | 'cogs' | 'shopping_report' | 'categories' | 'fixed_cost' | 'debt_tracker' | 'ai_chat';
 
@@ -46,6 +47,7 @@ interface SidebarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   isManagerMode?: boolean;
+  userRole?: AppRole;
   onLogoutManager?: () => void;
   onLoginGoogle?: () => void;
   onOpenBackupModal?: () => void;
@@ -65,6 +67,7 @@ export default function Sidebar({
   activeTab,
   setActiveTab,
   isManagerMode = false,
+  userRole = 'owner',
   onLogoutManager,
   onLoginGoogle,
   onOpenBackupModal,
@@ -163,6 +166,54 @@ export default function Sidebar({
   };
 
   const navGroups = useMemo(() => {
+    if (userRole === 'barista') {
+      return [
+        {
+          groupTitle: 'Area Barista & Operasional',
+          items: [
+            { 
+              id: 'barista_schedule' as TabType, 
+              label: 'Jadwal Shift & Slip Gaji', 
+              icon: Users, 
+              badge: 'Shift',
+              badgeColor: 'amber' as const,
+              description: 'Roster jam kerja & unduh slip gaji'
+            },
+            { 
+              id: 'employee_tasks' as TabType, 
+              label: 'Tugas & SOP Barista', 
+              icon: UserCheck, 
+              badge: 'Checklist',
+              badgeColor: 'emerald' as const,
+              description: 'Checklist tugas harian & SOP bar'
+            },
+            { 
+              id: 'cogs' as TabType, 
+              label: 'Stok Opname & Resep', 
+              icon: ClipboardList,
+              description: 'Audit stok bahan baku & resep menu'
+            },
+            { 
+              id: 'shopping_report' as TabType, 
+              label: 'Permintaan Belanja Bahan', 
+              icon: ShoppingCart,
+              badge: shoppingUrgentCount > 0 ? `${shoppingUrgentCount} Urgent` : undefined,
+              badgeColor: 'rose' as const,
+              description: 'Catat bahan habis & stok menipis'
+            },
+            { 
+              id: 'calendar_notes' as TabType, 
+              label: 'Catatan & Agenda Kafe', 
+              icon: Calendar,
+              badge: h1AlertCount > 0 ? `${h1AlertCount} H-1` : undefined,
+              badgeColor: 'rose' as const,
+              description: 'Pengumuman event & agenda operasional'
+            },
+          ]
+        }
+      ];
+    }
+
     return [
       {
         groupTitle: 'Dasbor & Operasional Bar',
@@ -229,14 +280,16 @@ export default function Sidebar({
             icon: Layers,
             description: 'Alokasi pos belanja cafe'
           },
-          { 
-            id: 'debt_tracker' as TabType, 
-            label: 'Pencatatan Hutang & AI', 
-            icon: CreditCard,
-            badge: debtAlertCount > 0 ? `${debtAlertCount} Tempo` : 'Baru',
-            badgeColor: debtAlertCount > 0 ? ('rose' as const) : ('amber' as const),
-            description: 'Hutang bulanan, tahunan & AI'
-          },
+          ...(userRole === 'owner' ? [
+            { 
+              id: 'debt_tracker' as TabType, 
+              label: 'Pencatatan Hutang & AI', 
+              icon: CreditCard,
+              badge: debtAlertCount > 0 ? `${debtAlertCount} Tempo` : 'Owner',
+              badgeColor: debtAlertCount > 0 ? ('rose' as const) : ('amber' as const),
+              description: 'Hutang bulanan, tahunan & AI'
+            }
+          ] : []),
           { 
             id: 'fixed_cost' as TabType, 
             label: 'Simulasi Fixed Cost', 
@@ -258,7 +311,7 @@ export default function Sidebar({
         ]
       }
     ];
-  }, [isManagerMode, h1AlertCount, shoppingUrgentCount, shoppingNeedCount, debtAlertCount]);
+  }, [userRole, isManagerMode, h1AlertCount, shoppingUrgentCount, shoppingNeedCount, debtAlertCount]);
 
   return (
     <>
@@ -592,29 +645,18 @@ export default function Sidebar({
           {isCollapsed ? (
             /* Minimized User View */
             <div className="flex flex-col items-center space-y-2">
-              {isManagerMode ? (
-                <div 
-                  className="h-8 w-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xs shadow-md"
-                  title="Akses Manager Cafe"
-                >
-                  🔑
-                </div>
-              ) : user.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  alt={user.displayName || 'User'}
-                  className="h-8 w-8 rounded-xl border border-slate-700 object-cover"
-                  title={user.displayName || user.email || 'User'}
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div 
-                  className="h-8 w-8 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-black text-xs uppercase"
-                  title={user.displayName || user.email || 'User'}
-                >
-                  {user.displayName ? user.displayName.charAt(0) : user.email?.charAt(0) || 'U'}
-                </div>
-              )}
+              <div 
+                className={`h-8 w-8 rounded-xl flex items-center justify-center font-black text-xs shadow-md ${
+                  userRole === 'owner'
+                    ? 'bg-purple-600 text-white'
+                    : userRole === 'barista'
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-amber-500 text-slate-950'
+                }`}
+                title={userRole === 'owner' ? 'Akses Owner' : userRole === 'barista' ? 'Akses Barista' : 'Akses Manager'}
+              >
+                {userRole === 'owner' ? '👑' : userRole === 'barista' ? '☕' : '👔'}
+              </div>
 
               <button
                 type="button"
@@ -630,34 +672,33 @@ export default function Sidebar({
             /* Expanded User View */
             <>
               <div className="flex items-center space-x-2.5 min-w-0">
-                {isManagerMode ? (
-                  <div className="h-9 w-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-sm shadow-md shrink-0">
-                    🔑
-                  </div>
-                ) : user.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || 'User Avatar'}
-                    className="h-9 w-9 rounded-xl border border-slate-700 object-cover shrink-0"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="h-9 w-9 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-black text-xs uppercase shrink-0">
-                    {user.displayName ? user.displayName.charAt(0) : user.email?.charAt(0) || 'U'}
-                  </div>
-                )}
+                <div className={`h-9 w-9 rounded-xl flex items-center justify-center font-black text-sm shadow-md shrink-0 ${
+                  userRole === 'owner'
+                    ? 'bg-purple-600 text-white'
+                    : userRole === 'barista'
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-amber-500 text-slate-950'
+                }`}>
+                  {userRole === 'owner' ? '👑' : userRole === 'barista' ? '☕' : '👔'}
+                </div>
 
                 <div className="min-w-0 text-left">
                   <div className="flex items-center space-x-1">
                     <p className="text-xs font-bold text-slate-100 truncate leading-tight">
-                      {user.displayName || 'Manager Cafe'}
+                      {user.displayName || (userRole === 'owner' ? 'Owner Basco' : userRole === 'barista' ? 'Barista Basco' : 'Manager Cafe')}
                     </p>
-                    {isManagerMode && (
-                      <ShieldCheck className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    )}
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded font-extrabold uppercase tracking-wider shrink-0 ${
+                      userRole === 'owner'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                        : userRole === 'barista'
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}>
+                      {userRole === 'owner' ? 'Owner' : userRole === 'barista' ? 'Barista' : 'Manajer'}
+                    </span>
                   </div>
                   <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">
-                    {isManagerMode ? 'Akses Manager' : user.email}
+                    {user.email || (userRole === 'owner' ? 'Akses Owner (Pemilik)' : userRole === 'barista' ? 'Akses Barista' : 'Akses Manajer')}
                   </p>
                 </div>
               </div>
