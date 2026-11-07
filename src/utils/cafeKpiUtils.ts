@@ -4,7 +4,12 @@ export const DEFAULT_CAFE_RATIO_CONFIG: CafeRatioCategoryConfig = {
   mode: 'auto',
   salesMode: 'all_debit',
   selectedSalesCategories: [],
-  categoryMapping: {}
+  categoryMapping: {},
+  explicitOtherCategories: [],
+  targetCogsPct: 35,
+  targetWagesPct: 25,
+  targetOperasionalPct: 20,
+  targetNetProfitPct: 15
 };
 
 export const CAFE_RATIO_GROUP_INFO: Record<CafeRatioGroup, {
@@ -84,11 +89,28 @@ export const CAFE_RATIO_GROUP_INFO: Record<CafeRatioGroup, {
 /**
  * Intelligent keyword-based detector for Cafe and Coffee Shop categories and item descriptions
  */
-export function detectCategoryGroup(catName: string, desc?: string): CafeRatioGroup {
+export function detectCategoryGroup(catName: string, desc?: string, opMan?: string): CafeRatioGroup {
   const norm = (catName || '').toLowerCase().trim();
   const normDesc = (desc || '').toLowerCase().trim();
+  const normOp = (opMan || '').toLowerCase().trim();
 
-  // 1. Explicit wifi/internet to Operasional
+  // 1. Payroll / Gaji / Wages (including Basco employee codes G-01, G-02, G-03, G-04, G-05, G-06, G-07, G-08, G-09, etc.)
+  if (
+    /^g-?\d+\b/i.test(norm) ||
+    /^gaji\b/i.test(norm) ||
+    norm.includes('gaji') || norm.includes('karyawan') || norm.includes('barista') ||
+    norm.includes('pekerjaan') || norm.includes('staff') || norm.includes('salary') ||
+    norm.includes('payroll') || norm.includes('upah') || norm.includes('pendidikan') ||
+    normDesc.includes('gaji') || normDesc.includes('upah') || normDesc.includes('gaji barista') ||
+    normDesc.includes('salary') || normDesc.includes('payroll') || normDesc.includes('bonus staff') ||
+    norm.includes('honor') || normDesc.includes('honor') || norm.includes('kasbon') || normDesc.includes('kasbon') ||
+    norm.includes('lembur') || normDesc.includes('lembur') || norm.includes('overtime') ||
+    norm.includes('thr') || normDesc.includes('thr') || norm.includes('uang makan') || normDesc.includes('uang makan')
+  ) {
+    return 'wages';
+  }
+
+  // 2. Explicit wifi/internet/electricity token to Operasional
   if (
     norm.includes('i connect') || norm.includes('iconnect') || norm.includes('i-connect') ||
     normDesc.includes('i connect') || normDesc.includes('iconnect') || normDesc.includes('i-connect') ||
@@ -96,12 +118,13 @@ export function detectCategoryGroup(catName: string, desc?: string): CafeRatioGr
     norm.includes('internet') || normDesc.includes('internet') ||
     norm.includes('indihome') || normDesc.includes('indihome') ||
     norm.includes('biznet') || normDesc.includes('biznet') ||
-    norm.includes('myrepublic') || normDesc.includes('myrepublic')
+    norm.includes('myrepublic') || normDesc.includes('myrepublic') ||
+    norm.includes('token') || normDesc.includes('token')
   ) {
     return 'operasional';
   }
 
-  // 2. Specific ingredients to COGS Drink
+  // 3. Specific ingredients to COGS Drink
   if (
     norm.includes('wedang uwuh') || norm.includes('wedang') || norm.includes('uwuh') ||
     normDesc.includes('wedang uwuh') || normDesc.includes('wedang') || normDesc.includes('uwuh') ||
@@ -116,115 +139,34 @@ export function detectCategoryGroup(catName: string, desc?: string): CafeRatioGr
     normDesc.includes('es krim') || normDesc.includes('eskrim') || normDesc.includes('ice cream') || normDesc.includes('es cream') ||
     normDesc.includes('vanilla') || normDesc.includes('vanila') ||
     norm.includes('air galon') || norm.includes('galon') ||
-    normDesc.includes('air galon') || normDesc.includes('galon')
+    normDesc.includes('air galon') || normDesc.includes('galon') ||
+    norm.includes('gayo') || normDesc.includes('gayo') ||
+    norm.includes('arabica') || normDesc.includes('arabica') ||
+    norm.includes('liberica') || normDesc.includes('liberica') ||
+    norm.includes('tbrk') || normDesc.includes('tbrk') ||
+    norm.includes('sea salt') || normDesc.includes('sea salt')
   ) {
     return 'cogs_minuman';
   }
 
-  // 3. Oil, LPG, Gas, Chopsticks to COGS Food
+  // 4. Oil, LPG, Gas, Chopsticks, Parsley to COGS Food
   if (
     norm.includes('minyak') || normDesc.includes('minyak') ||
     norm.includes('lpg') || normDesc.includes('lpg') ||
     norm.includes('gas') || normDesc.includes('gas') ||
-    norm.includes('sumpit') || normDesc.includes('sumpit')
+    norm.includes('sumpit') || normDesc.includes('sumpit') ||
+    norm.includes('parsley') || normDesc.includes('parsley') ||
+    norm.includes('kulit pangsit') || normDesc.includes('kulit pangsit')
   ) {
     return 'cogs_food';
   }
 
-  // 4. Payroll / Gaji / Wages
-  if (
-    norm.includes('gaji') || norm.includes('karyawan') || norm.includes('barista') ||
-    norm.includes('pekerjaan') || norm.includes('staff') || norm.includes('salary') ||
-    norm.includes('payroll') || norm.includes('upah') || norm.includes('pendidikan') ||
-    normDesc.includes('gaji') || normDesc.includes('upah') || normDesc.includes('gaji barista') ||
-    normDesc.includes('salary') || normDesc.includes('payroll') || normDesc.includes('bonus staff') ||
-    norm.includes('honor') || normDesc.includes('honor') || norm.includes('kasbon') || normDesc.includes('kasbon') ||
-    norm.includes('lembur') || normDesc.includes('lembur') || norm.includes('overtime') ||
-    norm.includes('thr') || normDesc.includes('thr') || norm.includes('uang makan') || normDesc.includes('uang makan')
-  ) {
-    return 'wages';
-  }
-
-  // 5. Operasional, Sewa, Kebersihan (Sabun dll), Transportasi/Parkir & Utilitas
-  if (
-    // Kebersihan & Cuci (Sabun cuci, deterjen, pel, sponge dll)
-    norm.includes('sabun') || normDesc.includes('sabun') ||
-    norm.includes('cuci') || normDesc.includes('cuci') ||
-    norm.includes('deterjen') || normDesc.includes('deterjen') ||
-    norm.includes('sunlight') || normDesc.includes('sunlight') ||
-    norm.includes('mama lemon') || normDesc.includes('mama lemon') ||
-    norm.includes('pembersih') || normDesc.includes('pembersih') ||
-    norm.includes('pel') || normDesc.includes('pel') ||
-    norm.includes('karbol') || normDesc.includes('karbol') ||
-    norm.includes('sikat') || normDesc.includes('sikat') ||
-    norm.includes('sponge') || normDesc.includes('sponge') || norm.includes('spon') || normDesc.includes('spon') ||
-    norm.includes('kebersihan') || normDesc.includes('kebersihan') ||
-    // Transportasi & Parkir (Transport, parkir, bensin, bbm dll)
-    norm.includes('transport') || normDesc.includes('transport') ||
-    norm.includes('transportasi') || normDesc.includes('transportasi') ||
-    norm.includes('parkir') || normDesc.includes('parkir') ||
-    norm.includes('bensin') || normDesc.includes('bensin') ||
-    norm.includes('bbm') || normDesc.includes('bbm') ||
-    norm.includes('pertalite') || normDesc.includes('pertalite') ||
-    norm.includes('pertamax') || normDesc.includes('pertamax') ||
-    norm.includes('solar') || normDesc.includes('solar') ||
-    norm.includes('ongkir') || normDesc.includes('ongkir') ||
-    norm.includes('kurir') || normDesc.includes('kurir') ||
-    norm.includes('ekspedisi') || normDesc.includes('ekspedisi') ||
-    norm.includes('grab') || normDesc.includes('grab') ||
-    norm.includes('gojek') || normDesc.includes('gojek') ||
-    norm.includes('ojol') || normDesc.includes('ojol') ||
-    // Tagihan & Sewa & Utilitas
-    norm.includes('bayar tagihan') || normDesc.includes('bayar tagihan') ||
-    norm.includes('tagihan') || normDesc.includes('tagihan') ||
-    norm.includes('operasional') || norm.includes('sewa') || norm.includes('tempat') ||
-    norm.includes('utilitas') || norm.includes('rumah') ||
-    norm.includes('listrik') || norm.includes('pln') ||
-    norm.includes('air') || norm.includes('pdam') ||
-    norm.includes('kesehatan') || norm.includes('bpjs') ||
-    norm.includes('peralatan') || norm.includes('inventaris') ||
-    norm.includes('pajak') || norm.includes('administrasi') ||
-    norm.includes('rent') || norm.includes('utility') || norm.includes('tax') || norm.includes('admin') ||
-    normDesc.includes('sewa') || normDesc.includes('listrik') || normDesc.includes('pajak') ||
-    norm.includes('atk') || normDesc.includes('atk') ||
-    norm.includes('maintenance') || normDesc.includes('maintenance') ||
-    norm.includes('servis') || normDesc.includes('servis') ||
-    // Kemasan & Packaging
-    norm.includes('packaging') || normDesc.includes('packaging') ||
-    norm.includes('kemasan') || normDesc.includes('kemasan') ||
-    norm.includes('paper cup') || normDesc.includes('paper cup') ||
-    norm.includes('plastic cup') || normDesc.includes('plastic cup') ||
-    norm.includes('cup sealer') || normDesc.includes('cup sealer') ||
-    norm.includes('sedotan') || normDesc.includes('sedotan') ||
-    norm.includes('straw') || normDesc.includes('straw') ||
-    norm.includes('kresek') || normDesc.includes('kresek') ||
-    norm.includes('plastik') || normDesc.includes('plastik') ||
-    norm.includes('tissue') || normDesc.includes('tissue') || norm.includes('tisu') || normDesc.includes('tisu')
-  ) {
-    return 'operasional';
-  }
-
-  // 6. Promosi & Marketing
-  if (
-    norm.includes('promosi') || norm.includes('marketing') || norm.includes('iklan') ||
-    norm.includes('ads') || norm.includes('promo') || norm.includes('hiburan') ||
-    norm.includes('rekreasi') || norm.includes('event') || normDesc.includes('promo') ||
-    normDesc.includes('iklan') || normDesc.includes('marketing') ||
-    norm.includes('instagram') || normDesc.includes('instagram') ||
-    norm.includes('tiktok') || normDesc.includes('tiktok') ||
-    norm.includes('endorse') || normDesc.includes('endorse') ||
-    norm.includes('brosur') || normDesc.includes('brosur') ||
-    norm.includes('spanduk') || normDesc.includes('spanduk') ||
-    norm.includes('banner') || normDesc.includes('banner')
-  ) {
-    return 'promo';
-  }
-
-  // 7. Check for Snack
+  // 5. Check for Snack (before Operasional so "Bayar Camilan Titip" is detected as cogs_snack)
   const isSnack = (str: string) => {
     const s = str.toLowerCase();
     return (
-      s.includes('dimsum') || s.includes('singkong') || s.includes('kentang') ||
+      s.includes('dimsum') || s.includes('siomay') || s.includes('lumpia') ||
+      s.includes('singkong') || s.includes('kentang') ||
       s.includes('sewel') || s.includes('tahu walik') || s.includes('tahu') ||
       s.includes('walik') || s.includes('snack') || s.includes('cemilan') ||
       s.includes('keripik') || s.includes('camilan') || s.includes('pisang goreng') ||
@@ -237,7 +179,7 @@ export function detectCategoryGroup(catName: string, desc?: string): CafeRatioGr
     );
   };
 
-  // 8. Check for Food
+  // 6. Check for Food
   const isFood = (str: string) => {
     const s = str.toLowerCase();
     return (
@@ -258,12 +200,13 @@ export function detectCategoryGroup(catName: string, desc?: string): CafeRatioGr
     );
   };
 
-  // 9. Check for Minuman
+  // 7. Check for Minuman
   const isMinuman = (str: string) => {
     const s = str.toLowerCase();
     return (
       s.includes('kopi') || s.includes('coffee') || s.includes('espresso') ||
-      s.includes('robusta') || s.includes('arabika') || s.includes('biji kopi') ||
+      s.includes('robusta') || s.includes('arabika') || s.includes('arabica') ||
+      s.includes('liberica') || s.includes('gayo') || s.includes('biji kopi') ||
       s.includes('beans') || s.includes('teh') || s.includes('tea') ||
       s.includes('matcha') || s.includes('soda') || s.includes('fanta') ||
       s.includes('sprite') || s.includes('coca') || s.includes('coke') ||
@@ -294,9 +237,87 @@ export function detectCategoryGroup(catName: string, desc?: string): CafeRatioGr
     );
   };
 
-  if (isSnack(norm) || isSnack(normDesc)) return 'cogs_snack';
-  if (isFood(norm) || isFood(normDesc)) return 'cogs_food';
-  if (isMinuman(norm) || isMinuman(normDesc)) return 'cogs_minuman';
+  if (isSnack(norm)) return 'cogs_snack';
+  if (isFood(norm)) return 'cogs_food';
+  if (isMinuman(norm)) return 'cogs_minuman';
+
+  // 8. Operasional, Sewa, Kebersihan, Alat, Kasir, Transportasi/Parkir & Utilitas
+  if (
+    norm.includes('sabun') || normDesc.includes('sabun') ||
+    norm.includes('cuci') || normDesc.includes('cuci') ||
+    norm.includes('deterjen') || normDesc.includes('deterjen') ||
+    norm.includes('sunlight') || normDesc.includes('sunlight') ||
+    norm.includes('mama lemon') || normDesc.includes('mama lemon') ||
+    norm.includes('pembersih') || normDesc.includes('pembersih') ||
+    norm.includes('pel') || normDesc.includes('pel') ||
+    norm.includes('karbol') || normDesc.includes('karbol') ||
+    norm.includes('sikat') || normDesc.includes('sikat') ||
+    norm.includes('sponge') || normDesc.includes('sponge') || norm.includes('spon') || normDesc.includes('spon') ||
+    norm.includes('kebersihan') || normDesc.includes('kebersihan') ||
+    norm.includes('transport') || normDesc.includes('transport') ||
+    norm.includes('transportasi') || normDesc.includes('transportasi') ||
+    norm.includes('parkir') || normDesc.includes('parkir') ||
+    norm.includes('bensin') || normDesc.includes('bensin') ||
+    norm.includes('bbm') || normDesc.includes('bbm') ||
+    norm.includes('pertalite') || normDesc.includes('pertalite') ||
+    norm.includes('pertamax') || normDesc.includes('pertamax') ||
+    norm.includes('solar') || normDesc.includes('solar') ||
+    norm.includes('ongkir') || normDesc.includes('ongkir') ||
+    norm.includes('kurir') || normDesc.includes('kurir') ||
+    norm.includes('ekspedisi') || normDesc.includes('ekspedisi') ||
+    norm.includes('grab') || normDesc.includes('grab') ||
+    norm.includes('gojek') || normDesc.includes('gojek') ||
+    norm.includes('ojol') || normDesc.includes('ojol') ||
+    norm.includes('bayar tagihan') || normDesc.includes('bayar tagihan') ||
+    norm.includes('tagihan') || normDesc.includes('tagihan') ||
+    norm.includes('operasional') || norm.includes('sewa') || norm.includes('tempat') ||
+    norm.includes('utilitas') || norm.includes('rumah') ||
+    norm.includes('listrik') || norm.includes('pln') || norm.includes('token') ||
+    norm.includes('air') || norm.includes('pdam') ||
+    norm.includes('kesehatan') || norm.includes('bpjs') ||
+    norm.includes('peralatan') || norm.includes('pengadaan') || norm.includes('alat') || norm.includes('inventaris') ||
+    norm.includes('pajak') || norm.includes('administrasi') ||
+    norm.includes('rent') || norm.includes('utility') || norm.includes('tax') || norm.includes('admin') ||
+    normDesc.includes('sewa') || normDesc.includes('listrik') || normDesc.includes('pajak') ||
+    norm.includes('atk') || normDesc.includes('atk') ||
+    norm.includes('cetak') || norm.includes('print') || norm.includes('nota') ||
+    norm.includes('kasir') || norm.includes('baterai') || norm.includes('konsumsi') ||
+    norm.includes('santunan') || norm.includes('cicilan') || norm.includes('dt2') || norm.includes('cash out') ||
+    norm.includes('maintenance') || normDesc.includes('maintenance') ||
+    norm.includes('servis') || normDesc.includes('servis') ||
+    norm.includes('packaging') || normDesc.includes('packaging') ||
+    norm.includes('kemasan') || normDesc.includes('kemasan') ||
+    norm.includes('paper cup') || normDesc.includes('paper cup') ||
+    norm.includes('plastic cup') || normDesc.includes('plastic cup') ||
+    norm.includes('cup sealer') || normDesc.includes('cup sealer') ||
+    norm.includes('sedotan') || normDesc.includes('sedotan') ||
+    norm.includes('straw') || normDesc.includes('straw') ||
+    norm.includes('kresek') || normDesc.includes('kresek') ||
+    norm.includes('plastik') || normDesc.includes('plastik') ||
+    norm.includes('tissue') || normDesc.includes('tissue') || norm.includes('tisu') || normDesc.includes('tisu')
+  ) {
+    return 'operasional';
+  }
+
+  // 9. Promosi & Marketing
+  if (
+    norm.includes('promosi') || norm.includes('marketing') || norm.includes('iklan') ||
+    norm.includes('ads') || norm.includes('promo') || norm.includes('hiburan') ||
+    norm.includes('rekreasi') || norm.includes('event') || normDesc.includes('promo') ||
+    normDesc.includes('iklan') || normDesc.includes('marketing') ||
+    norm.includes('instagram') || normDesc.includes('instagram') ||
+    norm.includes('tiktok') || normDesc.includes('tiktok') ||
+    norm.includes('endorse') || normDesc.includes('endorse') ||
+    norm.includes('brosur') || normDesc.includes('brosur') ||
+    norm.includes('spanduk') || normDesc.includes('spanduk') ||
+    norm.includes('banner') || normDesc.includes('banner')
+  ) {
+    return 'promo';
+  }
+
+  if (isSnack(normDesc)) return 'cogs_snack';
+  if (isFood(normDesc)) return 'cogs_food';
+  if (isMinuman(normDesc)) return 'cogs_minuman';
 
   // 10. General COGS keywords
   if (
@@ -310,7 +331,12 @@ export function detectCategoryGroup(catName: string, desc?: string): CafeRatioGr
     return 'cogs_general';
   }
 
-  return 'other';
+  // 11. Default fallback: any remaining expense in Aliran Data & Filter belongs to Operasional unless explicitly excluded
+  if (normOp.includes('operasional') || normOp.includes('manajemen') || norm) {
+    return 'operasional';
+  }
+
+  return 'operasional';
 }
 
 export interface ExtractedCategoryItem {
@@ -452,25 +478,27 @@ export function computeCafeMetricsWithConfig(
 
   const isManual = config.mode === 'manual';
   const mapping = config.categoryMapping || {};
+  const explicitOtherSet = new Set(config.explicitOtherCategories || []);
   const mappedCount = Object.keys(mapping).length;
 
-  const getEffectiveGroup = (catName: string, desc?: string): CafeRatioGroup => {
-    if (isManual) {
-      if (mapping[catName]) return mapping[catName];
-      // Fallback for unmapped category in manual mode
-      return detectCategoryGroup(catName, desc);
+  const getEffectiveGroup = (catName: string, desc?: string, opMan?: string): CafeRatioGroup => {
+    const mapped = mapping[catName];
+    if (mapped) {
+      if (mapped !== 'other') return mapped;
+      if (isManual && explicitOtherSet.has(catName)) return 'other';
     }
-    return detectCategoryGroup(catName, desc);
+    return detectCategoryGroup(catName, desc, opMan);
   };
 
   transactions.forEach(t => {
     // 1. Process Income (Sales / Omset)
     if (t.debit > 0) {
-      if (!isManual || config.salesMode === 'all_debit') {
+      if (config.salesMode !== 'selected_categories' || !config.selectedSalesCategories || config.selectedSalesCategories.length === 0) {
         totalSales += t.debit;
       } else {
-        const cat = (t.jenisPengeluaran || '').trim();
-        if (config.selectedSalesCategories && config.selectedSalesCategories.includes(cat)) {
+        const rawCat = (t.jenisPengeluaran || '').trim();
+        const cat = (rawCat && rawCat !== '-') ? rawCat : 'Pemasukan / Omset Cafe';
+        if (config.selectedSalesCategories.includes(cat) || config.selectedSalesCategories.includes(rawCat)) {
           totalSales += t.debit;
         }
       }
@@ -483,7 +511,7 @@ export function computeCafeMetricsWithConfig(
       totalExpensesCalculated += expenseAmount;
       const rawCat = (t.jenisPengeluaran || '').trim();
       const cat1 = (rawCat && rawCat !== '-') ? rawCat : 'Lain-lain';
-      const grp = getEffectiveGroup(cat1, t.keterangan);
+      const grp = getEffectiveGroup(cat1, t.keterangan, t.operasionalDanManajemen);
 
       if (grp === 'wages') {
         totalWages += expenseAmount;
@@ -493,8 +521,6 @@ export function computeCafeMetricsWithConfig(
           keterangan: t.keterangan || '-',
           amount: expenseAmount
         });
-      } else if (grp === 'promo') {
-        totalPromo += expenseAmount;
       } else if (grp.startsWith('cogs_')) {
         totalCOGS += expenseAmount;
         let subCategory: 'Minuman' | 'Food' | 'Snack' = 'Minuman';
@@ -510,7 +536,7 @@ export function computeCafeMetricsWithConfig(
           subCategory = 'Minuman';
         } else {
           // cogs_general: check description and category keyword
-          const autoSub = detectCategoryGroup(cat1, t.keterangan);
+          const autoSub = detectCategoryGroup(cat1, t.keterangan, t.operasionalDanManajemen);
           if (autoSub === 'cogs_food') {
             totalCOGSFood += expenseAmount;
             subCategory = 'Food';
@@ -529,6 +555,15 @@ export function computeCafeMetricsWithConfig(
           keterangan: t.keterangan || '-',
           amount: expenseAmount,
           subCategory
+        });
+      } else if (grp === 'promo') {
+        totalPromo += expenseAmount;
+        totalOperasional += expenseAmount;
+        operasionalDetails.push({
+          tanggal: t.tanggal,
+          category: cat1,
+          keterangan: t.keterangan || '-',
+          amount: expenseAmount
         });
       } else if (grp === 'operasional') {
         totalOperasional += expenseAmount;

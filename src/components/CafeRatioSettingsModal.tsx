@@ -33,6 +33,7 @@ interface CafeRatioSettingsModalProps {
   transactions: Transaction[];
   filteredTransactions?: Transaction[];
   masterCategories?: string[];
+  initialTab?: 'all_table' | 'sales' | 'cogs' | 'wages' | 'operasional' | 'promo';
 }
 
 export default function CafeRatioSettingsModal({
@@ -42,40 +43,67 @@ export default function CafeRatioSettingsModal({
   onSaveConfig,
   transactions,
   filteredTransactions,
-  masterCategories = []
+  masterCategories = [],
+  initialTab = 'all_table'
 }: CafeRatioSettingsModalProps) {
   // Local working copy of configuration for drafting before saving
   const [draftConfig, setDraftConfig] = useState<CafeRatioCategoryConfig>(() => {
     return JSON.parse(JSON.stringify(config || DEFAULT_CAFE_RATIO_CONFIG));
   });
 
-  const [activeTab, setActiveTab] = useState<'all_table' | 'sales' | 'cogs' | 'wages' | 'operasional' | 'promo'>('all_table');
+  const [activeTab, setActiveTab] = useState<'all_table' | 'sales' | 'cogs' | 'wages' | 'operasional' | 'promo'>(initialTab);
   const [searchFilter, setSearchFilter] = useState('');
   const [customCatInput, setCustomCatInput] = useState('');
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
-  // Extract all categories dynamically from real transactions strictly from "Pengeluaran 1"
+  // Extract all categories dynamically from active filtered transactions (with fallback to all transactions so all categories remain configurable)
   const { incomeCategories, expenseCategories } = useMemo(() => {
-    return extractUniqueCategories(transactions, masterCategories);
-  }, [transactions, masterCategories]);
+    const activeTx = (filteredTransactions && filteredTransactions.length > 0) ? filteredTransactions : transactions;
+    const filteredExtracted = extractUniqueCategories(activeTx, masterCategories);
+    if (activeTx === transactions) return filteredExtracted;
 
-  // Ensure draft config has mapping populated for all expense categories if missing
+    const allExtracted = extractUniqueCategories(transactions, masterCategories);
+    const incMap = new Map(filteredExtracted.incomeCategories.map(c => [c.name, c]));
+    allExtracted.incomeCategories.forEach(c => {
+      if (!incMap.has(c.name)) {
+        incMap.set(c.name, { ...c, totalAmount: 0, count: 0 });
+      }
+    });
+
+    const expMap = new Map(filteredExtracted.expenseCategories.map(c => [c.name, c]));
+    allExtracted.expenseCategories.forEach(c => {
+      if (!expMap.has(c.name)) {
+        expMap.set(c.name, { ...c, totalAmount: 0, count: 0 });
+      }
+    });
+
+    return {
+      incomeCategories: Array.from(incMap.values()).sort((a, b) => b.totalAmount - a.totalAmount),
+      expenseCategories: Array.from(expMap.values()).sort((a, b) => b.totalAmount - a.totalAmount)
+    };
+  }, [transactions, filteredTransactions, masterCategories]);
+
+  // Ensure draft config has mapping populated for all expense categories
   const activeMapping = useMemo(() => {
     const map = { ...(draftConfig.categoryMapping || {}) };
+    const explicitOtherSet = new Set(draftConfig.explicitOtherCategories || []);
     expenseCategories.forEach(c => {
-      if (!map[c.name]) {
+      if (!map[c.name] || (map[c.name] === 'other' && !explicitOtherSet.has(c.name))) {
         map[c.name] = detectCategoryGroup(c.name);
       }
     });
     return map;
-  }, [draftConfig.categoryMapping, expenseCategories]);
+  }, [draftConfig.categoryMapping, draftConfig.explicitOtherCategories, expenseCategories]);
 
   // Re-sync draft config whenever modal opens or parent config changes
   useEffect(() => {
     if (isOpen) {
       setDraftConfig(JSON.parse(JSON.stringify(config || DEFAULT_CAFE_RATIO_CONFIG)));
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
     }
-  }, [isOpen, config]);
+  }, [isOpen, config, initialTab]);
 
   // Calculate simulated preview metrics in real-time (matches active dashboard filter if provided)
   const simulatedMetrics = useMemo(() => {
@@ -87,25 +115,43 @@ export default function CafeRatioSettingsModal({
     return computeCafeMetricsWithConfig(targetTransactions, configToSimulate);
   }, [transactions, filteredTransactions, draftConfig, activeMapping]);
 
-  // Handle Category Mapping changes
+  // Handle Category Mapping changes (automatically enables manual mode so changes take effect immediately)
   const handleSetCategoryGroup = (categoryName: string, group: CafeRatioGroup) => {
-    setDraftConfig(prev => ({
-      ...prev,
-      categoryMapping: {
-        ...(prev.categoryMapping || activeMapping),
-        [categoryName]: group
+    setDraftConfig(prev => {
+      const prevExplicit = new Set(prev.explicitOtherCategories || []);
+      if (group === 'other') {
+        prevExplicit.add(categoryName);
+      } else {
+        prevExplicit.delete(categoryName);
       }
-    }));
+      return {
+        ...prev,
+        mode: 'manual',
+        explicitOtherCategories: Array.from(prevExplicit),
+        categoryMapping: {
+          ...(prev.categoryMapping || activeMapping),
+          [categoryName]: group
+        }
+      };
+    });
   };
 
   // Bulk assign all visible filtered categories
   const handleBulkAssign = (group: CafeRatioGroup) => {
     const newMap = { ...(draftConfig.categoryMapping || activeMapping) };
+    const prevExplicit = new Set(draftConfig.explicitOtherCategories || []);
     filteredExpenseCategories.forEach(c => {
       newMap[c.name] = group;
+      if (group === 'other') {
+        prevExplicit.add(c.name);
+      } else {
+        prevExplicit.delete(c.name);
+      }
     });
     setDraftConfig(prev => ({
       ...prev,
+      mode: 'manual',
+      explicitOtherCategories: Array.from(prevExplicit),
       categoryMapping: newMap
     }));
   };
@@ -120,6 +166,8 @@ export default function CafeRatioSettingsModal({
         : [...currentList, catName];
       return {
         ...prev,
+        mode: 'manual',
+        salesMode: 'selected_categories',
         selectedSalesCategories: updated
       };
     });
@@ -129,6 +177,7 @@ export default function CafeRatioSettingsModal({
   const handleSelectAllSales = (selectAll: boolean) => {
     setDraftConfig(prev => ({
       ...prev,
+      mode: 'manual',
       selectedSalesCategories: selectAll ? incomeCategories.map(c => c.name) : []
     }));
   };
@@ -139,20 +188,27 @@ export default function CafeRatioSettingsModal({
     const generated = generateAutoCategoryMapping(allNames);
     setDraftConfig(prev => ({
       ...prev,
+      mode: 'auto',
+      explicitOtherCategories: [],
       categoryMapping: generated
     }));
   };
 
   // Reset to default F&B Cafe standard
   const handleResetToDefault = () => {
-    if (window.confirm('Reset seluruh konfigurasi rasio ke standar bawaan Cafe?')) {
+    if (window.confirm('Reset seluruh konfigurasi rasio & target ke standar bawaan Cafe?')) {
       const allNames = expenseCategories.map(c => c.name);
       const generated = generateAutoCategoryMapping(allNames);
       setDraftConfig({
         mode: 'auto',
         salesMode: 'all_debit',
         selectedSalesCategories: incomeCategories.map(c => c.name),
-        categoryMapping: generated
+        categoryMapping: generated,
+        explicitOtherCategories: [],
+        targetCogsPct: 35,
+        targetWagesPct: 25,
+        targetOperasionalPct: 20,
+        targetNetProfitPct: 15
       });
     }
   };
@@ -165,6 +221,7 @@ export default function CafeRatioSettingsModal({
     const detected = detectCategoryGroup(trimmed);
     setDraftConfig(prev => ({
       ...prev,
+      mode: 'manual',
       categoryMapping: {
         ...(prev.categoryMapping || activeMapping),
         [trimmed]: detected
@@ -310,12 +367,12 @@ export default function CafeRatioSettingsModal({
             </div>
           </div>
 
-          {/* Real-time Simulated Impact Ribbon */}
+          {/* Real-time Simulated Impact Ribbon & Target % Editor */}
           <div className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-xs">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <TrendingUp className="h-3.5 w-3.5 text-indigo-600" />
-                Simulasi Hasil Rasio Keuangan (Live Preview):
+                Simulasi Hasil Rasio Keuangan &amp; Pengaturan Target (%):
               </span>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                 draftConfig.mode === 'manual' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'
@@ -326,62 +383,116 @@ export default function CafeRatioSettingsModal({
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center">
               {/* Omset */}
-              <div className="bg-slate-50 rounded-lg p-2 border border-slate-150">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">Total Omset</span>
-                <span className="text-xs font-black text-slate-900 font-mono block truncate">
-                  {formatRupiah(simulatedMetrics.totalSales)}
-                </span>
-                <span className="text-[8.5px] text-slate-400 font-medium">Basis Penjualan</span>
+              <div className="bg-slate-50 rounded-lg p-2 border border-slate-150 flex flex-col justify-between">
+                <div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">Total Omset</span>
+                  <span className="text-xs font-black text-slate-900 font-mono block truncate">
+                    {formatRupiah(simulatedMetrics.totalSales)}
+                  </span>
+                </div>
+                <span className="text-[8.5px] text-slate-400 font-medium mt-1">Basis Penjualan</span>
               </div>
 
               {/* HPP */}
-              <div className="bg-amber-50/60 rounded-lg p-2 border border-amber-200/60">
-                <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-amber-900">
-                  <span>HPP (COGS)</span>
-                  <span className="font-black text-amber-700">{simulatedMetrics.cogsRatio}%</span>
+              <div className="bg-amber-50/60 rounded-lg p-2 border border-amber-200/60 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-amber-900">
+                    <span>HPP (COGS)</span>
+                    <span className="font-black text-amber-700">{simulatedMetrics.cogsRatio}%</span>
+                  </div>
+                  <span className="text-xs font-black text-amber-950 font-mono block truncate">
+                    {formatRupiah(simulatedMetrics.totalCOGS)}
+                  </span>
                 </div>
-                <span className="text-xs font-black text-amber-950 font-mono block truncate">
-                  {formatRupiah(simulatedMetrics.totalCOGS)}
-                </span>
-                <span className="text-[8.5px] text-amber-700 font-semibold">Target: &lt;35%</span>
+                <div className="flex items-center justify-center gap-1 mt-1 text-[9px] text-amber-800 font-bold">
+                  <span>Target &lt;</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={draftConfig.targetCogsPct ?? 35}
+                    onChange={e => setDraftConfig(prev => ({ ...prev, targetCogsPct: Math.max(1, Math.min(100, Number(e.target.value) || 35)) }))}
+                    className="w-11 px-1 py-0.5 text-center bg-white border border-amber-300 rounded font-mono font-black text-amber-950 text-[10px]"
+                  />
+                  <span>%</span>
+                </div>
               </div>
 
               {/* Gaji */}
-              <div className="bg-indigo-50/60 rounded-lg p-2 border border-indigo-200/60">
-                <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-indigo-900">
-                  <span>Gaji & Staff</span>
-                  <span className="font-black text-indigo-700">{simulatedMetrics.wagesRatio}%</span>
+              <div className="bg-indigo-50/60 rounded-lg p-2 border border-indigo-200/60 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-indigo-900">
+                    <span>Gaji &amp; Staff</span>
+                    <span className="font-black text-indigo-700">{simulatedMetrics.wagesRatio}%</span>
+                  </div>
+                  <span className="text-xs font-black text-indigo-950 font-mono block truncate">
+                    {formatRupiah(simulatedMetrics.totalWages)}
+                  </span>
                 </div>
-                <span className="text-xs font-black text-indigo-950 font-mono block truncate">
-                  {formatRupiah(simulatedMetrics.totalWages)}
-                </span>
-                <span className="text-[8.5px] text-indigo-700 font-semibold">Target: 15-25%</span>
+                <div className="flex items-center justify-center gap-1 mt-1 text-[9px] text-indigo-800 font-bold">
+                  <span>Target &le;</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={draftConfig.targetWagesPct ?? 25}
+                    onChange={e => setDraftConfig(prev => ({ ...prev, targetWagesPct: Math.max(1, Math.min(100, Number(e.target.value) || 25)) }))}
+                    className="w-11 px-1 py-0.5 text-center bg-white border border-indigo-300 rounded font-mono font-black text-indigo-950 text-[10px]"
+                  />
+                  <span>%</span>
+                </div>
               </div>
 
               {/* Operasional */}
-              <div className="bg-rose-50/60 rounded-lg p-2 border border-rose-200/60">
-                <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-rose-900">
-                  <span>Operasional</span>
-                  <span className="font-black text-rose-700">{simulatedMetrics.operasionalRatio}%</span>
+              <div className="bg-rose-50/60 rounded-lg p-2 border border-rose-200/60 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-rose-900">
+                    <span>Operasional</span>
+                    <span className="font-black text-rose-700">{simulatedMetrics.operasionalRatio}%</span>
+                  </div>
+                  <span className="text-xs font-black text-rose-950 font-mono block truncate">
+                    {formatRupiah(simulatedMetrics.totalOperasional)}
+                  </span>
                 </div>
-                <span className="text-xs font-black text-rose-950 font-mono block truncate">
-                  {formatRupiah(simulatedMetrics.totalOperasional)}
-                </span>
-                <span className="text-[8.5px] text-rose-700 font-semibold">Target: &lt;20%</span>
+                <div className="flex items-center justify-center gap-1 mt-1 text-[9px] text-rose-800 font-bold">
+                  <span>Target &lt;</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={draftConfig.targetOperasionalPct ?? 20}
+                    onChange={e => setDraftConfig(prev => ({ ...prev, targetOperasionalPct: Math.max(1, Math.min(100, Number(e.target.value) || 20)) }))}
+                    className="w-11 px-1 py-0.5 text-center bg-white border border-rose-300 rounded font-mono font-black text-rose-950 text-[10px]"
+                  />
+                  <span>%</span>
+                </div>
               </div>
 
               {/* Nett Profit */}
-              <div className="bg-emerald-50/60 rounded-lg p-2 border border-emerald-200/60 col-span-2 sm:col-span-1">
-                <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-emerald-900">
-                  <span>Nett Margin</span>
-                  <span className={`font-black ${simulatedMetrics.netProfitMargin >= 15 ? 'text-emerald-700' : 'text-amber-700'}`}>
-                    {simulatedMetrics.netProfitMargin}%
+              <div className="bg-emerald-50/60 rounded-lg p-2 border border-emerald-200/60 col-span-2 sm:col-span-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-emerald-900">
+                    <span>Nett Margin</span>
+                    <span className={`font-black ${simulatedMetrics.netProfitMargin >= (draftConfig.targetNetProfitPct ?? 15) ? 'text-emerald-700' : 'text-amber-700'}`}>
+                      {simulatedMetrics.netProfitMargin}%
+                    </span>
+                  </div>
+                  <span className="text-xs font-black text-emerald-950 font-mono block truncate">
+                    {formatRupiah(simulatedMetrics.netProfit)}
                   </span>
                 </div>
-                <span className="text-xs font-black text-emerald-950 font-mono block truncate">
-                  {formatRupiah(simulatedMetrics.netProfit)}
-                </span>
-                <span className="text-[8.5px] text-emerald-700 font-semibold">Target: &gt;15%</span>
+                <div className="flex items-center justify-center gap-1 mt-1 text-[9px] text-emerald-800 font-bold">
+                  <span>Target &gt;</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={draftConfig.targetNetProfitPct ?? 15}
+                    onChange={e => setDraftConfig(prev => ({ ...prev, targetNetProfitPct: Math.max(1, Math.min(100, Number(e.target.value) || 15)) }))}
+                    className="w-11 px-1 py-0.5 text-center bg-white border border-emerald-300 rounded font-mono font-black text-emerald-950 text-[10px]"
+                  />
+                  <span>%</span>
+                </div>
               </div>
             </div>
           </div>

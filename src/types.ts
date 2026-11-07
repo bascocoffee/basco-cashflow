@@ -62,6 +62,11 @@ export interface CafeRatioCategoryConfig {
   salesMode: 'all_debit' | 'selected_categories';
   selectedSalesCategories: string[];
   categoryMapping: Record<string, CafeRatioGroup>;
+  explicitOtherCategories?: string[];
+  targetCogsPct?: number;
+  targetWagesPct?: number;
+  targetOperasionalPct?: number;
+  targetNetProfitPct?: number;
 }
 
 // ==========================================

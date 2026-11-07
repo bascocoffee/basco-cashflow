@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -61,6 +61,7 @@ import {
   computeCafeMetricsWithConfig, 
   DEFAULT_CAFE_RATIO_CONFIG 
 } from '../utils/cafeKpiUtils';
+import { loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
 import { 
   formatRupiah, 
   formatLocalDate, 
@@ -366,7 +367,7 @@ export default function Dashboard({
     const saved = localStorage.getItem('aruskas_cafe_kpi_ratio_config');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        return { ...DEFAULT_CAFE_RATIO_CONFIG, ...JSON.parse(saved) };
       } catch (e) {
         // fallback
       }
@@ -374,8 +375,19 @@ export default function Dashboard({
     return DEFAULT_CAFE_RATIO_CONFIG;
   });
   const [isRatioSettingsModalOpen, setIsRatioSettingsModalOpen] = useState(false);
+  const [ratioModalInitialTab, setRatioModalInitialTab] = useState<'all_table' | 'sales' | 'cogs' | 'wages' | 'operasional' | 'promo'>('all_table');
 
-  // Target Omset Bulanan State (Persisted in localStorage with editable input)
+  const openRatioModalWithTab = (tab: 'all_table' | 'sales' | 'cogs' | 'wages' | 'operasional' | 'promo') => {
+    setRatioModalInitialTab(tab);
+    setIsRatioSettingsModalOpen(true);
+  };
+
+  const targetCogsPct = ratioConfig.targetCogsPct ?? 35;
+  const targetWagesPct = ratioConfig.targetWagesPct ?? 25;
+  const targetOperasionalPct = ratioConfig.targetOperasionalPct ?? 20;
+  const targetNetProfitPct = ratioConfig.targetNetProfitPct ?? 15;
+
+  // Target Omset Bulanan State (Persisted in localStorage & Cloud with editable input)
   const [targetOmsetBulanan, setTargetOmsetBulanan] = useState<number>(() => {
     const saved = localStorage.getItem('aruskas_target_omset_bulanan');
     if (saved) {
@@ -387,18 +399,43 @@ export default function Dashboard({
   const [isEditingTargetOmset, setIsEditingTargetOmset] = useState(false);
   const [tempTargetOmset, setTempTargetOmset] = useState<string>(() => String(targetOmsetBulanan));
 
+  // Load synced ratio config & target omset from cloud on mount
+  useEffect(() => {
+    let mounted = true;
+    loadCloudSlot<CafeRatioCategoryConfig>('ratio_config').then(cloudCfg => {
+      if (mounted && cloudCfg && typeof cloudCfg === 'object') {
+        const merged = { ...DEFAULT_CAFE_RATIO_CONFIG, ...cloudCfg };
+        setRatioConfig(merged);
+        localStorage.setItem('aruskas_cafe_kpi_ratio_config', JSON.stringify(merged));
+      }
+    }).catch(() => {});
+
+    loadCloudSlot<{ targetOmsetBulanan?: number }>('target_omset').then(cloudTarget => {
+      if (mounted && cloudTarget?.targetOmsetBulanan && cloudTarget.targetOmsetBulanan > 0) {
+        setTargetOmsetBulanan(cloudTarget.targetOmsetBulanan);
+        setTempTargetOmset(String(cloudTarget.targetOmsetBulanan));
+        localStorage.setItem('aruskas_target_omset_bulanan', String(cloudTarget.targetOmsetBulanan));
+      }
+    }).catch(() => {});
+
+    return () => { mounted = false; };
+  }, []);
+
   const handleSaveTargetOmset = () => {
     const parsed = Number(tempTargetOmset.replace(/\D/g, ''));
     if (!isNaN(parsed) && parsed > 0) {
       setTargetOmsetBulanan(parsed);
       localStorage.setItem('aruskas_target_omset_bulanan', String(parsed));
+      saveCloudSlot('target_omset', { targetOmsetBulanan: parsed }).catch(() => {});
     }
     setIsEditingTargetOmset(false);
   };
 
   const handleSaveRatioConfig = (newConfig: CafeRatioCategoryConfig) => {
-    setRatioConfig(newConfig);
-    localStorage.setItem('aruskas_cafe_kpi_ratio_config', JSON.stringify(newConfig));
+    const merged = { ...DEFAULT_CAFE_RATIO_CONFIG, ...newConfig };
+    setRatioConfig(merged);
+    localStorage.setItem('aruskas_cafe_kpi_ratio_config', JSON.stringify(merged));
+    saveCloudSlot('ratio_config', merged).catch(() => {});
   };
 
   // Pagination state
@@ -599,9 +636,8 @@ export default function Dashboard({
   // Statistics calculated on all transactions for global reference
   const globalStats = useMemo(() => getFinancialSummary(transactions), [transactions]);
 
-  // Current Month Actual Omset & Target Achievement Metrics
+  // Current Month / Active Filter Actual Omset & Target Achievement Metrics
   const monthlyOmsetMetrics = useMemo(() => {
-    // Determine active target month: if selectedMonth is not 'all', use selectedMonth, otherwise use current active calendar month
     const now = new Date();
     const monthNames = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -609,30 +645,37 @@ export default function Dashboard({
     ];
     
     let activeMonthLabel = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
-    let isFilteredByMonth = false;
+    const hasCustomFilter = Boolean(
+      searchTerm ||
+      selectedCategory !== 'all' ||
+      filterType !== 'all' ||
+      startDate ||
+      endDate ||
+      filterOpMan !== 'all' ||
+      quickFilter === 'this_year'
+    );
 
     if (selectedMonth && selectedMonth !== 'all') {
       activeMonthLabel = selectedMonth;
-      isFilteredByMonth = true;
     } else if (quickFilter === 'this_month') {
       activeMonthLabel = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
     } else if (quickFilter === 'last_month') {
       const lMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
       const lYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
       activeMonthLabel = `${monthNames[lMonth]} ${lYear}`;
+    } else if (hasCustomFilter) {
+      activeMonthLabel = startDate || endDate
+        ? `${startDate || 'Awal'} s/d ${endDate || 'Akhir'}`
+        : 'Data Terfilter';
+    } else {
+      activeMonthLabel = 'Semua Bulan (Kumulatif)';
     }
 
-    // Filter transactions specifically for this target month to compute pure actual omset (Debit)
-    const monthTransactions = transactions.filter(t => {
-      if (!t.tanggal) return false;
-      const d = parseDateString(t.tanggal);
-      if (isNaN(d.getTime())) return false;
-      const label = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-      return label === activeMonthLabel;
-    });
+    // Use filteredTransactions directly so Aliran Data & Filter and Pilihan Tampilan Bulan always sync with Target Omset %
+    const sourceTransactions = filteredTransactions;
 
-    const actualDebit = monthTransactions.reduce((sum, t) => sum + (Number(t.debit) || 0), 0);
-    const actualExpense = monthTransactions.reduce((sum, t) => sum + ((Number(t.kredit) || 0) + (Number(t.kredit2) || 0)), 0);
+    const actualDebit = sourceTransactions.reduce((sum, t) => sum + (Number(t.debit) || 0), 0);
+    const actualExpense = sourceTransactions.reduce((sum, t) => sum + ((Number(t.kredit) || 0) + (Number(t.kredit2) || 0)), 0);
     const netCashflow = actualDebit - actualExpense;
 
     const target = targetOmsetBulanan > 0 ? targetOmsetBulanan : 1;
@@ -644,10 +687,13 @@ export default function Dashboard({
     const [mName, yStr] = activeMonthLabel.split(' ');
     const mIndex = monthNames.indexOf(mName);
     const targetYear = parseInt(yStr, 10) || now.getFullYear();
-    const totalDaysInMonth = new Date(targetYear, (mIndex >= 0 ? mIndex : now.getMonth()) + 1, 0).getDate();
+    const totalDaysInMonth = mIndex >= 0
+      ? new Date(targetYear, mIndex + 1, 0).getDate()
+      : 30;
     
     const isCurrentActiveMonth = (mIndex === now.getMonth() && targetYear === now.getFullYear());
-    const currentDay = isCurrentActiveMonth ? now.getDate() : totalDaysInMonth;
+    const uniqueDatesCount = new Set(sourceTransactions.map(t => t.tanggal).filter(Boolean)).size;
+    const currentDay = isCurrentActiveMonth ? now.getDate() : (uniqueDatesCount > 0 ? uniqueDatesCount : totalDaysInMonth);
     const daysRemaining = isCurrentActiveMonth ? Math.max(totalDaysInMonth - currentDay, 0) : 0;
     const dailyTargetNeeded = daysRemaining > 0 && remaining > 0 ? Math.ceil(remaining / daysRemaining) : 0;
     const currentDailyAverage = currentDay > 0 ? Math.round(actualDebit / currentDay) : 0;
@@ -670,7 +716,7 @@ export default function Dashboard({
       projectedOmset,
       isCurrentActiveMonth
     };
-  }, [transactions, selectedMonth, quickFilter, targetOmsetBulanan]);
+  }, [filteredTransactions, selectedMonth, quickFilter, targetOmsetBulanan, searchTerm, selectedCategory, filterType, startDate, endDate, filterOpMan]);
 
   // Debt & Liability Overview for Dashboard
   const debtDashboardSummary = useMemo(() => {
@@ -1010,17 +1056,17 @@ export default function Dashboard({
       summaryParagraph: isSurplus
         ? `Kondisi keuangan periode ini berada dalam posisi SURPLUS sebesar ${formatRupiah(netProfit)} dengan Net Profit Margin (NPM) mencapai ${npm}%. Kinerja arus kas tergolong sehat dan mampu menopang kebutuhan operasional harian kafe secara mandiri.`
         : `Kondisi keuangan periode ini mengalami DEFISIT sebesar ${formatRupiah(Math.abs(netProfit))} (NPM ${npm}%). Diperlukan pengawasan ketat terhadap pengeluaran harian, pengetatan pos biaya variabel, serta akselerasi omset kasir.`,
-      cogsDiagnosis: cogs > 35
-        ? `Rasio HPP (COGS) tercatat ${cogs}%, berada di atas batas ideal industri F&B (30% - 35%). Penyumbang HPP terbesar adalah Minuman (${cafeMetrics.cogsDrinkRatio}%) dan Makanan (${cafeMetrics.cogsFoodRatio}%). Disarankan audit stok bahan baku dan standarisasi resep barista.`
-        : `Rasio HPP (COGS) terjaga sangat aman di angka ${cogs}% (standar aman F&B: 30% - 35%), mencerminkan efisiensi penggunaan bahan baku yang optimal.`,
-      fixedCostDiagnosis: wages > 25
-        ? `Biaya gaji staf (${wages}%) melampaui batas wajar 25% omset. Disarankan penyesuaian jadwal shift jam sibuk (peak hours) untuk efisiensi produktivitas.`
+      cogsDiagnosis: cogs > targetCogsPct
+        ? `Rasio HPP (COGS) tercatat ${cogs}%, berada di atas batas target (${targetCogsPct}%). Penyumbang HPP terbesar adalah Minuman (${cafeMetrics.cogsDrinkRatio}%) dan Makanan (${cafeMetrics.cogsFoodRatio}%). Disarankan audit stok bahan baku dan standarisasi resep barista.`
+        : `Rasio HPP (COGS) terjaga sangat aman di angka ${cogs}% (target: ≤${targetCogsPct}%), mencerminkan efisiensi penggunaan bahan baku yang optimal.`,
+      fixedCostDiagnosis: wages > targetWagesPct
+        ? `Biaya gaji staf (${wages}%) melampaui batas wajar ${targetWagesPct}% omset. Disarankan penyesuaian jadwal shift jam sibuk (peak hours) untuk efisiensi produktivitas.`
         : `Alokasi gaji staf (${wages}%) dan operasional (${operasional}%) terpantau proporsional dan terkendali.`,
       bepDiagnosis: isBepAchieved
         ? `Realisasi omset (${formatRupiah(cafeMetrics.totalSales)}) telah melampaui titik impas BEP (${formatRupiah(bepTarget)}). Setiap tambahan transaksi kasir saat ini langsung berkontribusi pada laba bersih kafe.`
         : `Realisasi omset (${formatRupiah(cafeMetrics.totalSales)}) masih berada di bawah target BEP (${formatRupiah(bepTarget)}). Diperlukan tambahan omset sekitar ${formatRupiah(bepTarget - cafeMetrics.totalSales)} untuk mencapai titik impas operasional.`,
       recommendations: [
-        cogs > 35 
+        cogs > targetCogsPct 
           ? 'Terapkan SOP timbangan ketat pada bar barista dan dapur kitchen untuk mencegah waste/pemborosan bahan baku.'
           : 'Pertahankan margin bahan baku dan dorong promosi combo menu ber-margin tinggi (high gross profit).',
         !isBepAchieved
@@ -1990,7 +2036,7 @@ export default function Dashboard({
           <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
             <button
               type="button"
-              onClick={() => setIsRatioSettingsModalOpen(true)}
+              onClick={() => openRatioModalWithTab('all_table')}
               className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white font-black text-xs uppercase tracking-wider rounded shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
               title="Atur pemilihan kategori rasio gaji, HPP, operasional, dll. secara manual"
             >
@@ -2012,31 +2058,38 @@ export default function Dashboard({
                   <span>Rasio HPP (COGS)</span>
                   <button
                     type="button"
-                    onClick={() => setIsRatioSettingsModalOpen(true)}
+                    onClick={() => openRatioModalWithTab('cogs')}
                     className="text-amber-700 hover:text-amber-900 font-bold lowercase text-[10px] flex items-center gap-0.5 hover:underline cursor-pointer"
-                    title="Atur pemilihan kategori HPP manual"
+                    title="Atur pemilihan kategori HPP & target %"
                   >
                     <SlidersHorizontal className="h-2.5 w-2.5" />
                     <span>atur</span>
                   </button>
                 </div>
-                <span className="text-slate-500 font-mono">Target: &lt;35%</span>
+                <button
+                  type="button"
+                  onClick={() => openRatioModalWithTab('cogs')}
+                  className="text-slate-500 hover:text-amber-700 font-mono hover:underline cursor-pointer"
+                  title="Klik untuk ubah Target HPP (%)"
+                >
+                  Target: &lt;{targetCogsPct}%
+                </button>
               </div>
               <div className="flex items-baseline space-x-2">
                 <span className="text-2xl font-black text-slate-800">{cafeMetrics.cogsRatio}%</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide ${
-                  cafeMetrics.cogsRatio <= 35 ? 'bg-emerald-100 text-emerald-800' :
-                  cafeMetrics.cogsRatio <= 45 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                  cafeMetrics.cogsRatio <= targetCogsPct ? 'bg-emerald-100 text-emerald-800' :
+                  cafeMetrics.cogsRatio <= targetCogsPct + 10 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {cafeMetrics.cogsRatio <= 35 ? 'Efisien' :
-                   cafeMetrics.cogsRatio <= 45 ? 'Waspada' : 'Tinggi'}
+                  {cafeMetrics.cogsRatio <= targetCogsPct ? 'Efisien' :
+                   cafeMetrics.cogsRatio <= targetCogsPct + 10 ? 'Waspada' : 'Tinggi'}
                 </span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-2">
                 <div 
                   className={`h-full rounded-full transition-all duration-500 ${
-                    cafeMetrics.cogsRatio <= 35 ? 'bg-emerald-500' :
-                    cafeMetrics.cogsRatio <= 45 ? 'bg-amber-500' : 'bg-red-500'
+                    cafeMetrics.cogsRatio <= targetCogsPct ? 'bg-emerald-500' :
+                    cafeMetrics.cogsRatio <= targetCogsPct + 10 ? 'bg-amber-500' : 'bg-red-500'
                   }`}
                   style={{ width: `${Math.min(cafeMetrics.cogsRatio, 100)}%` }}
                 ></div>
@@ -2162,31 +2215,38 @@ export default function Dashboard({
                   <span>Rasio Gaji & Staff</span>
                   <button
                     type="button"
-                    onClick={() => setIsRatioSettingsModalOpen(true)}
+                    onClick={() => openRatioModalWithTab('wages')}
                     className="text-indigo-700 hover:text-indigo-900 font-bold lowercase text-[10px] flex items-center gap-0.5 hover:underline cursor-pointer"
-                    title="Atur pemilihan kategori Gaji manual"
+                    title="Atur pemilihan kategori Gaji & target %"
                   >
                     <SlidersHorizontal className="h-2.5 w-2.5" />
                     <span>atur</span>
                   </button>
                 </div>
-                <span className="text-slate-500 font-mono">Target: 15-25%</span>
+                <button
+                  type="button"
+                  onClick={() => openRatioModalWithTab('wages')}
+                  className="text-slate-500 hover:text-indigo-700 font-mono hover:underline cursor-pointer"
+                  title="Klik untuk ubah Target Gaji (%)"
+                >
+                  Target: &le;{targetWagesPct}%
+                </button>
               </div>
               <div className="flex items-baseline space-x-2">
                 <span className="text-2xl font-black text-slate-800">{cafeMetrics.wagesRatio}%</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide ${
-                  cafeMetrics.wagesRatio <= 25 ? 'bg-emerald-100 text-emerald-800' :
-                  cafeMetrics.wagesRatio <= 35 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                  cafeMetrics.wagesRatio <= targetWagesPct ? 'bg-emerald-100 text-emerald-800' :
+                  cafeMetrics.wagesRatio <= targetWagesPct + 10 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {cafeMetrics.wagesRatio <= 25 ? 'Sehat' :
-                   cafeMetrics.wagesRatio <= 35 ? 'Waspada' : 'Tinggi'}
+                  {cafeMetrics.wagesRatio <= targetWagesPct ? 'Sehat' :
+                   cafeMetrics.wagesRatio <= targetWagesPct + 10 ? 'Waspada' : 'Tinggi'}
                 </span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-3">
                 <div 
                   className={`h-full rounded-full transition-all duration-500 ${
-                    cafeMetrics.wagesRatio <= 25 ? 'bg-emerald-500' :
-                    cafeMetrics.wagesRatio <= 35 ? 'bg-amber-500' : 'bg-red-500'
+                    cafeMetrics.wagesRatio <= targetWagesPct ? 'bg-emerald-500' :
+                    cafeMetrics.wagesRatio <= targetWagesPct + 10 ? 'bg-amber-500' : 'bg-red-500'
                   }`}
                   style={{ width: `${Math.min(cafeMetrics.wagesRatio, 100)}%` }}
                 ></div>
@@ -2265,31 +2325,38 @@ export default function Dashboard({
                   <span>Operasional & Sewa</span>
                   <button
                     type="button"
-                    onClick={() => setIsRatioSettingsModalOpen(true)}
+                    onClick={() => openRatioModalWithTab('operasional')}
                     className="text-rose-700 hover:text-rose-900 font-bold lowercase text-[10px] flex items-center gap-0.5 hover:underline cursor-pointer"
-                    title="Atur pemilihan kategori Operasional manual"
+                    title="Atur pemilihan kategori Operasional & target %"
                   >
                     <SlidersHorizontal className="h-2.5 w-2.5" />
                     <span>atur</span>
                   </button>
                 </div>
-                <span className="text-slate-500 font-mono">Target: &lt;20%</span>
+                <button
+                  type="button"
+                  onClick={() => openRatioModalWithTab('operasional')}
+                  className="text-slate-500 hover:text-rose-700 font-mono hover:underline cursor-pointer"
+                  title="Klik untuk ubah Target Operasional (%)"
+                >
+                  Target: &lt;{targetOperasionalPct}%
+                </button>
               </div>
               <div className="flex items-baseline space-x-2">
                 <span className="text-2xl font-black text-slate-800">{cafeMetrics.operasionalRatio}%</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide ${
-                  cafeMetrics.operasionalRatio <= 20 ? 'bg-emerald-100 text-emerald-800' :
-                  cafeMetrics.operasionalRatio <= 30 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
+                  cafeMetrics.operasionalRatio <= targetOperasionalPct ? 'bg-emerald-100 text-emerald-800' :
+                  cafeMetrics.operasionalRatio <= targetOperasionalPct + 10 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {cafeMetrics.operasionalRatio <= 20 ? 'Sehat' :
-                   cafeMetrics.operasionalRatio <= 30 ? 'Sedang' : 'Tinggi'}
+                  {cafeMetrics.operasionalRatio <= targetOperasionalPct ? 'Sehat' :
+                   cafeMetrics.operasionalRatio <= targetOperasionalPct + 10 ? 'Sedang' : 'Tinggi'}
                 </span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-3">
                 <div 
                   className={`h-full rounded-full transition-all duration-500 ${
-                    cafeMetrics.operasionalRatio <= 20 ? 'bg-emerald-500' :
-                    cafeMetrics.operasionalRatio <= 30 ? 'bg-amber-500' : 'bg-red-500'
+                    cafeMetrics.operasionalRatio <= targetOperasionalPct ? 'bg-emerald-500' :
+                    cafeMetrics.operasionalRatio <= targetOperasionalPct + 10 ? 'bg-amber-500' : 'bg-red-500'
                   }`}
                   style={{ width: `${Math.min(cafeMetrics.operasionalRatio, 100)}%` }}
                 ></div>
@@ -2364,25 +2431,43 @@ export default function Dashboard({
           <div className="bg-white p-4 rounded border border-amber-150 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
-                <span>Nett Profit Margin</span>
-                <span className="text-slate-500 font-mono">Target: &gt;15%</span>
+                <div className="flex items-center gap-1.5">
+                  <span>Nett Profit Margin</span>
+                  <button
+                    type="button"
+                    onClick={() => openRatioModalWithTab('sales')}
+                    className="text-emerald-700 hover:text-emerald-900 font-bold lowercase text-[10px] flex items-center gap-0.5 hover:underline cursor-pointer"
+                    title="Atur pemilihan kategori Omset & target Nett Profit %"
+                  >
+                    <SlidersHorizontal className="h-2.5 w-2.5" />
+                    <span>atur</span>
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openRatioModalWithTab('sales')}
+                  className="text-slate-500 hover:text-emerald-700 font-mono hover:underline cursor-pointer"
+                  title="Klik untuk ubah Target Nett Profit (%)"
+                >
+                  Target: &gt;{targetNetProfitPct}%
+                </button>
               </div>
               <div className="flex items-baseline space-x-2">
                 <span className={`text-2xl font-black ${cafeMetrics.netProfitMargin >= 0 ? 'text-slate-800' : 'text-red-600'}`}>
                   {cafeMetrics.netProfitMargin}%
                 </span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wide ${
-                  cafeMetrics.netProfitMargin >= 15 ? 'bg-emerald-100 text-emerald-800' :
+                  cafeMetrics.netProfitMargin >= targetNetProfitPct ? 'bg-emerald-100 text-emerald-800' :
                   cafeMetrics.netProfitMargin >= 0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {cafeMetrics.netProfitMargin >= 15 ? 'Sangat Baik' :
+                  {cafeMetrics.netProfitMargin >= targetNetProfitPct ? 'Sangat Baik' :
                    cafeMetrics.netProfitMargin >= 0 ? 'Moderat' : 'Rugi'}
                 </span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden mt-3">
                 <div 
                   className={`h-full rounded-full transition-all duration-500 ${
-                    cafeMetrics.netProfitMargin >= 15 ? 'bg-emerald-500' :
+                    cafeMetrics.netProfitMargin >= targetNetProfitPct ? 'bg-emerald-500' :
                     cafeMetrics.netProfitMargin >= 0 ? 'bg-amber-500' : 'bg-red-500'
                   }`}
                   style={{ width: `${Math.max(0, Math.min(cafeMetrics.netProfitMargin, 100))}%` }}
@@ -2480,11 +2565,11 @@ export default function Dashboard({
                 <div className="bg-amber-50/60 p-2.5 rounded border border-amber-150 space-y-1">
                   <span className="text-[9px] font-black text-amber-900 uppercase tracking-wider block">⚡ Rekomendasi Profitabilitas</span>
                   <p className="text-[9px] text-slate-600 font-medium leading-relaxed">
-                    {cafeMetrics.cogsRatio > 35 ? (
-                      "Rasio HPP Anda tinggi (>35%). Direkomendasikan melakukan standardisasi resep minuman (recipe costing), negosiasi ke agen supplier besar, atau meluncurkan menu bundling combo hemat."
-                    ) : cafeMetrics.wagesRatio > 25 ? (
-                      "Biaya karyawan di atas target 25%. Pertimbangkan penjadwalan shift barista secara dinamis berdasarkan jam ramai (peak hours) atau skema part-time di akhir pekan."
-                    ) : cafeMetrics.netProfitMargin < 15 ? (
+                    {cafeMetrics.cogsRatio > targetCogsPct ? (
+                      `Rasio HPP Anda tinggi (>${targetCogsPct}%). Direkomendasikan melakukan standardisasi resep minuman (recipe costing), negosiasi ke agen supplier besar, atau meluncurkan menu bundling combo hemat.`
+                    ) : cafeMetrics.wagesRatio > targetWagesPct ? (
+                      `Biaya karyawan di atas target ${targetWagesPct}%. Pertimbangkan penjadwalan shift barista secara dinamis berdasarkan jam ramai (peak hours) atau skema part-time di akhir pekan.`
+                    ) : cafeMetrics.netProfitMargin < targetNetProfitPct ? (
                       "Margin laba tipis. Coba naikkan volume penjualan lewat program loyalitas pelanggan atau optimalkan promo agar tidak terlalu mendepresiasi margin dasar."
                     ) : (
                       "Kinerja luar biasa! Pertahankan rasio pengeluaran saat ini dan pertimbangkan untuk mereinvestasikan laba guna ekspansi menu atau pemasaran digital."
@@ -2502,7 +2587,7 @@ export default function Dashboard({
           <div>
             <p className="font-bold">Tips Manajemen Basco Cashflow:</p>
             <p className="text-amber-850 mt-0.5 leading-relaxed">
-              Jaga Rasio HPP (COGS) di kisaran <span className="font-bold">28% - 35%</span> dan Gaji Staff maksimal <span className="font-bold">25%</span> dari total omset untuk mengamankan Nett Profit Margin yang ideal di atas <span className="font-bold">15%</span>. Gunakan filter jangka waktu di bawah untuk melihat profitabilitas bulanan atau tahunan secara berkala.
+              Jaga Rasio HPP (COGS) maksimal <span className="font-bold">{targetCogsPct}%</span> dan Gaji Staff maksimal <span className="font-bold">{targetWagesPct}%</span> dari total omset untuk mengamankan Nett Profit Margin yang ideal di atas <span className="font-bold">{targetNetProfitPct}%</span>. Gunakan filter jangka waktu di bawah untuk melihat profitabilitas bulanan atau tahunan secara berkala.
             </p>
           </div>
         </div>
@@ -4224,6 +4309,7 @@ export default function Dashboard({
         transactions={transactions}
         filteredTransactions={filteredTransactions}
         masterCategories={CATEGORIES as unknown as string[]}
+        initialTab={ratioModalInitialTab}
       />
     </>
   );
