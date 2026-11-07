@@ -54,6 +54,10 @@ interface IncomingGoodsModuleProps {
   selectedMonth: string; // YYYY-MM or 'ALL'
   onChangeSelectedMonth: (month: string) => void;
   availableMonths: string[];
+  onSyncFromSheet?: () => void;
+  isSyncingSheet?: boolean;
+  lastSyncTime?: string | null;
+  spreadsheetUrl?: string | null;
 }
 
 export default function IncomingGoodsModule({
@@ -64,7 +68,11 @@ export default function IncomingGoodsModule({
   onDeleteBatch,
   selectedMonth,
   onChangeSelectedMonth,
-  availableMonths
+  availableMonths,
+  onSyncFromSheet,
+  isSyncingSheet = false,
+  lastSyncTime,
+  spreadsheetUrl,
 }: IncomingGoodsModuleProps) {
   // Form State
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -639,22 +647,41 @@ export default function IncomingGoodsModule({
               <PackagePlus className="h-6 w-6" />
             </div>
             <div>
-              <div className="flex items-center space-x-2.5">
+              <div className="flex items-center flex-wrap gap-2">
                 <h3 className="text-base md:text-lg font-black uppercase tracking-wider text-slate-900">
                   Modul Pencatatan Barang / Bahan Masuk
                 </h3>
-                <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 font-extrabold text-[10px] rounded-full uppercase">
-                  Bulan Ini
+                <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-[10px] rounded-full uppercase flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Realtime Sync Spreadsheet ({incomingBatches.length} Baris)</span>
                 </span>
+                {lastSyncTime && (
+                  <span className="text-[10px] font-bold text-slate-400">
+                    Sync: {lastSyncTime}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Pencatatan pembelian & stok masuk cafe terintegrasi langsung dengan database Master Bahan Baku resep.
+                Tersinkronisasi otomatis secara real-time dengan tab <strong>"Barang Masuk & Pembelian"</strong> di Google Spreadsheet.
               </p>
             </div>
           </div>
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {onSyncFromSheet && (
+              <button
+                type="button"
+                onClick={onSyncFromSheet}
+                disabled={isSyncingSheet}
+                className="px-3.5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                title="Tarik & Sinkronkan Data Terbaru dari Google Spreadsheet"
+              >
+                <RotateCcw className={`h-4 w-4 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+                <span>{isSyncingSheet ? 'Menyinkronkan...' : 'Sync Spreadsheet'}</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {

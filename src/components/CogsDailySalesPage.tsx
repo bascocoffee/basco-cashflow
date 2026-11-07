@@ -529,66 +529,21 @@ export default function CogsDailySalesPage({
     return DEFAULT_DAILY_SALES;
   });
 
-  // Incoming Ingredient Batches (Barang Masuk)
+  // Incoming Ingredient Batches (Barang Masuk) — Realtime synced with tab "Barang Masuk & Pembelian"
   const [incomingBatches, setIncomingBatches] = useState<IncomingIngredientBatch[]>(() => {
     const saved = localStorage.getItem('aruskas_cogs_incoming_batches');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(
+            (b: any) => b && b.id !== 'in-batch-1' && b.id !== 'in-batch-2' && b.id !== 'in-batch-3'
+          );
+          if (filtered.length > 0) return filtered;
+        }
       } catch (e) { /* ignore */ }
     }
-    // Default initial mock data if empty
-    return [
-      {
-        id: 'in-batch-1',
-        tanggal: '2026-08-01',
-        ingredientId: 'ing-1',
-        namaBahan: 'Biji Kopi Espresso Blend',
-        kategori: 'Minuman',
-        berat: 5000,
-        satuan: 'gram',
-        harga: 1000000,
-        hargaSatuan: 200,
-        statusPembayaran: 'Lunas',
-        supplier: 'Roastery Jaya Abadi',
-        nomorNota: 'INV/20260801/01',
-        keterangan: 'Stok awal bulan 5kg roast beans',
-        createdAt: '2026-08-01T08:00:00Z'
-      },
-      {
-        id: 'in-batch-2',
-        tanggal: '2026-08-02',
-        ingredientId: 'ing-2',
-        namaBahan: 'Susu Fresh Milk / UHT',
-        kategori: 'Minuman',
-        berat: 24000,
-        satuan: 'ml',
-        harga: 432000,
-        hargaSatuan: 18,
-        statusPembayaran: 'Lunas',
-        supplier: 'Agen Susu Segar',
-        nomorNota: 'NOTA-8821',
-        keterangan: '2 karton @ 12 liter Diamond Fresh',
-        createdAt: '2026-08-02T09:00:00Z'
-      },
-      {
-        id: 'in-batch-3',
-        tanggal: '2026-08-05',
-        ingredientId: 'ing-4',
-        namaBahan: 'Kemasan Cup, Lid & Straw',
-        kategori: 'Packaging',
-        berat: 500,
-        satuan: 'pcs',
-        harga: 750000,
-        hargaSatuan: 1500,
-        statusPembayaran: 'Tempo / Utang',
-        supplier: 'Pabrik Plastik Nusantara',
-        nomorNota: 'INV-PPN/891',
-        keterangan: 'Jatuh tempo tgl 25 Agustus',
-        createdAt: '2026-08-05T10:30:00Z'
-      }
-    ];
+    return [];
   });
 
   // Selected date / mode for Daily Sales vs HPP visual comparison
@@ -725,21 +680,70 @@ export default function CogsDailySalesPage({
     }
   }, [incomingBatches]);
 
-  // Handler CRUD for Incoming Batches
+  // Handler CRUD for Incoming Batches (with immediate realtime Google Sheet & Cloud sync)
+  const handleRefreshIncomingFromSheet = async () => {
+    if (!spreadsheetId) return;
+    setIsSyncingSheet(true);
+    try {
+      const cloudIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
+      if (cloudIncoming && cloudIncoming.length > 0) {
+        isApplyingRemoteRef.current = true;
+        setIncomingBatches(cloudIncoming);
+        localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(cloudIncoming));
+        setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+        setTimeout(() => {
+          isApplyingRemoteRef.current = false;
+        }, 300);
+      }
+    } catch (err) {
+      console.error('Error refreshing incoming batches:', err);
+    } finally {
+      setIsSyncingSheet(false);
+    }
+  };
+
   const handleAddIncomingBatch = (newBatch: Omit<IncomingIngredientBatch, 'id'>) => {
     const created: IncomingIngredientBatch = {
       ...newBatch,
-      id: `in-batch-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`
+      tanggal: normalizeDateString(newBatch.tanggal) || newBatch.tanggal,
+      id: `in-batch-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      createdAt: new Date().toISOString(),
     };
-    setIncomingBatches(prev => [created, ...prev]);
+    setIncomingBatches(prev => {
+      const next = [created, ...prev];
+      localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
+      if (spreadsheetId) {
+        saveIncomingBatchesToSheet(spreadsheetId, next, token || 'local-token').catch(() => {});
+      }
+      return next;
+    });
   };
 
   const handleUpdateIncomingBatch = (updatedBatch: IncomingIngredientBatch) => {
-    setIncomingBatches(prev => prev.map(b => b.id === updatedBatch.id ? updatedBatch : b));
+    const stamped: IncomingIngredientBatch = {
+      ...updatedBatch,
+      tanggal: normalizeDateString(updatedBatch.tanggal) || updatedBatch.tanggal,
+      createdAt: new Date().toISOString(),
+    };
+    setIncomingBatches(prev => {
+      const next = prev.map(b => (b.id === stamped.id ? stamped : b));
+      localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
+      if (spreadsheetId) {
+        saveIncomingBatchesToSheet(spreadsheetId, next, token || 'local-token').catch(() => {});
+      }
+      return next;
+    });
   };
 
   const handleDeleteIncomingBatch = (id: string) => {
-    setIncomingBatches(prev => prev.filter(b => b.id !== id));
+    setIncomingBatches(prev => {
+      const next = prev.filter(b => b.id !== id);
+      localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
+      if (spreadsheetId) {
+        saveIncomingBatchesToSheet(spreadsheetId, next, token || 'local-token', [id]).catch(() => {});
+      }
+      return next;
+    });
   };
 
   // On mount / when connected to Google Sheets, pull remote catalog, daily sales, ingredients & biaya
@@ -1020,12 +1024,30 @@ export default function CogsDailySalesPage({
             setSelectedDate(normRemoteDate);
           }
         }
+
+        // Realtime poll for "Barang Masuk & Pembelian" from Google Spreadsheet
+        if (spreadsheetId) {
+          const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
+          if (isMounted && remoteIncoming && remoteIncoming.length > 0) {
+            setIncomingBatches(prev => {
+              const prevSig = prev.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
+              const nextSig = remoteIncoming.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
+              if (prevSig === nextSig) return prev;
+              isApplyingRemoteRef.current = true;
+              localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(remoteIncoming));
+              setTimeout(() => {
+                isApplyingRemoteRef.current = false;
+              }, 300);
+              return remoteIncoming;
+            });
+          }
+        }
       } catch {
         // ignore network poll errors
       }
     };
 
-    const intervalId = setInterval(pollCrossDeviceSales, 6000);
+    const intervalId = setInterval(pollCrossDeviceSales, 7000);
     const handleFocus = () => {
       pollCrossDeviceSales();
     };
@@ -1035,7 +1057,7 @@ export default function CogsDailySalesPage({
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [spreadsheetId, token]);
 
   // Export and Import Data Sheet JSON Backup
   const handleExportDataSheetJSON = () => {
@@ -1611,7 +1633,7 @@ export default function CogsDailySalesPage({
   // Main Omset & Financial Overview Month Filter State
   const [selectedOmsetMonth, setSelectedOmsetMonth] = useState<string>('ALL');
 
-  // Available Months (YYYY-MM)
+  // Available Months (YYYY-MM) from both dailySales & incomingBatches
   const availableMonths = useMemo(() => {
     const setMonths = new Set<string>();
     dailySales.forEach(rec => {
@@ -1619,8 +1641,13 @@ export default function CogsDailySalesPage({
         setMonths.add(rec.tanggal.slice(0, 7));
       }
     });
+    incomingBatches.forEach(b => {
+      if (b.tanggal && b.tanggal.length >= 7) {
+        setMonths.add(b.tanggal.slice(0, 7));
+      }
+    });
     return Array.from(setMonths).sort((a, b) => b.localeCompare(a));
-  }, [dailySales]);
+  }, [dailySales, incomingBatches]);
 
   const formatMonthLabel = (ymStr: string) => {
     if (ymStr === 'ALL') return 'Semua Bulan';
@@ -7820,6 +7847,10 @@ export default function CogsDailySalesPage({
             selectedMonth={selectedOmsetMonth}
             onChangeSelectedMonth={setSelectedOmsetMonth}
             availableMonths={availableMonths}
+            onSyncFromSheet={handleRefreshIncomingFromSheet}
+            isSyncingSheet={isSyncingSheet}
+            lastSyncTime={lastSyncTime}
+            spreadsheetUrl={spreadsheetUrl}
           />
         </div>
       )}

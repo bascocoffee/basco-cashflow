@@ -103,25 +103,25 @@ export function getStoredDebts(): DebtItem[] {
     const saved = localStorage.getItem(DEBT_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter(
+          (d: any) => d && d.id !== 'debt-1' && d.id !== 'debt-2' && d.id !== 'debt-3'
+        );
+        return cleaned;
       }
     }
   } catch (err) {
     console.warn('Error reading stored debts:', err);
   }
-  // Initialize default
-  try {
-    localStorage.setItem(DEBT_STORAGE_KEY, JSON.stringify(DEFAULT_DEBTS));
-  } catch (e) {
-    // ignore
-  }
-  return DEFAULT_DEBTS;
+  return [];
 }
 
 export function saveStoredDebts(debts: DebtItem[]): void {
   try {
-    localStorage.setItem(DEBT_STORAGE_KEY, JSON.stringify(debts));
+    const cleaned = (debts || []).filter(
+      (d: any) => d && d.id !== 'debt-1' && d.id !== 'debt-2' && d.id !== 'debt-3'
+    );
+    localStorage.setItem(DEBT_STORAGE_KEY, JSON.stringify(cleaned));
   } catch (err) {
     console.error('Error saving debts to localStorage:', err);
   }

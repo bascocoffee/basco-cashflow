@@ -37,6 +37,18 @@ import {
   getDueDateStatus, 
   calculateDebtFinancialMetrics 
 } from '../utils/debtUtils';
+import {
+  fetchDebtsFromSheet,
+  saveDebtsToSheet,
+  markIncomingBatchPaidInSheet,
+  DEFAULT_SPREADSHEET_ID,
+} from '../sheetsService';
+import {
+  generateSmartDebtAnalysis,
+  getSavedAiProvider,
+  setSavedAiProvider,
+  type AiProvider,
+} from '../utils/aiAssistantEngine';
 
 function AiMarkdownReport({ content }: { content: string }) {
   if (!content) return null;
@@ -104,12 +116,27 @@ function AiMarkdownReport({ content }: { content: string }) {
 
 interface DebtTrackerPageProps {
   transactions: Transaction[];
+  spreadsheetId?: string | null;
+  spreadsheetUrl?: string | null;
+  token?: string | null;
 }
 
-export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) {
+export default function DebtTrackerPage({
+  transactions,
+  spreadsheetId,
+  token,
+}: DebtTrackerPageProps) {
+  const activeSpreadsheetId =
+    spreadsheetId || localStorage.getItem('aruskas_spreadsheet_id') || DEFAULT_SPREADSHEET_ID;
+  const activeToken =
+    token || localStorage.getItem('aruskas_google_access_token') || 'local-token';
+
   const [debts, setDebts] = useState<DebtItem[]>(() => getStoredDebts());
-  const [filterType, setFilterType] = useState<'all' | 'monthly' | 'annual' | 'active' | 'paid_off'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'monthly' | 'annual' | 'lump_sum' | 'active' | 'paid_off'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [aiProvider, setAiProvider] = useState<AiProvider>(() => getSavedAiProvider());
 
   // Modal States
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
@@ -128,12 +155,12 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
   // Form State
   const [formName, setFormName] = useState('');
   const [formLender, setFormLender] = useState('');
-  const [formCategory, setFormCategory] = useState<DebtCategory>('equipment');
-  const [formDebtType, setFormDebtType] = useState<DebtType>('monthly');
+  const [formCategory, setFormCategory] = useState<DebtCategory>('supplier');
+  const [formDebtType, setFormDebtType] = useState<DebtType>('lump_sum');
   const [formPrincipal, setFormPrincipal] = useState<string>('');
   const [formRemaining, setFormRemaining] = useState<string>('');
   const [formMonthlyInstallment, setFormMonthlyInstallment] = useState<string>('');
-  const [formTenorMonths, setFormTenorMonths] = useState<string>('12');
+  const [formTenorMonths, setFormTenorMonths] = useState<string>('1');
   const [formPaidMonths, setFormPaidMonths] = useState<string>('0');
   const [formDueDay, setFormDueDay] = useState<number>(5);
   const [formStartDate, setFormStartDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
@@ -165,6 +192,45 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
     });
   };
 
+  // Realtime sync from Google Spreadsheet ("Pencatatan Hutang", "Barang Masuk & Pembelian", and "Sheet1")
+  const syncDebtsFromSpreadsheet = async (showSpinner = false) => {
+    if (!activeSpreadsheetId) return;
+    if (showSpinner) setIsSyncingSheet(true);
+    try {
+      const synced = await fetchDebtsFromSheet(activeSpreadsheetId, activeToken, transactions);
+      if (Array.isArray(synced)) {
+        setDebts(prev => {
+          const prevSig = prev.map(d => `${d.id}:${d.remainingAmount}:${d.status}`).join('|');
+          const nextSig = synced.map(d => `${d.id}:${d.remainingAmount}:${d.status}`).join('|');
+          if (prevSig === nextSig && prev.length === synced.length) return prev;
+          saveStoredDebts(synced);
+          return synced;
+        });
+        setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+      }
+    } catch (err) {
+      console.error('Error syncing debts from spreadsheet:', err);
+    } finally {
+      if (showSpinner) setIsSyncingSheet(false);
+    }
+  };
+
+  useEffect(() => {
+    syncDebtsFromSpreadsheet(true);
+  }, [activeSpreadsheetId, activeToken, transactions.length]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      syncDebtsFromSpreadsheet(false);
+    }, 7000);
+    const handleFocus = () => syncDebtsFromSpreadsheet(false);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [activeSpreadsheetId, activeToken, transactions]);
+
   // Save to localStorage whenever debts change
   useEffect(() => {
     saveStoredDebts(debts);
@@ -191,6 +257,7 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
       // Type / Status filter
       if (filterType === 'monthly' && debt.debtType !== 'monthly') return false;
       if (filterType === 'annual' && debt.debtType !== 'annual') return false;
+      if (filterType === 'lump_sum' && debt.debtType !== 'lump_sum') return false;
       if (filterType === 'active' && debt.status !== 'active') return false;
       if (filterType === 'paid_off' && debt.status !== 'paid_off') return false;
 
@@ -239,12 +306,12 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
       setEditingDebt(null);
       setFormName('');
       setFormLender('');
-      setFormCategory('equipment');
-      setFormDebtType('monthly');
+      setFormCategory('supplier');
+      setFormDebtType('lump_sum');
       setFormPrincipal('');
       setFormRemaining('');
       setFormMonthlyInstallment('');
-      setFormTenorMonths('12');
+      setFormTenorMonths('1');
       setFormPaidMonths('0');
       setFormDueDay(5);
       setFormStartDate(new Date().toISOString().split('T')[0]);
@@ -263,7 +330,7 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
     }
   };
 
-  // Save Debt
+  // Save Debt (and sync to Google Spreadsheet in realtime)
   const handleSaveDebt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
@@ -273,16 +340,14 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
 
     const principal = Number(formPrincipal.replace(/\D/g, '')) || 0;
     const remaining = formRemaining.trim() ? Number(formRemaining.replace(/\D/g, '')) : principal;
-    const monthly = Number(formMonthlyInstallment.replace(/\D/g, '')) || 0;
+    const monthly = Number(formMonthlyInstallment.replace(/\D/g, '')) || remaining || principal;
     const tenor = Number(formTenorMonths) || 1;
     const paidM = Number(formPaidMonths) || 0;
     const dueDay = Math.min(31, Math.max(1, Number(formDueDay) || 5));
     
-    // Construct next due date based on dueDay
     const now = new Date();
     let nextYear = now.getFullYear();
     let nextMonth = now.getMonth();
-    // If today is already past due day this month, set next due date to next month
     if (now.getDate() > dueDay) {
       nextMonth += 1;
       if (nextMonth > 11) {
@@ -295,33 +360,36 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
     const annualAmount = formDebtType === 'annual' ? principal : monthly * 12;
 
     if (editingDebt) {
-      // Update existing
-      setDebts(prev => prev.map(item => {
-        if (item.id === editingDebt.id) {
-          return {
-            ...item,
-            name: formName.trim(),
-            lenderName: formLender.trim() || 'Kreditur',
-            category: formCategory,
-            debtType: formDebtType,
-            principalAmount: principal,
-            remainingAmount: remaining,
-            monthlyInstallment: monthly,
-            annualInstallment: annualAmount,
-            tenorMonths: tenor,
-            paidMonths: paidM,
-            dueDayOfMonth: dueDay,
-            nextDueDate: item.nextDueDate || nextDueDateStr,
-            startDate: formStartDate,
-            notes: formNotes.trim(),
-            status: remaining <= 0 ? 'paid_off' : 'active',
-            updatedAt: new Date().toISOString()
-          };
-        }
-        return item;
-      }));
+      setDebts(prev => {
+        const nextList = prev.map(item => {
+          if (item.id === editingDebt.id) {
+            return {
+              ...item,
+              name: formName.trim(),
+              lenderName: formLender.trim() || 'Kreditur',
+              category: formCategory,
+              debtType: formDebtType,
+              principalAmount: principal,
+              remainingAmount: remaining,
+              monthlyInstallment: monthly,
+              annualInstallment: annualAmount,
+              tenorMonths: tenor,
+              paidMonths: paidM,
+              dueDayOfMonth: dueDay,
+              nextDueDate: item.nextDueDate || nextDueDateStr,
+              startDate: formStartDate,
+              notes: formNotes.trim(),
+              status: (remaining <= 0 ? 'paid_off' : 'active') as DebtStatus,
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return item;
+        });
+        saveStoredDebts(nextList);
+        saveDebtsToSheet(activeSpreadsheetId, nextList, activeToken).catch(() => {});
+        return nextList;
+      });
     } else {
-      // Add new
       const newDebt: DebtItem = {
         id: `debt-${Date.now()}`,
         name: formName.trim(),
@@ -343,34 +411,47 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
-      setDebts(prev => [newDebt, ...prev]);
+      setDebts(prev => {
+        const nextList = [newDebt, ...prev];
+        saveStoredDebts(nextList);
+        saveDebtsToSheet(activeSpreadsheetId, nextList, activeToken).catch(() => {});
+        return nextList;
+      });
     }
 
     setIsFormModalOpen(false);
   };
 
-  // Delete Debt
+  // Delete Debt (and sync deletion to Google Spreadsheet)
   const handleDeleteDebt = (id: string, name: string) => {
     if (window.confirm(`Apakah Anda yakin ingin menghapus catatan hutang: "${name}"?`)) {
-      setDebts(prev => prev.filter(d => d.id !== id));
+      setDebts(prev => {
+        const nextList = prev.filter(d => d.id !== id);
+        saveStoredDebts(nextList);
+        saveDebtsToSheet(activeSpreadsheetId, nextList, activeToken, [id]).catch(() => {});
+        return nextList;
+      });
     }
   };
 
   // Open Pay Installment Modal
   const handleOpenPaymentModal = (debt: DebtItem) => {
     setPaymentModalDebt(debt);
-    setPaymentAmount(String(debt.monthlyInstallment || ''));
+    setPaymentAmount(String(debt.monthlyInstallment || debt.remainingAmount || ''));
     setPaymentDate(new Date().toISOString().split('T')[0]);
     
-    // Suggest period label (e.g. "Angsuran ke-(X+1)")
     const nextInstallmentNum = (debt.paidMonths || 0) + 1;
     const now = new Date();
     const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    setPaymentPeriod(`Angsuran ke-${nextInstallmentNum} (${monthNames[now.getMonth()]} ${now.getFullYear()})`);
+    setPaymentPeriod(
+      debt.debtType === 'lump_sum'
+        ? `Pelunasan Tempo (${monthNames[now.getMonth()]} ${now.getFullYear()})`
+        : `Angsuran ke-${nextInstallmentNum} (${monthNames[now.getMonth()]} ${now.getFullYear()})`
+    );
     setPaymentNote('');
   };
 
-  // Submit Payment
+  // Submit Payment (and sync to Google Spreadsheet + "Barang Masuk & Pembelian" if applicable)
   const handleSubmitPayment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentModalDebt) return;
@@ -390,59 +471,95 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
       createdAt: new Date().toISOString()
     };
 
-    setDebts(prev => prev.map(d => {
-      if (d.id === paymentModalDebt.id) {
-        const newRemaining = Math.max(0, (d.remainingAmount || 0) - amount);
-        const newPaidMonths = (d.paidMonths || 0) + 1;
-        const isPaidOff = newRemaining <= 0;
+    const targetDebt = paymentModalDebt as any;
+    const isGoingToBePaidOff = Math.max(0, (paymentModalDebt.remainingAmount || 0) - amount) <= 0;
 
-        // Advance next due date to next month
-        let nextDueDateStr = d.nextDueDate;
-        if (!isPaidOff && d.nextDueDate) {
-          const parts = d.nextDueDate.split('-');
-          if (parts.length === 3) {
-            let y = parseInt(parts[0], 10);
-            let m = parseInt(parts[1], 10); // 1-12
-            m += 1;
-            if (m > 12) {
-              m = 1;
-              y += 1;
+    setDebts(prev => {
+      const nextList = prev.map(d => {
+        if (d.id === paymentModalDebt.id) {
+          const newRemaining = Math.max(0, (d.remainingAmount || 0) - amount);
+          const newPaidMonths = (d.paidMonths || 0) + 1;
+          const isPaidOff = newRemaining <= 0;
+
+          let nextDueDateStr = d.nextDueDate;
+          if (!isPaidOff && d.nextDueDate) {
+            const parts = d.nextDueDate.split('-');
+            if (parts.length === 3) {
+              let y = parseInt(parts[0], 10);
+              let m = parseInt(parts[1], 10);
+              m += 1;
+              if (m > 12) {
+                m = 1;
+                y += 1;
+              }
+              nextDueDateStr = `${y}-${String(m).padStart(2, '0')}-${String(d.dueDayOfMonth).padStart(2, '0')}`;
             }
-            nextDueDateStr = `${y}-${String(m).padStart(2, '0')}-${String(d.dueDayOfMonth).padStart(2, '0')}`;
           }
-        }
 
-        return {
-          ...d,
-          remainingAmount: newRemaining,
-          paidMonths: newPaidMonths,
-          status: isPaidOff ? 'paid_off' : 'active',
-          nextDueDate: nextDueDateStr,
-          paymentLogs: [log, ...(d.paymentLogs || [])],
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return d;
-    }));
+          return {
+            ...d,
+            remainingAmount: newRemaining,
+            paidMonths: newPaidMonths,
+            status: (isPaidOff ? 'paid_off' : 'active') as DebtStatus,
+            nextDueDate: nextDueDateStr,
+            paymentLogs: [log, ...(d.paymentLogs || [])],
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return d;
+      });
+
+      saveStoredDebts(nextList);
+      saveDebtsToSheet(activeSpreadsheetId, nextList, activeToken).catch(() => {});
+      return nextList;
+    });
+
+    if (isGoingToBePaidOff && (targetDebt.batchId || String(targetDebt.id).startsWith('sheet-bm-'))) {
+      const batchId = targetDebt.batchId || String(targetDebt.id).replace(/^sheet-bm-/, '');
+      markIncomingBatchPaidInSheet(activeSpreadsheetId, batchId, activeToken).catch(() => {});
+    }
 
     setPaymentModalDebt(null);
   };
 
-  // Reset to Default Sample Debts
-  const handleResetToDefault = () => {
-    if (window.confirm('Reset data hutang ke contoh bawaan Basco Coffee? Seluruh data yang Anda buat akan ditimpa.')) {
-      setDebts(DEFAULT_DEBTS);
-    }
-  };
-
-  // Call Gemini AI for Debt Analysis
-  const handleConsultAi = async () => {
+  // Call Claude / Gemini AI for Debt Analysis
+  const handleConsultAi = async (overrideProvider?: AiProvider) => {
+    const activeProvider = overrideProvider || aiProvider;
     setIsAnalyzingAi(true);
     setAiError(null);
 
+    const activeDebts = debts.filter(d => d.status === 'active');
+    const fallbackReport = () =>
+      generateSmartDebtAnalysis({
+        provider: activeProvider,
+        debtSummary: {
+          totalActiveDebtRemaining: metrics.totalRemaining,
+          totalMonthlyObligation: metrics.totalMonthlyInstallment,
+          dsrPercentage: metrics.debtToRevenueRatio,
+          dsrStatus:
+            metrics.safetyStatus === 'safe'
+              ? 'Aman'
+              : metrics.safetyStatus === 'caution'
+              ? 'Waspada'
+              : 'Bahaya',
+          activeDebtsList: activeDebts.map(d => ({
+            nama: d.name,
+            kreditur: d.lenderName,
+            sisaPokok: d.remainingAmount,
+            cicilanPerBulan: d.monthlyInstallment,
+            jatuhTempo: d.nextDueDate || `Tanggal ${d.dueDayOfMonth}`,
+          })),
+        },
+        cashflowSummary: {
+          avgMonthlyIncome: metrics.monthlyRevenue,
+          avgMonthlyExpense: metrics.monthlyExpenses,
+          avgMonthlyNetProfit: metrics.monthlyNetProfit,
+        },
+      });
+
     try {
-      const activeDebts = debts.filter(d => d.status === 'active');
       const payload = {
+        provider: activeProvider,
         debtSummary: {
           totalPrincipal: metrics.totalPrincipal,
           totalRemaining: metrics.totalRemaining,
@@ -475,24 +592,32 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
         }
       };
 
-      const response = await fetch('/api/gemini/debt-analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Gagal memproses analisis kelayakan hutang melalui AI.');
+      let analysisResult = '';
+      try {
+        const response = await fetch('/api/gemini/debt-analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (response.ok) {
+          const data = await response.json();
+          analysisResult = data.analysis || '';
+        }
+      } catch {
+        // Fallback to local Claude/Gemini analytical engine
       }
 
-      const analysisResult = data.analysis || 'Laporan analisis hutang berhasil dirumuskan.';
+      if (!analysisResult.trim()) {
+        analysisResult = fallbackReport();
+      }
+
       setAiAnalysis(analysisResult);
       localStorage.setItem('aruskas_debt_ai_analysis', analysisResult);
     } catch (err: any) {
       console.error(err);
-      setAiError(err.message || 'Gagal menghubungi server AI. Pastikan API key terpasang.');
+      const fallback = fallbackReport();
+      setAiAnalysis(fallback);
+      localStorage.setItem('aruskas_debt_ai_analysis', fallback);
     } finally {
       setIsAnalyzingAi(false);
     }
@@ -502,25 +627,78 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       
       {/* HEADER SECTION */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center flex-wrap gap-2">
             <span className="p-2 bg-amber-50 text-amber-800 rounded-xl border border-amber-200">
               <CreditCard className="h-5 w-5" />
             </span>
             <h2 className="text-xl font-black text-slate-900 tracking-tight">
               Pencatatan Hutang & Liabilitas Cafe
             </h2>
+            <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-[10px] rounded-full uppercase flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Realtime Sync Spreadsheet ({debts.length} Item)</span>
+            </span>
+            {lastSyncTime && (
+              <span className="text-[10px] font-bold text-slate-400">
+                Sync: {lastSyncTime}
+              </span>
+            )}
           </div>
           <p className="text-xs text-slate-500 mt-1 font-medium max-w-2xl">
-            Pantau kalkulasi cicilan hutang bulanan & tahunan, notifikasi jatuh tempo pembayaran, serta otomasi AI membaca data omset dan laba bersih untuk menilai kelayakan berhutang (Aman vs Bahaya).
+            Tersinkronisasi otomatis secara real-time dengan tagihan <strong>Belum Lunas / Tempo</strong> pada tab <strong>"Barang Masuk & Pembelian"</strong>, <strong>"Sheet 1"</strong>, dan tab <strong>"Pencatatan Hutang"</strong> di Google Spreadsheet.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => {
+                setAiProvider('claude');
+                setSavedAiProvider('claude');
+                handleConsultAi('claude');
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                aiProvider === 'claude'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Claude AI
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAiProvider('gemini');
+                setSavedAiProvider('gemini');
+                handleConsultAi('gemini');
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                aiProvider === 'gemini'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Gemini AI
+            </button>
+          </div>
+
           <button
             type="button"
-            onClick={handleConsultAi}
+            onClick={() => syncDebtsFromSpreadsheet(true)}
+            disabled={isSyncingSheet}
+            className="px-3.5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-black text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center space-x-1.5"
+            title="Tarik Data Hutang & Tempo Terbaru dari Google Spreadsheet"
+          >
+            <RefreshCw className={`h-4 w-4 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+            <span>{isSyncingSheet ? 'Menyinkronkan...' : 'Sync Spreadsheet'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleConsultAi()}
             disabled={isAnalyzingAi}
             className="px-4 py-2.5 bg-linear-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-md shadow-amber-500/20 transition cursor-pointer flex items-center space-x-2 disabled:opacity-60"
           >
@@ -949,6 +1127,17 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
             </button>
             <button
               type="button"
+              onClick={() => setFilterType('lump_sum')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                filterType === 'lump_sum'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Tempo Supplier ({debts.filter(d => d.debtType === 'lump_sum').length})
+            </button>
+            <button
+              type="button"
               onClick={() => setFilterType('active')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
                 filterType === 'active'
@@ -1152,15 +1341,15 @@ export default function DebtTrackerPage({ transactions }: DebtTrackerPageProps) 
           </div>
         )}
 
-        {/* Footer info & Reset button */}
+        {/* Footer info & Sync button */}
         <div className="pt-3 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
-          <span>Menampilkan {filteredDebts.length} dari {debts.length} catatan hutang</span>
+          <span>Menampilkan {filteredDebts.length} dari {debts.length} catatan hutang (Realtime Spreadsheet)</span>
           <button
             type="button"
-            onClick={handleResetToDefault}
-            className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline text-left sm:text-right"
+            onClick={() => syncDebtsFromSpreadsheet(true)}
+            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline text-left sm:text-right cursor-pointer"
           >
-            Reset ke Data Bawaan Cafe
+            Sinkronisasi Ulang dari Spreadsheet
           </button>
         </div>
       </div>

@@ -2229,7 +2229,12 @@ export default function App() {
           ) : activeTab === "fixed_cost" ? (
             <FixedCostSimulator />
           ) : activeTab === "debt_tracker" ? (
-            <DebtTrackerPage transactions={transactions} />
+            <DebtTrackerPage
+              transactions={transactions}
+              spreadsheetId={spreadsheetId}
+              spreadsheetUrl={userRole === "owner" ? spreadsheetUrl : null}
+              token={token}
+            />
           ) : activeTab === "ai_chat" ? (
             <AiChat transactions={transactions} />
           ) : (

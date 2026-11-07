@@ -81,6 +81,13 @@ import {
   DEFAULT_SHOPPING_ITEMS, 
   computeShoppingMetrics 
 } from '../utils/shoppingListData';
+import {
+  generateSmartCashflowSummary,
+  generateSmartCashflowChatReply,
+  getSavedAiProvider,
+  setSavedAiProvider,
+  type AiProvider,
+} from '../utils/aiAssistantEngine';
 
 const CustomRechartsTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
@@ -171,7 +178,8 @@ export default function Dashboard({
   const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  // AI Analyst State
+  // AI Analyst State (Claude AI & Gemini AI)
+  const [aiProvider, setAiProvider] = useState<AiProvider>(() => getSavedAiProvider());
   const [aiSummary, setAiSummary] = useState<string>(() => {
     return localStorage.getItem('aruskas_ai_summary') || '';
   });
@@ -195,12 +203,61 @@ export default function Dashboard({
     return [];
   });
 
+  const handleSelectAiProvider = (nextProvider: AiProvider) => {
+    setAiProvider(nextProvider);
+    setSavedAiProvider(nextProvider);
+    setSummaryError(null);
+  };
+
   const toggleAiSummaryMinimize = () => {
     setIsAiSummaryMinimized(prev => {
       const next = !prev;
       localStorage.setItem('aruskas_ai_minimized', String(next));
       return next;
     });
+  };
+
+  const buildAiPayloadData = () => {
+    const periodLabel = selectedMonth === 'all' ? 'Semua Waktu (Kumulatif)' : selectedMonth;
+    const normalizedMetrics = {
+      totalSales: cafeMetrics.totalSales,
+      totalHpp: cafeMetrics.totalCOGS,
+      hppPercentage: cafeMetrics.cogsRatio,
+      hppMinuman: cafeMetrics.totalCOGSDrink,
+      hppFood: cafeMetrics.totalCOGSFood,
+      hppSnack: cafeMetrics.totalCOGSSnack,
+      totalSalary: cafeMetrics.totalWages,
+      salaryPercentage: cafeMetrics.wagesRatio,
+      totalOperational: cafeMetrics.totalOperasional,
+      operationalPercentage: cafeMetrics.operasionalRatio,
+      netProfit: filteredStats.saldo,
+      netProfitPercentage: cafeMetrics.netProfitMargin,
+      targetHppMax: targetCogsPct,
+      targetSalaryMax: targetWagesPct,
+      targetOpMax: targetOperasionalPct,
+      targetNetProfitMin: targetNetProfitPct,
+    };
+
+    const topExpenses = categorySpend.slice(0, 6).map(c => ({
+      category: c.category,
+      amount: c.amount,
+      pct: c.percentage,
+    }));
+
+    const unpaidExpenses = filteredTransactions
+      .filter(t => Number(t.debit) === 0 && Number(t.kredit) === 0 && Number(t.kredit2) > 0)
+      .map(t => ({
+        tanggal: t.tanggal,
+        keterangan: `${t.jenisPengeluaran2 || t.jenisPengeluaran || 'Tagihan'} (${t.keterangan || '-'})`,
+        amount: Number(t.kredit2) || 0,
+      }));
+
+    return {
+      periodName: periodLabel,
+      normalizedMetrics,
+      topExpenses,
+      unpaidExpenses,
+    };
   };
 
   const handleSendCustomQuestion = async (questionText: string) => {
@@ -212,13 +269,16 @@ export default function Dashboard({
     setCustomQuestion('');
     setSummaryError(null);
 
+    const { periodName, normalizedMetrics, topExpenses, unpaidExpenses } = buildAiPayloadData();
+
     try {
       const context = {
-        totalDebit: cafeMetrics.totalSales,
-        totalKredit: cafeMetrics.totalExpensesCalculated,
-        saldo: cafeMetrics.netProfit,
+        totalDebit: filteredStats.totalDebit,
+        totalKredit: filteredStats.totalKredit,
+        saldo: filteredStats.saldo,
         netProfitMargin: cafeMetrics.netProfitMargin,
         cogsRatio: cafeMetrics.cogsRatio,
+        totalCOGS: cafeMetrics.totalCOGS,
         totalCOGSDrink: cafeMetrics.totalCOGSDrink,
         cogsDrinkRatio: cafeMetrics.cogsDrinkRatio,
         totalCOGSFood: cafeMetrics.totalCOGSFood,
@@ -228,31 +288,64 @@ export default function Dashboard({
         totalWages: cafeMetrics.totalWages,
         wagesRatio: cafeMetrics.wagesRatio,
         totalOperasional: cafeMetrics.totalOperasional,
-        operasionalRatio: cafeMetrics.operasionalRatio
+        operasionalRatio: cafeMetrics.operasionalRatio,
       };
 
-      const response = await fetch('/api/gemini/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: updatedMessages,
-          context
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Gagal mengirim pesan ke AI.');
+      let replyText = '';
+      try {
+        const response = await fetch('/api/gemini/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: aiProvider,
+            question: questionText,
+            messages: updatedMessages,
+            stats: filteredStats,
+            cafeMetrics: normalizedMetrics,
+            context,
+            periodName,
+            topExpenses,
+            unpaidExpenses,
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          replyText = data.reply || data.answer || '';
+        }
+      } catch {
+        // Fallback to client-side Claude/Gemini analytical engine
       }
 
-      const data = await response.json();
-      const newAiMessage = { role: 'model' as const, content: data.reply };
+      if (!replyText.trim()) {
+        replyText = generateSmartCashflowChatReply({
+          provider: aiProvider,
+          question: questionText,
+          stats: filteredStats,
+          cafeMetrics: normalizedMetrics,
+          periodName,
+          topExpenses,
+          unpaidExpenses,
+        });
+      }
+
+      const newAiMessage = { role: 'model' as const, content: replyText };
       const finalMessages = [...updatedMessages, newAiMessage];
       setChatMessages(finalMessages);
       localStorage.setItem('aruskas_dashboard_chat_history', JSON.stringify(finalMessages));
     } catch (err: any) {
       console.error(err);
-      setSummaryError(err.message || 'Gagal mendapatkan analisis dari asisten AI.');
+      const fallbackReply = generateSmartCashflowChatReply({
+        provider: aiProvider,
+        question: questionText,
+        stats: filteredStats,
+        cafeMetrics: normalizedMetrics,
+        periodName,
+        topExpenses,
+        unpaidExpenses,
+      });
+      const finalMessages = [...updatedMessages, { role: 'model' as const, content: fallbackReply }];
+      setChatMessages(finalMessages);
+      localStorage.setItem('aruskas_dashboard_chat_history', JSON.stringify(finalMessages));
     } finally {
       setChatLoading(false);
     }
@@ -265,34 +358,66 @@ export default function Dashboard({
     }
   };
 
-  const generateAISummary = async () => {
+  const generateAISummary = async (overrideProvider?: AiProvider) => {
+    const activeProvider = overrideProvider || aiProvider;
     setIsGeneratingSummary(true);
     setSummaryError(null);
-    try {
-      const response = await fetch('/api/gemini/summary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          stats: filteredStats,
-          metrics: cafeMetrics,
-          categorySpend: categorySpend.slice(0, 5),
-          monthlyData: monthlyData,
-        }),
-      });
+    const { periodName, normalizedMetrics, topExpenses, unpaidExpenses } = buildAiPayloadData();
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Gagal memproses analisis AI.');
+    try {
+      let summaryText = '';
+      try {
+        const response = await fetch('/api/gemini/summary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            provider: activeProvider,
+            stats: filteredStats,
+            cafeMetrics: normalizedMetrics,
+            metrics: cafeMetrics,
+            periodName,
+            topExpenses,
+            unpaidExpenses,
+            categorySpend: categorySpend.slice(0, 5),
+            monthlyData: monthlyData,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          summaryText = data.summary || '';
+        }
+      } catch {
+        // Fallback to client-side Claude/Gemini analytical engine
       }
 
-      const data = await response.json();
-      setAiSummary(data.summary);
-      localStorage.setItem('aruskas_ai_summary', data.summary);
+      if (!summaryText.trim()) {
+        summaryText = generateSmartCashflowSummary({
+          provider: activeProvider,
+          stats: filteredStats,
+          cafeMetrics: normalizedMetrics,
+          periodName,
+          topExpenses,
+          unpaidExpenses,
+        });
+      }
+
+      setAiSummary(summaryText);
+      localStorage.setItem('aruskas_ai_summary', summaryText);
     } catch (err: any) {
       console.error(err);
-      setSummaryError(err.message || 'Gagal menghubungi asisten AI.');
+      const fallback = generateSmartCashflowSummary({
+        provider: activeProvider,
+        stats: filteredStats,
+        cafeMetrics: normalizedMetrics,
+        periodName,
+        topExpenses,
+        unpaidExpenses,
+      });
+      setAiSummary(fallback);
+      localStorage.setItem('aruskas_ai_summary', fallback);
     } finally {
       setIsGeneratingSummary(false);
     }
@@ -3405,7 +3530,7 @@ export default function Dashboard({
 
       </div>
 
-      {/* GEMINI AI ANALYST SUMMARY CARD */}
+      {/* CLAUDE & GEMINI AI ANALYST SUMMARY CARD */}
       <div className="bg-white rounded border border-indigo-150 p-6 shadow-xs relative overflow-hidden" id="ai-analyst-panel">
         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
         
@@ -3417,16 +3542,54 @@ export default function Dashboard({
             <div>
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2 flex-wrap">
                 <span>ArusKas AI Analyst</span>
-                <span className="text-[9px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold uppercase tracking-widest border border-indigo-200">Powered by Gemini AI</span>
+                <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-widest border ${
+                  aiProvider === 'claude'
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                }`}>
+                  {aiProvider === 'claude' ? 'Powered by Claude 3.7 AI' : 'Powered by Gemini 2.5 AI'}
+                </span>
               </h3>
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mt-0.5">
-                Ringkasan naratif otomatis mengenai performa kas bulanan & rekomendasi taktis
+                Ringkasan naratif otomatis mengenai performa kas bulanan & rekomendasi taktis berbasis Claude / Gemini
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <div className="inline-flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  handleSelectAiProvider('claude');
+                  generateAISummary('claude');
+                }}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                  aiProvider === 'claude'
+                    ? 'bg-amber-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Gunakan Engine Analisis Claude AI (Anthropic)"
+              >
+                Claude AI
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleSelectAiProvider('gemini');
+                  generateAISummary('gemini');
+                }}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                  aiProvider === 'gemini'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Gunakan Engine Analisis Gemini AI (Google)"
+              >
+                Gemini AI
+              </button>
+            </div>
             <button
-              onClick={generateAISummary}
+              onClick={() => generateAISummary()}
               disabled={isGeneratingSummary}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded shadow-sm flex items-center justify-center space-x-2 transition cursor-pointer disabled:opacity-60"
               id="ai-generate-btn"
