@@ -41,7 +41,9 @@ import {
   fetchAllStockOpnameReportsFromSheet,
   fetchCalendarNotesFromSheet,
   fetchShoppingListFromSheet4,
+  fetchDebtsFromSheet,
 } from "./sheetsService";
+import { saveStoredDebts } from "./utils/debtUtils";
 import { CALENDAR_NOTES_STORAGE_KEY } from "./utils/calendarNotesData";
 import {
   SHOPPING_LIST_STORAGE_KEY,
@@ -453,16 +455,19 @@ export default function App() {
         if (!activeToken || activeToken.endsWith("-local-token")) {
           activeToken = await resolveSharedGoogleToken();
         } else {
+          const authPayload = {
+            accessToken: activeToken,
+            spreadsheetId: sheetId,
+            spreadsheetName: sheetName,
+            spreadsheetUrl: sheetUrl,
+          };
+          localStorage.setItem("aruskas_google_access_token", activeToken);
           fetch("/api/auth/shared-token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              accessToken: activeToken,
-              spreadsheetId: sheetId,
-              spreadsheetName: sheetName,
-              spreadsheetUrl: sheetUrl,
-            }),
+            body: JSON.stringify(authPayload),
           }).catch(() => {});
+          saveCloudSlot("auth_token", authPayload).catch(() => {});
         }
         setToken(activeToken);
         setAuthChecking(false);
@@ -778,6 +783,19 @@ export default function App() {
         console.warn(
           "Could not sync shopping list from Sheet 4 on app start:",
           shopErr,
+        );
+      }
+
+      // Sync & auto-create 'Pencatatan Hutang' sheet tab on app entry
+      try {
+        const remoteDebts = await fetchDebtsFromSheet(id, accessToken);
+        if (Array.isArray(remoteDebts) && remoteDebts.length > 0) {
+          saveStoredDebts(remoteDebts);
+        }
+      } catch (debtErr) {
+        console.warn(
+          "Could not sync Pencatatan Hutang sheet on app start:",
+          debtErr,
         );
       }
     } catch (err: any) {

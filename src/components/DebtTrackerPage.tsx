@@ -24,6 +24,7 @@ import {
   ArrowRight,
   Receipt,
   FileSpreadsheet,
+  ExternalLink,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
@@ -41,8 +42,12 @@ import {
   fetchDebtsFromSheet,
   saveDebtsToSheet,
   markIncomingBatchPaidInSheet,
+  getDebtSheetGid,
+  DEBT_SHEET_TAB_NAME,
   DEFAULT_SPREADSHEET_ID,
 } from '../sheetsService';
+import { googleSignIn } from '../firebase';
+import { saveCloudSlot } from '../utils/cloudSync';
 import {
   generateSmartDebtAnalysis,
   getSavedAiProvider,
@@ -135,7 +140,10 @@ export default function DebtTrackerPage({
   const [filterType, setFilterType] = useState<'all' | 'monthly' | 'annual' | 'lump_sum' | 'active' | 'paid_off'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [isCreatingSheetTab, setIsCreatingSheetTab] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [debtSheetGid, setDebtSheetGid] = useState<number | null>(null);
+  const [sheetSyncNotice, setSheetSyncNotice] = useState<string | null>(null);
   const [aiProvider, setAiProvider] = useState<AiProvider>(() => getSavedAiProvider());
 
   // Modal States
@@ -192,13 +200,13 @@ export default function DebtTrackerPage({
     });
   };
 
-  // Realtime sync from Google Spreadsheet ("Pencatatan Hutang", "Barang Masuk & Pembelian", and "Sheet1")
+  // Realtime sync from Google Spreadsheet ("Pencatatan Hutang")
   const syncDebtsFromSpreadsheet = async (showSpinner = false) => {
     if (!activeSpreadsheetId) return;
     if (showSpinner) setIsSyncingSheet(true);
     try {
       const synced = await fetchDebtsFromSheet(activeSpreadsheetId, activeToken, transactions);
-      if (Array.isArray(synced)) {
+      if (Array.isArray(synced) && synced.length > 0) {
         setDebts(prev => {
           const prevSig = prev.map(d => `${d.id}:${d.remainingAmount}:${d.status}`).join('|');
           const nextSig = synced.map(d => `${d.id}:${d.remainingAmount}:${d.status}`).join('|');
@@ -208,10 +216,75 @@ export default function DebtTrackerPage({
         });
         setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
       }
+      const gid = await getDebtSheetGid(activeSpreadsheetId, activeToken);
+      if (gid !== null) setDebtSheetGid(gid);
     } catch (err) {
       console.error('Error syncing debts from spreadsheet:', err);
     } finally {
       if (showSpinner) setIsSyncingSheet(false);
+    }
+  };
+
+  // Explicit 1-click handler to create/update the dedicated "Pencatatan Hutang" sheet tab in Google Spreadsheet
+  const handleCreateOrUpdateSheetTab = async () => {
+    if (!activeSpreadsheetId) return;
+    setIsCreatingSheetTab(true);
+    setSheetSyncNotice(null);
+    try {
+      const currentList = debts.length > 0 ? debts : [...DEFAULT_DEBTS];
+      let res = await saveDebtsToSheet(activeSpreadsheetId, currentList, activeToken);
+
+      if (res.needsGoogleAuth && !res.syncedToSheet) {
+        // User logged in via Password without active OAuth write token -> request Google OAuth popup
+        const signInResult = await googleSignIn();
+        if (signInResult?.accessToken) {
+          localStorage.setItem('aruskas_google_access_token', signInResult.accessToken);
+          await saveCloudSlot('auth_token', {
+            accessToken: signInResult.accessToken,
+            spreadsheetId: activeSpreadsheetId,
+          });
+          res = await saveDebtsToSheet(activeSpreadsheetId, currentList, signInResult.accessToken);
+        }
+      }
+
+      if (res.sheetGid !== undefined && res.sheetGid !== null) {
+        setDebtSheetGid(res.sheetGid);
+      }
+
+      if (res.syncedToSheet) {
+        setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+        setSheetSyncNotice(
+          `✓ Sheet "${DEBT_SHEET_TAB_NAME}" berhasil dibuat & diperbarui di Google Spreadsheet (${currentList.length} baris hutang)!`
+        );
+      } else {
+        setSheetSyncNotice(
+          `Data tersimpan di Cloud (${currentList.length} baris). Klik kembali dan pilih akun Google Owner untuk menulis tab "${DEBT_SHEET_TAB_NAME}" di Google Sheets.`
+        );
+      }
+    } catch (err) {
+      console.error('Error creating/updating Pencatatan Hutang sheet tab:', err);
+      setSheetSyncNotice('Gagal membuat tab di Google Sheets. Pastikan popup login Google diizinkan.');
+    } finally {
+      setIsCreatingSheetTab(false);
+    }
+  };
+
+  const handleRestoreDefaultCafeDebts = async () => {
+    const restored = [...DEFAULT_DEBTS];
+    setDebts(restored);
+    saveStoredDebts(restored);
+    setIsSyncingSheet(true);
+    try {
+      const res = await saveDebtsToSheet(activeSpreadsheetId, restored, activeToken);
+      if (res.sheetGid !== undefined && res.sheetGid !== null) {
+        setDebtSheetGid(res.sheetGid);
+      }
+      setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+      setSheetSyncNotice(
+        `✓ 13 data hutang cafe berhasil dipulihkan & disinkronkan ke Sheet "${DEBT_SHEET_TAB_NAME}"!`
+      );
+    } finally {
+      setIsSyncingSheet(false);
     }
   };
 
@@ -647,8 +720,14 @@ export default function DebtTrackerPage({
             )}
           </div>
           <p className="text-xs text-slate-500 mt-1 font-medium max-w-2xl">
-            Tersinkronisasi otomatis secara real-time dengan tagihan <strong>Belum Lunas / Tempo</strong> pada tab <strong>"Barang Masuk & Pembelian"</strong>, <strong>"Sheet 1"</strong>, dan tab <strong>"Pencatatan Hutang"</strong> di Google Spreadsheet.
+            Tersinkronisasi otomatis secara real-time dengan sheet khusus <strong>"{DEBT_SHEET_TAB_NAME}"</strong> pada Google Spreadsheet Basco Cashflow.
           </p>
+          {sheetSyncNotice && (
+            <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span>{sheetSyncNotice}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -687,10 +766,36 @@ export default function DebtTrackerPage({
 
           <button
             type="button"
+            onClick={handleCreateOrUpdateSheetTab}
+            disabled={isCreatingSheetTab || isSyncingSheet}
+            className="px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60 text-white font-black text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center space-x-1.5"
+            title={`Buat atau perbarui sheet "${DEBT_SHEET_TAB_NAME}" di Google Spreadsheet`}
+          >
+            <FileSpreadsheet className={`h-4 w-4 ${isCreatingSheetTab ? 'animate-bounce' : ''}`} />
+            <span>
+              {isCreatingSheetTab ? 'Membuat Sheet...' : `Buat / Update Sheet "${DEBT_SHEET_TAB_NAME}"`}
+            </span>
+          </button>
+
+          <a
+            href={`https://docs.google.com/spreadsheets/d/${activeSpreadsheetId}/edit${
+              debtSheetGid !== null ? `#gid=${debtSheetGid}` : ''
+            }`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 font-bold text-xs rounded-xl shadow-2xs transition flex items-center space-x-1.5"
+            title={`Buka sheet "${DEBT_SHEET_TAB_NAME}" di Google Spreadsheet`}
+          >
+            <ExternalLink className="h-3.5 w-3.5 text-emerald-700" />
+            <span>Buka Sheet</span>
+          </a>
+
+          <button
+            type="button"
             onClick={() => syncDebtsFromSpreadsheet(true)}
             disabled={isSyncingSheet}
             className="px-3.5 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white font-black text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center space-x-1.5"
-            title="Tarik Data Hutang & Tempo Terbaru dari Google Spreadsheet"
+            title={`Tarik data terbaru dari sheet "${DEBT_SHEET_TAB_NAME}" di Google Spreadsheet`}
           >
             <RefreshCw className={`h-4 w-4 ${isSyncingSheet ? 'animate-spin' : ''}`} />
             <span>{isSyncingSheet ? 'Menyinkronkan...' : 'Sync Spreadsheet'}</span>
@@ -1343,14 +1448,25 @@ export default function DebtTrackerPage({
 
         {/* Footer info & Sync button */}
         <div className="pt-3 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
-          <span>Menampilkan {filteredDebts.length} dari {debts.length} catatan hutang (Realtime Spreadsheet)</span>
-          <button
-            type="button"
-            onClick={() => syncDebtsFromSpreadsheet(true)}
-            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline text-left sm:text-right cursor-pointer"
-          >
-            Sinkronisasi Ulang dari Spreadsheet
-          </button>
+          <span>
+            Menampilkan {filteredDebts.length} dari {debts.length} catatan hutang (Sheet: <strong>{DEBT_SHEET_TAB_NAME}</strong>)
+          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleRestoreDefaultCafeDebts}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 underline cursor-pointer"
+            >
+              Pulihkan 13 Data Hutang Cafe
+            </button>
+            <button
+              type="button"
+              onClick={handleCreateOrUpdateSheetTab}
+              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+            >
+              Sinkronkan ke Sheet "{DEBT_SHEET_TAB_NAME}"
+            </button>
+          </div>
         </div>
       </div>
 

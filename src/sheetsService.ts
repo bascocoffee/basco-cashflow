@@ -4,17 +4,43 @@ import { ShoppingIngredientItem, ShoppingUrgency, ShoppingStatus } from './types
 import { EmployeeTask } from './types/employeeTask';
 import { parseDateString } from './utils';
 import { saveCloudSlot, loadCloudSlot, pushDailySalesToCloud, pullDailySalesFromCloud } from './utils/cloudSync';
+import { DEFAULT_DEBTS, getStoredDebts, saveStoredDebts, CATEGORY_LABELS, DEBT_TYPE_LABELS } from './utils/debtUtils';
+import { getAccessToken } from './firebase';
 
 export const DEFAULT_SPREADSHEET_ID = '1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc';
+export const DEBT_SHEET_TAB_NAME = 'Pencatatan Hutang';
 
 export async function getValidSharedAuthToken(): Promise<string | null> {
   try {
-    const authSlot = await loadCloudSlot<{ token?: string; updatedAt?: number }>('shared_auth');
-    if (authSlot?.token && !authSlot.token.endsWith('-local-token')) {
-      const ageMs = Date.now() - Number(authSlot.updatedAt || 0);
-      if (ageMs < 55 * 60 * 1000) {
-        return authSlot.token;
-      }
+    const localTok =
+      localStorage.getItem('aruskas_google_access_token') ||
+      localStorage.getItem('aruskas_access_token');
+    if (localTok && !localTok.endsWith('-local-token')) {
+      return localTok;
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    const fbTok = await getAccessToken();
+    if (fbTok && !fbTok.endsWith('-local-token')) {
+      return fbTok;
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    const [authSlot, sharedSlot] = await Promise.all([
+      loadCloudSlot<{ accessToken?: string; token?: string; updatedAt?: number }>('auth_token'),
+      loadCloudSlot<{ accessToken?: string; token?: string; updatedAt?: number }>('shared_auth'),
+    ]);
+    const cand =
+      authSlot?.accessToken ||
+      authSlot?.token ||
+      sharedSlot?.accessToken ||
+      sharedSlot?.token;
+    if (cand && !cand.endsWith('-local-token')) {
+      return cand;
     }
   } catch {
     // ignore
@@ -1757,6 +1783,13 @@ export async function saveIncomingBatchesToSheet(
 // --- PENCATATAN HUTANG & KEWAJIBAN REALTIME SPREADSHEET SYNC ---
 const DUMMY_DEBT_IDS = new Set(['debt-1', 'debt-2', 'debt-3']);
 
+function isIgnoredAutoDebtId(id: string): boolean {
+  if (!id) return true;
+  if (DUMMY_DEBT_IDS.has(id)) return true;
+  if (id.startsWith('sheet-bm-') || id.startsWith('sheet-tx-')) return true;
+  return false;
+}
+
 function parseDueDateFromTextAndStart(
   text: string,
   startDateStr: string
@@ -1795,7 +1828,7 @@ function parseDueDateFromTextAndStart(
     september: 9,
     oktober: 10,
     november: 11,
-    desember: 12,
+    desember: 11 + 1,
   };
   const wordMatch = clean.match(/(?:tanggal|tgl|tempo)\s*(\d{1,2})\s*([a-z]+)?/i);
   if (wordMatch) {
@@ -1809,15 +1842,12 @@ function parseDueDateFromTextAndStart(
     };
   }
 
-  // Default: 7 days after purchase date for supplier tempo
-  const dt = new Date(startYear, startMonth - 1, startDay);
-  dt.setDate(dt.getDate() + 7);
-  const dueY = dt.getFullYear();
-  const dueM = dt.getMonth() + 1;
-  const dueD = dt.getDate();
+  // Default: same day next month
+  const nextM = startMonth === 12 ? 1 : startMonth + 1;
+  const nextY = startMonth === 12 ? startYear + 1 : startYear;
   return {
-    dueDay: dueD,
-    nextDueDate: `${dueY}-${String(dueM).padStart(2, '0')}-${String(dueD).padStart(2, '0')}`,
+    dueDay: startDay,
+    nextDueDate: `${nextY}-${String(nextM).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
   };
 }
 
@@ -1837,21 +1867,23 @@ export function normalizeDebtItemRecord(raw: any): any {
   const validCategories = ['equipment', 'renovation', 'working_capital', 'supplier', 'bank_loan', 'other'];
   const category = validCategories.includes(rawCat)
     ? rawCat
-    : rawCat.includes('alat') || rawCat.includes('mesin')
+    : rawCat.includes('alat') || rawCat.includes('mesin') || rawCat.includes('peralatan')
     ? 'equipment'
-    : rawCat.includes('renov')
+    : rawCat.includes('renov') || rawCat.includes('tempat')
     ? 'renovation'
-    : rawCat.includes('modal') || rawCat.includes('pinjaman')
+    : rawCat.includes('modal') || rawCat.includes('kerja')
     ? 'working_capital'
     : rawCat.includes('bank') || rawCat.includes('kur')
     ? 'bank_loan'
-    : 'supplier';
+    : rawCat.includes('supplier') || rawCat.includes('bahan')
+    ? 'supplier'
+    : 'other';
 
   const rawType = String(raw.debtType || raw.tipe || 'lump_sum').toLowerCase();
   const debtType =
-    rawType === 'monthly' || rawType === 'bulanan'
+    rawType === 'monthly' || rawType.includes('bulan')
       ? 'monthly'
-      : rawType === 'annual' || rawType === 'tahunan'
+      : rawType === 'annual' || rawType.includes('tahun')
       ? 'annual'
       : 'lump_sum';
 
@@ -1873,275 +1905,265 @@ export function normalizeDebtItemRecord(raw: any): any {
       }))
     : [];
 
+  const parsedDueDay = Number(raw.dueDayOfMonth);
+  const finalDueDay =
+    Number.isFinite(parsedDueDay) && parsedDueDay >= 1 && parsedDueDay <= 31
+      ? parsedDueDay
+      : dueDay || 5;
+
+  const rawNextDue = String(raw.nextDueDate || raw.jatuhTempo || '').trim();
+  const normalizedNextDue = /^\d{4}-\d{2}-\d{2}$/.test(rawNextDue)
+    ? rawNextDue
+    : normalizeDateString(rawNextDue) && /^\d{4}-\d{2}-\d{2}$/.test(normalizeDateString(rawNextDue))
+    ? normalizeDateString(rawNextDue)
+    : nextDueDate;
+
   return {
     id: String(raw.id || `debt-${Date.now()}`),
-    name: String(raw.name || raw.nama || 'Hutang / Tempo Supplier'),
-    lenderName: String(raw.lenderName || raw.kreditur || 'Supplier / Kreditur'),
+    name: String(raw.name || raw.nama || 'Hutang Usaha'),
+    lenderName: String(raw.lenderName || raw.kreditur || 'Kreditur / Supplier'),
     category,
     debtType,
     principalAmount: principal,
     remainingAmount: isPaid ? 0 : remaining,
     monthlyInstallment: monthly,
     annualInstallment: Number(raw.annualInstallment || (debtType === 'annual' ? principal : monthly * 12)),
-    tenorMonths: Number(raw.tenorMonths || 1),
-    paidMonths: Number(raw.paidMonths || (isPaid ? 1 : 0)),
-    dueDayOfMonth: Number(raw.dueDayOfMonth || dueDay || 1),
-    nextDueDate: raw.nextDueDate && /^\d{4}-\d{2}-\d{2}$/.test(raw.nextDueDate) ? raw.nextDueDate : nextDueDate,
+    tenorMonths: Math.max(1, Number(raw.tenorMonths || 1)),
+    paidMonths: Math.max(0, Number(raw.paidMonths ?? (isPaid ? 1 : 0))),
+    dueDayOfMonth: finalDueDay,
+    nextDueDate: normalizedNextDue,
     startDate,
-    endDate: raw.endDate || nextDueDate,
+    endDate: raw.endDate || normalizedNextDue,
     status: isPaid ? 'paid_off' : 'active',
     notes: String(raw.notes ?? raw.catatan ?? ''),
     paymentLogs: rawLogs,
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || new Date().toISOString(),
-    source: raw.source || 'custom',
+    source: raw.source || 'sheet-hutang',
     batchId: raw.batchId,
     transactionId: raw.transactionId,
   };
 }
 
+export async function getDebtSheetGid(
+  spreadsheetId: string,
+  accessToken?: string | null
+): Promise<number | null> {
+  try {
+    const cached = localStorage.getItem(`aruskas_debt_gid_${spreadsheetId}`);
+    if (cached && /^\d+$/.test(cached)) {
+      return Number(cached);
+    }
+  } catch {
+    // ignore
+  }
+
+  let effectiveToken = accessToken || '';
+  if (!effectiveToken || effectiveToken.endsWith('-local-token')) {
+    const shared = await getValidSharedAuthToken();
+    if (shared) effectiveToken = shared;
+  }
+
+  if (effectiveToken && !effectiveToken.endsWith('-local-token')) {
+    try {
+      const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(title,sheetId)`;
+      const res = await fetch(metaUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const found = (data.sheets || []).find(
+          (s: any) =>
+            String(s.properties?.title || '').trim().toLowerCase() ===
+            DEBT_SHEET_TAB_NAME.toLowerCase()
+        );
+        if (found && typeof found.properties?.sheetId === 'number') {
+          try {
+            localStorage.setItem(
+              `aruskas_debt_gid_${spreadsheetId}`,
+              String(found.properties.sheetId)
+            );
+          } catch {}
+          return found.properties.sheetId;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
 export async function fetchDebtsFromSheet(
   spreadsheetId: string,
   accessToken: string,
-  transactions: Transaction[] = []
+  _transactions: Transaction[] = []
 ): Promise<any[]> {
   try {
-    const [cloudSlot, debtTabRows, incomingBatches] = await Promise.all([
+    const [cloudSlot, debtTabRows] = await Promise.all([
       loadCloudSlot<{ items?: any[]; deletedIds?: string[]; updatedAt?: string }>('debts_records'),
       fetchSheetRowsWithFallback(
         spreadsheetId,
-        'Pencatatan Hutang',
-        "'Pencatatan Hutang'!A1:M1000",
+        DEBT_SHEET_TAB_NAME,
+        `'${DEBT_SHEET_TAB_NAME}'!A1:Q1000`,
         accessToken
       ),
-      fetchIncomingBatchesFromSheet(spreadsheetId, accessToken),
     ]);
 
-    const deletedSet = new Set<string>(Array.isArray(cloudSlot?.deletedIds) ? cloudSlot!.deletedIds! : []);
-    const mergedMap = new Map<string, any>();
+    const deletedSet = new Set<string>(
+      Array.isArray(cloudSlot?.deletedIds) ? cloudSlot!.deletedIds! : []
+    );
 
-    // 1. Parse dedicated "Pencatatan Hutang" tab if present
-    if (debtTabRows && debtTabRows.length > 1) {
-      for (let i = 1; i < debtTabRows.length; i++) {
-        const row = debtTabRows[i];
+    const hasValidDebtSheetTab =
+      Array.isArray(debtTabRows) &&
+      debtTabRows.length > 0 &&
+      (String(debtTabRows[0]?.[0] || '').toLowerCase().includes('id') ||
+        String(debtTabRows[0]?.[1] || '').toLowerCase().includes('nama') ||
+        String(debtTabRows[0]?.[1] || '').toLowerCase().includes('pinjaman') ||
+        String(debtTabRows[0]?.[1] || '').toLowerCase().includes('hutang'));
+
+    const sheetItems: any[] = [];
+    if (hasValidDebtSheetTab && debtTabRows!.length > 1) {
+      const headerRow = (debtTabRows![0] || []).map((h) => String(h || '').toLowerCase());
+      const is17ColLayout = headerRow.length >= 15 || headerRow.some((h) => h.includes('tenor'));
+
+      for (let i = 1; i < debtTabRows!.length; i++) {
+        const row = debtTabRows![i];
         if (!row || (!row[0] && !row[1])) continue;
-        const id = String(row[0] || `debt-row-${i}`).trim();
-        if (DUMMY_DEBT_IDS.has(id) || deletedSet.has(id)) continue;
+        const id = String(row[0] || `debt-sheet-${i}`).trim();
+        if (isIgnoredAutoDebtId(id) || deletedSet.has(id)) continue;
 
-        let parsedLogs: any[] = [];
-        if (row[12]) {
-          try {
-            parsedLogs = JSON.parse(String(row[12]));
-          } catch {
-            parsedLogs = [];
+        if (is17ColLayout) {
+          let parsedLogs: any[] = [];
+          if (row[16]) {
+            try {
+              parsedLogs = JSON.parse(String(row[16]));
+            } catch {
+              parsedLogs = [];
+            }
           }
-        }
 
-        const totalPokok = parseSheetNumber(row[5]);
-        const sisaPokok = parseSheetNumber(row[6]);
-        const cicilan = parseSheetNumber(row[7]) || sisaPokok || totalPokok;
-        const startDate = normalizeDateString(String(row[9] || new Date().toISOString().split('T')[0]).trim());
-        const dueStr = String(row[8] || '').trim();
-
-        mergedMap.set(
-          id,
-          normalizeDebtItemRecord({
-            id,
-            name: String(row[1] || 'Hutang Usaha').trim(),
-            lenderName: String(row[2] || 'Kreditur / Supplier').trim(),
-            category: String(row[3] || 'supplier').trim(),
-            debtType: String(row[4] || 'lump_sum').trim(),
-            principalAmount: totalPokok,
-            remainingAmount: sisaPokok,
-            monthlyInstallment: cicilan,
-            nextDueDate: /^\d{4}-\d{2}-\d{2}$/.test(dueStr) ? dueStr : undefined,
-            jatuhTempo: dueStr,
-            startDate,
-            status: String(row[10] || '').toLowerCase().includes('lunas') || sisaPokok <= 0 ? 'paid_off' : 'active',
-            notes: String(row[11] || '').trim(),
-            paymentLogs: parsedLogs,
-            source: 'sheet-hutang',
-          })
-        );
-      }
-    }
-
-    // 2. Merge cloudSlot items (created/updated from app)
-    if (Array.isArray(cloudSlot?.items)) {
-      for (const item of cloudSlot!.items!) {
-        if (!item || !item.id || DUMMY_DEBT_IDS.has(item.id) || deletedSet.has(item.id)) continue;
-        mergedMap.set(item.id, normalizeDebtItemRecord(item));
-      }
-    }
-
-    // 3. Auto-sync unpaid / tempo items from "Barang Masuk & Pembelian"
-    const seenSignature = new Set<string>();
-    if (Array.isArray(incomingBatches)) {
-      for (const batch of incomingBatches) {
-        if (!batch) continue;
-        const debtId = `sheet-bm-${batch.id}`;
-        const sig = `${batch.tanggal}::${Math.round(batch.harga)}`;
-        seenSignature.add(sig);
-
-        if (deletedSet.has(debtId)) continue;
-
-        const isPaidInSheet = String(batch.statusPembayaran || 'Lunas').toLowerCase() === 'lunas';
-        const existingInMap = mergedMap.get(debtId);
-
-        if (!isPaidInSheet) {
-          const { dueDay, nextDueDate } = parseDueDateFromTextAndStart(
-            `${batch.supplier || ''} ${batch.keterangan || ''}`,
-            batch.tanggal
+          const totalPokok = parseSheetNumber(row[5]);
+          const sisaPokok = row[6] !== undefined && String(row[6]).trim() !== '' ? parseSheetNumber(row[6]) : totalPokok;
+          const cicilan = parseSheetNumber(row[7]) || sisaPokok || totalPokok;
+          const bebanTahunan = parseSheetNumber(row[8]) || cicilan * 12;
+          const tenorMonths = Math.max(1, parseSheetNumber(row[9]) || 1);
+          const paidMonths = Math.max(0, parseSheetNumber(row[10]) || 0);
+          const dueDayOfMonth = Math.min(31, Math.max(1, parseSheetNumber(row[11]) || 5));
+          const nextDueDate = String(row[12] || '').trim();
+          const startDate = normalizeDateString(
+            String(row[13] || new Date().toISOString().split('T')[0]).trim()
           );
-          const alreadyMarkedLunasInApp = existingInMap?.status === 'paid_off';
+          const statusStr = String(row[14] || '').toLowerCase();
+          const notes = String(row[15] || '').trim();
 
-          mergedMap.set(
-            debtId,
+          sheetItems.push(
             normalizeDebtItemRecord({
-              id: debtId,
-              batchId: batch.id,
-              name: `${batch.namaBahan} (${batch.berat} ${batch.satuan})`,
-              lenderName:
-                batch.supplier && batch.supplier !== '-' ? batch.supplier : 'Supplier Bahan Baku',
-              category: 'supplier',
-              debtType: 'lump_sum',
-              principalAmount: batch.harga,
-              remainingAmount: alreadyMarkedLunasInApp
-                ? 0
-                : existingInMap?.remainingAmount ?? batch.harga,
-              monthlyInstallment: batch.harga,
-              tenorMonths: 1,
-              paidMonths: alreadyMarkedLunasInApp ? 1 : 0,
-              dueDayOfMonth: dueDay,
+              id,
+              name: String(row[1] || 'Hutang Usaha').trim(),
+              lenderName: String(row[2] || 'Kreditur / Supplier').trim(),
+              category: String(row[3] || 'supplier').trim(),
+              debtType: String(row[4] || 'monthly').trim(),
+              principalAmount: totalPokok,
+              remainingAmount: sisaPokok,
+              monthlyInstallment: cicilan,
+              annualInstallment: bebanTahunan,
+              tenorMonths,
+              paidMonths,
+              dueDayOfMonth,
               nextDueDate,
-              startDate: batch.tanggal,
-              status: alreadyMarkedLunasInApp ? 'paid_off' : 'active',
-              notes:
-                batch.keterangan ||
-                `Tagihan ${batch.statusPembayaran} dari tab Barang Masuk & Pembelian (${batch.tanggal})`,
-              paymentLogs: existingInMap?.paymentLogs || [],
-              source: 'barang-masuk',
+              startDate,
+              status: statusStr.includes('lunas') || sisaPokok <= 0 ? 'paid_off' : 'active',
+              notes,
+              paymentLogs: parsedLogs,
+              source: 'sheet-hutang',
             })
           );
-        } else if (existingInMap && existingInMap.source === 'barang-masuk') {
-          mergedMap.set(debtId, {
-            ...existingInMap,
-            remainingAmount: 0,
-            paidMonths: 1,
-            status: 'paid_off',
-          });
-        }
-      }
-    }
-
-    // 4. Auto-sync unpaid / tempo / cicilan rows from Sheet1 (transactions)
-    if (Array.isArray(transactions) && transactions.length > 0) {
-      for (const t of transactions) {
-        if (!t) continue;
-        const k1 = Number(t.kredit) || 0;
-        const k2 = Number(t.kredit2) || 0;
-        const d1 = Number(t.debit) || 0;
-        const normDate = normalizeDateString(t.tanggal || '');
-        const ketLower = `${t.jenisPengeluaran || ''} ${t.jenisPengeluaran2 || ''} ${t.keterangan || ''}`.toLowerCase();
-
-        // Case A: Unpaid bill in Sheet1 (Kredit 1 === 0 and Jumlah Keterangan / Kredit 2 > 0)
-        if (d1 === 0 && k1 === 0 && k2 > 0) {
-          const sig = `${normDate}::${Math.round(k2)}`;
-          if (seenSignature.has(sig)) continue;
-          const txDebtId = `sheet-tx-unpaid-${t.id}`;
-          if (deletedSet.has(txDebtId)) continue;
-
-          const existing = mergedMap.get(txDebtId);
-          const { dueDay, nextDueDate } = parseDueDateFromTextAndStart(t.keterangan || '', normDate);
-          const itemName =
-            t.jenisPengeluaran2 && t.jenisPengeluaran2 !== '-'
-              ? t.jenisPengeluaran2
-              : t.jenisPengeluaran || 'Tagihan Tempo';
-
-          const isPaid = existing?.status === 'paid_off';
-          mergedMap.set(
-            txDebtId,
-            normalizeDebtItemRecord({
-              id: txDebtId,
-              transactionId: t.id,
-              name: `${itemName} (Tempo Sheet 1)`,
-              lenderName: t.keterangan || 'Supplier / Vendor',
-              category: 'supplier',
-              debtType: 'lump_sum',
-              principalAmount: k2,
-              remainingAmount: isPaid ? 0 : existing?.remainingAmount ?? k2,
-              monthlyInstallment: k2,
-              tenorMonths: 1,
-              paidMonths: isPaid ? 1 : 0,
-              dueDayOfMonth: dueDay,
-              nextDueDate,
-              startDate: normDate,
-              status: isPaid ? 'paid_off' : 'active',
-              notes: `Tercatat di Sheet1 (${t.tanggal}): ${t.keterangan || '-'}`,
-              paymentLogs: existing?.paymentLogs || [],
-              source: 'sheet1-unpaid',
-            })
+        } else {
+          // Legacy 13-col layout fallback
+          let parsedLogs: any[] = [];
+          if (row[12]) {
+            try {
+              parsedLogs = JSON.parse(String(row[12]));
+            } catch {
+              parsedLogs = [];
+            }
+          }
+          const totalPokok = parseSheetNumber(row[5]);
+          const sisaPokok = parseSheetNumber(row[6]);
+          const cicilan = parseSheetNumber(row[7]) || sisaPokok || totalPokok;
+          const dueStr = String(row[8] || '').trim();
+          const startDate = normalizeDateString(
+            String(row[9] || new Date().toISOString().split('T')[0]).trim()
           );
-        }
 
-        // Case B: Cicilan / Hutang row recorded in Sheet1
-        const isCicilanCategory =
-          String(t.jenisPengeluaran || '').toLowerCase().includes('cicilan') ||
-          String(t.jenisPengeluaran || '').toLowerCase().includes('hutang') ||
-          ketLower.includes('cicilan');
-
-        if (isCicilanCategory && (k1 > 0 || k2 > 0)) {
-          const amount = k1 > 0 ? k1 : k2;
-          const txCicilanId = `sheet-tx-cicilan-${t.id}`;
-          if (deletedSet.has(txCicilanId) || mergedMap.has(txCicilanId)) continue;
-
-          const { dueDay, nextDueDate } = parseDueDateFromTextAndStart(t.keterangan || '', normDate);
-          mergedMap.set(
-            txCicilanId,
+          sheetItems.push(
             normalizeDebtItemRecord({
-              id: txCicilanId,
-              transactionId: t.id,
-              name: `${t.jenisPengeluaran || 'Cicilan'}${
-                t.jenisPengeluaran2 && t.jenisPengeluaran2 !== '-' ? ` - ${t.jenisPengeluaran2}` : ''
-              }`,
-              lenderName: t.keterangan || 'Kreditur Cicilan',
-              category: 'working_capital',
-              debtType: 'monthly',
-              principalAmount: amount,
-              remainingAmount: 0,
-              monthlyInstallment: amount,
-              tenorMonths: 1,
-              paidMonths: 1,
-              dueDayOfMonth: dueDay,
-              nextDueDate,
-              startDate: normDate,
-              status: 'paid_off',
-              notes: `Pembayaran cicilan tercatat di Sheet1 pada ${t.tanggal} (${t.keterangan || '-'})`,
-              paymentLogs: [
-                {
-                  id: `pay-${t.id}`,
-                  paymentDate: normDate,
-                  amountPaid: amount,
-                  periodLabel: `Tercatat di Sheet1 (${t.keterangan || 'Cicilan'})`,
-                  createdAt: new Date().toISOString(),
-                },
-              ],
-              source: 'sheet1-cicilan',
+              id,
+              name: String(row[1] || 'Hutang Usaha').trim(),
+              lenderName: String(row[2] || 'Kreditur / Supplier').trim(),
+              category: String(row[3] || 'supplier').trim(),
+              debtType: String(row[4] || 'monthly').trim(),
+              principalAmount: totalPokok,
+              remainingAmount: sisaPokok,
+              monthlyInstallment: cicilan,
+              nextDueDate: dueStr,
+              jatuhTempo: dueStr,
+              startDate,
+              status:
+                String(row[10] || '').toLowerCase().includes('lunas') || sisaPokok <= 0
+                  ? 'paid_off'
+                  : 'active',
+              notes: String(row[11] || '').trim(),
+              paymentLogs: parsedLogs,
+              source: 'sheet-hutang',
             })
           );
         }
       }
     }
 
-    const finalDebts = Array.from(mergedMap.values()).sort((a, b) => {
-      if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
-      return (b.startDate || '').localeCompare(a.startDate || '');
-    });
+    const cloudItems = Array.isArray(cloudSlot?.items)
+      ? cloudSlot!.items!
+          .filter((item) => item && item.id && !isIgnoredAutoDebtId(String(item.id)) && !deletedSet.has(String(item.id)))
+          .map((item) => normalizeDebtItemRecord(item))
+      : [];
+
+    let finalDebts: any[] = [];
+
+    if (sheetItems.length > 0) {
+      // Sheet "Pencatatan Hutang" has data -> merge with cloudItems
+      const mergedMap = new Map<string, any>();
+      for (const sItem of sheetItems) {
+        mergedMap.set(sItem.id, sItem);
+      }
+      for (const cItem of cloudItems) {
+        if (!mergedMap.has(cItem.id)) {
+          mergedMap.set(cItem.id, cItem);
+        }
+      }
+      finalDebts = Array.from(mergedMap.values());
+    } else if (cloudItems.length > 0) {
+      finalDebts = cloudItems;
+    } else {
+      const localStored = getStoredDebts().filter(
+        (d) => d && d.id && !isIgnoredAutoDebtId(String(d.id)) && !deletedSet.has(String(d.id))
+      );
+      finalDebts = localStored.length > 0 ? localStored : [...DEFAULT_DEBTS];
+    }
+
+    // If the "Pencatatan Hutang" tab does not exist yet or is empty in Google Sheets,
+    // automatically create and populate it right away!
+    if ((!hasValidDebtSheetTab || sheetItems.length === 0) && finalDebts.length > 0) {
+      saveDebtsToSheet(spreadsheetId, finalDebts, accessToken, Array.from(deletedSet)).catch((err) => {
+        console.warn('Auto-initialize Pencatatan Hutang sheet deferred:', err);
+      });
+    }
 
     return finalDebts;
   } catch (error) {
     console.error('Error fetching debts from sheet:', error);
-    return [];
+    return getStoredDebts();
   }
 }
 
@@ -2150,10 +2172,15 @@ export async function saveDebtsToSheet(
   debts: any[],
   accessToken: string,
   deletedIds?: string[]
-): Promise<void> {
+): Promise<{
+  syncedToCloud: boolean;
+  syncedToSheet: boolean;
+  sheetGid?: number | null;
+  needsGoogleAuth?: boolean;
+}> {
   try {
     const cleanDebts = (debts || [])
-      .filter((d) => d && d.id && !DUMMY_DEBT_IDS.has(d.id))
+      .filter((d) => d && d.id && !isIgnoredAutoDebtId(String(d.id)))
       .map((d) => normalizeDebtItemRecord(d));
 
     const existingCloud = await loadCloudSlot<{ deletedIds?: string[] }>('debts_records');
@@ -2161,7 +2188,7 @@ export async function saveDebtsToSheet(
       new Set([...(existingCloud?.deletedIds || []), ...(deletedIds || [])])
     );
 
-    await saveCloudSlot('debts_records', {
+    const syncedToCloud = await saveCloudSlot('debts_records', {
       items: cleanDebts,
       deletedIds: mergedDeleted,
       updatedAt: new Date().toISOString(),
@@ -2172,27 +2199,37 @@ export async function saveDebtsToSheet(
       const sharedToken = await getValidSharedAuthToken();
       if (sharedToken) effectiveToken = sharedToken;
     }
-    if (!effectiveToken || effectiveToken.endsWith('-local-token')) return;
+    if (!effectiveToken || effectiveToken.endsWith('-local-token')) {
+      return { syncedToCloud, syncedToSheet: false, needsGoogleAuth: true };
+    }
 
-    await createCustomSheetTab(spreadsheetId, 'Pencatatan Hutang', effectiveToken);
+    await createCustomSheetTab(spreadsheetId, DEBT_SHEET_TAB_NAME, effectiveToken);
 
-    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Pencatatan Hutang'!A1:M1000:clear`;
-    await fetch(clearUrl, {
+    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A1:Q1000:clear`;
+    const clearRes = await fetch(clearUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${effectiveToken}` },
     });
 
+    if (clearRes.status === 401 || clearRes.status === 403) {
+      return { syncedToCloud, syncedToSheet: false, needsGoogleAuth: true };
+    }
+
     const headers = [
       'ID Hutang',
-      'Nama Kewajiban / Barang',
+      'Nama Pinjaman / Barang',
       'Kreditur / Supplier',
       'Kategori',
-      'Tipe (monthly/annual/lump_sum)',
+      'Tipe Kewajiban',
       'Total Pokok (Rp)',
-      'Sisa Kewajiban (Rp)',
-      'Cicilan / Tagihan (Rp)',
-      'Tanggal Jatuh Tempo',
-      'Tanggal Mulai / Nota',
+      'Sisa Pokok (Rp)',
+      'Cicilan / Bulan (Rp)',
+      'Beban Tahunan (Rp)',
+      'Tenor (Bulan)',
+      'Angsuran Terbayar (Bulan)',
+      'Tgl Jatuh Tempo (1-31)',
+      'Jatuh Tempo Berikutnya',
+      'Tanggal Mulai',
       'Status',
       'Catatan',
       'Riwayat Pembayaran (JSON)',
@@ -2200,25 +2237,36 @@ export async function saveDebtsToSheet(
 
     const rows = [
       headers,
-      ...cleanDebts.map((d) => [
-        d.id,
-        d.name,
-        d.lenderName,
-        d.category,
-        d.debtType,
-        String(d.principalAmount || 0),
-        String(d.remainingAmount || 0),
-        String(d.monthlyInstallment || 0),
-        d.nextDueDate || '',
-        d.startDate || new Date().toISOString().split('T')[0],
-        d.status === 'paid_off' ? 'Lunas' : 'Aktif',
-        d.notes || '',
-        JSON.stringify(d.paymentLogs || []),
-      ]),
+      ...cleanDebts.map((d) => {
+        const catLabel =
+          CATEGORY_LABELS[d.category as keyof typeof CATEGORY_LABELS]?.label || d.category || 'Hutang Supplier';
+        const typeLabel =
+          DEBT_TYPE_LABELS[d.debtType as keyof typeof DEBT_TYPE_LABELS]?.short ||
+          (d.debtType === 'monthly' ? 'Bulanan' : d.debtType === 'annual' ? 'Tahunan' : 'Tempo');
+        return [
+          d.id,
+          d.name,
+          d.lenderName,
+          catLabel,
+          typeLabel,
+          String(d.principalAmount || 0),
+          String(d.remainingAmount || 0),
+          String(d.monthlyInstallment || 0),
+          String(d.annualInstallment || (d.monthlyInstallment || 0) * 12),
+          String(d.tenorMonths || 1),
+          String(d.paidMonths || 0),
+          String(d.dueDayOfMonth || 5),
+          d.nextDueDate || '',
+          d.startDate || new Date().toISOString().split('T')[0],
+          d.status === 'paid_off' ? 'Lunas' : 'Aktif',
+          d.notes || '',
+          JSON.stringify(d.paymentLogs || []),
+        ];
+      }),
     ];
 
-    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Pencatatan Hutang'!A1:M${rows.length}?valueInputOption=USER_ENTERED`;
-    await fetch(writeUrl, {
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A1:Q${rows.length}?valueInputOption=USER_ENTERED`;
+    const writeRes = await fetch(writeUrl, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${effectiveToken}`,
@@ -2226,8 +2274,21 @@ export async function saveDebtsToSheet(
       },
       body: JSON.stringify({ values: rows }),
     });
+
+    if (writeRes.status === 401 || writeRes.status === 403) {
+      return { syncedToCloud, syncedToSheet: false, needsGoogleAuth: true };
+    }
+
+    const sheetGid = await getDebtSheetGid(spreadsheetId, effectiveToken);
+    return {
+      syncedToCloud,
+      syncedToSheet: writeRes.ok,
+      sheetGid,
+      needsGoogleAuth: false,
+    };
   } catch (error) {
     console.error('Error saving debts to sheet:', error);
+    return { syncedToCloud: false, syncedToSheet: false };
   }
 }
 
