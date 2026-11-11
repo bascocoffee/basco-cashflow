@@ -7,7 +7,7 @@ import {
   generateSmartHppForumReply,
   generateSmartDebtAnalysis,
   type AiProvider,
-} from "./src/utils/aiAssistantEngine";
+} from "./src/utils/aiAssistantEngine.js";
 
 dotenv.config();
 

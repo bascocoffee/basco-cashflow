@@ -1945,6 +1945,76 @@ export function normalizeDebtItemRecord(raw: any): any {
   };
 }
 
+export async function checkDebtSheetTabExists(
+  spreadsheetId: string,
+  accessToken?: string | null
+): Promise<{ exists: boolean; gid: number | null; needsGoogleAuth: boolean }> {
+  if (!spreadsheetId || spreadsheetId.startsWith('local_')) {
+    return { exists: false, gid: null, needsGoogleAuth: true };
+  }
+
+  let effectiveToken = accessToken || '';
+  if (!effectiveToken || effectiveToken.endsWith('-local-token')) {
+    const shared = await getValidSharedAuthToken();
+    if (shared) effectiveToken = shared;
+  }
+
+  let gid: number | null = null;
+  let needsGoogleAuth = !effectiveToken || effectiveToken.endsWith('-local-token');
+
+  if (!needsGoogleAuth) {
+    try {
+      const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(title,sheetId)`;
+      const res = await fetch(metaUrl, {
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      });
+      if (res.status === 401 || res.status === 403) {
+        needsGoogleAuth = true;
+      } else if (res.ok) {
+        const data = await res.json();
+        const found = (data.sheets || []).find(
+          (s: any) =>
+            String(s.properties?.title || '').trim().toLowerCase() ===
+            DEBT_SHEET_TAB_NAME.toLowerCase()
+        );
+        if (found && typeof found.properties?.sheetId === 'number') {
+          gid = found.properties.sheetId;
+          try {
+            localStorage.setItem(`aruskas_debt_gid_${spreadsheetId}`, String(gid));
+          } catch {}
+          return { exists: true, gid, needsGoogleAuth: false };
+        }
+        return { exists: false, gid: null, needsGoogleAuth: false };
+      }
+    } catch {
+      // fall through to public check
+    }
+  }
+
+  // Fallback check via public gviz CSV endpoint
+  try {
+    const rows = await fetchSheetRowsWithFallback(
+      spreadsheetId,
+      DEBT_SHEET_TAB_NAME,
+      `'${DEBT_SHEET_TAB_NAME}'!A1:B5`,
+      null
+    );
+    const hasHeader =
+      Array.isArray(rows) &&
+      rows.length > 0 &&
+      (String(rows[0]?.[0] || '').toLowerCase().includes('id') ||
+        String(rows[0]?.[1] || '').toLowerCase().includes('nama'));
+    if (hasHeader) {
+      gid = await getDebtSheetGid(spreadsheetId, effectiveToken);
+      return { exists: true, gid, needsGoogleAuth };
+    }
+  } catch {
+    // ignore
+  }
+
+  return { exists: false, gid: null, needsGoogleAuth };
+}
+
 export async function getDebtSheetGid(
   spreadsheetId: string,
   accessToken?: string | null

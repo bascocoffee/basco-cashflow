@@ -43,6 +43,7 @@ import {
   saveDebtsToSheet,
   markIncomingBatchPaidInSheet,
   getDebtSheetGid,
+  checkDebtSheetTabExists,
   DEBT_SHEET_TAB_NAME,
   DEFAULT_SPREADSHEET_ID,
 } from '../sheetsService';
@@ -132,9 +133,14 @@ export default function DebtTrackerPage({
   token,
 }: DebtTrackerPageProps) {
   const activeSpreadsheetId =
-    spreadsheetId || localStorage.getItem('aruskas_spreadsheet_id') || DEFAULT_SPREADSHEET_ID;
+    spreadsheetId || localStorage.getItem('aruskas_sheet_id') || DEFAULT_SPREADSHEET_ID;
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const activeToken =
-    token || localStorage.getItem('aruskas_google_access_token') || 'local-token';
+    sessionToken ||
+    (token && !token.endsWith('-local-token') ? token : null) ||
+    localStorage.getItem('aruskas_google_access_token') ||
+    token ||
+    'local-token';
 
   const [debts, setDebts] = useState<DebtItem[]>(() => getStoredDebts());
   const [filterType, setFilterType] = useState<'all' | 'monthly' | 'annual' | 'lump_sum' | 'active' | 'paid_off'>('all');
@@ -143,6 +149,8 @@ export default function DebtTrackerPage({
   const [isCreatingSheetTab, setIsCreatingSheetTab] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [debtSheetGid, setDebtSheetGid] = useState<number | null>(null);
+  const [sheetTabExists, setSheetTabExists] = useState<boolean | null>(null);
+  const [needsGoogleWriteAuth, setNeedsGoogleWriteAuth] = useState<boolean>(false);
   const [sheetSyncNotice, setSheetSyncNotice] = useState<string | null>(null);
   const [aiProvider, setAiProvider] = useState<AiProvider>(() => getSavedAiProvider());
 
@@ -205,7 +213,10 @@ export default function DebtTrackerPage({
     if (!activeSpreadsheetId) return;
     if (showSpinner) setIsSyncingSheet(true);
     try {
-      const synced = await fetchDebtsFromSheet(activeSpreadsheetId, activeToken, transactions);
+      const [synced, tabStatus] = await Promise.all([
+        fetchDebtsFromSheet(activeSpreadsheetId, activeToken, transactions),
+        checkDebtSheetTabExists(activeSpreadsheetId, activeToken),
+      ]);
       if (Array.isArray(synced) && synced.length > 0) {
         setDebts(prev => {
           const prevSig = prev.map(d => `${d.id}:${d.remainingAmount}:${d.status}`).join('|');
@@ -216,8 +227,14 @@ export default function DebtTrackerPage({
         });
         setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
       }
-      const gid = await getDebtSheetGid(activeSpreadsheetId, activeToken);
-      if (gid !== null) setDebtSheetGid(gid);
+      setSheetTabExists(tabStatus.exists);
+      setNeedsGoogleWriteAuth(tabStatus.needsGoogleAuth);
+      if (tabStatus.gid !== null) {
+        setDebtSheetGid(tabStatus.gid);
+      } else {
+        const gid = await getDebtSheetGid(activeSpreadsheetId, activeToken);
+        if (gid !== null) setDebtSheetGid(gid);
+      }
     } catch (err) {
       console.error('Error syncing debts from spreadsheet:', err);
     } finally {
@@ -235,13 +252,15 @@ export default function DebtTrackerPage({
       let res = await saveDebtsToSheet(activeSpreadsheetId, currentList, activeToken);
 
       if (res.needsGoogleAuth && !res.syncedToSheet) {
-        // User logged in via Password without active OAuth write token -> request Google OAuth popup
+        // User logged in via Password or token expired -> request Google OAuth popup
         const signInResult = await googleSignIn();
         if (signInResult?.accessToken) {
+          setSessionToken(signInResult.accessToken);
           localStorage.setItem('aruskas_google_access_token', signInResult.accessToken);
           await saveCloudSlot('auth_token', {
             accessToken: signInResult.accessToken,
             spreadsheetId: activeSpreadsheetId,
+            updatedAt: Date.now(),
           });
           res = await saveDebtsToSheet(activeSpreadsheetId, currentList, signInResult.accessToken);
         }
@@ -252,18 +271,21 @@ export default function DebtTrackerPage({
       }
 
       if (res.syncedToSheet) {
+        setSheetTabExists(true);
+        setNeedsGoogleWriteAuth(false);
         setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
         setSheetSyncNotice(
           `✓ Sheet "${DEBT_SHEET_TAB_NAME}" berhasil dibuat & diperbarui di Google Spreadsheet (${currentList.length} baris hutang)!`
         );
       } else {
+        setNeedsGoogleWriteAuth(true);
         setSheetSyncNotice(
-          `Data tersimpan di Cloud (${currentList.length} baris). Klik kembali dan pilih akun Google Owner untuk menulis tab "${DEBT_SHEET_TAB_NAME}" di Google Sheets.`
+          `Data tersimpan di Cloud (${currentList.length} baris). Klik kembali dan pilih akun Google Owner untuk membuat & menulis tab "${DEBT_SHEET_TAB_NAME}" di Google Sheets.`
         );
       }
     } catch (err) {
       console.error('Error creating/updating Pencatatan Hutang sheet tab:', err);
-      setSheetSyncNotice('Gagal membuat tab di Google Sheets. Pastikan popup login Google diizinkan.');
+      setSheetSyncNotice('Gagal membuat tab di Google Sheets. Pastikan popup login Google diizinkan dan memilih akun yang memiliki akses Editor.');
     } finally {
       setIsCreatingSheetTab(false);
     }
@@ -830,6 +852,42 @@ export default function DebtTrackerPage({
           </button>
         </div>
       </div>
+
+      {/* BANNER STATUS TAB SHEET GOOGLE SPREADSHEET */}
+      {sheetTabExists === false && (
+        <div className="bg-emerald-50/90 border-2 border-emerald-300 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start space-x-3">
+            <div className="p-2.5 bg-emerald-700 text-white rounded-xl shrink-0 mt-0.5 shadow-xs">
+              <FileSpreadsheet className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-emerald-950 tracking-tight">
+                Tab Sheet &quot;{DEBT_SHEET_TAB_NAME}&quot; Belum Ada di Google Spreadsheet
+              </h3>
+              <p className="text-xs text-emerald-900/90 font-medium mt-0.5 leading-relaxed">
+                {needsGoogleWriteAuth
+                  ? 'Untuk membuat tab sheet baru dan menulis ke-13 data hutang ke Google Drive Spreadsheet, klik tombol di samping kanan untuk menghubungkan akun Google Owner (hanya butuh 1x klik).'
+                  : 'Tab sheet baru siap dibuat di Google Spreadsheet Anda. Klik tombol di samping kanan untuk membuat dan mengisi tab "Pencatatan Hutang" sekarang.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleCreateOrUpdateSheetTab}
+            disabled={isCreatingSheetTab}
+            className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-black text-xs rounded-xl shadow-sm transition cursor-pointer flex items-center justify-center space-x-2 shrink-0"
+          >
+            <FileSpreadsheet className={`h-4 w-4 ${isCreatingSheetTab ? 'animate-bounce' : ''}`} />
+            <span>
+              {isCreatingSheetTab
+                ? 'Menyinkronkan ke Google Drive...'
+                : needsGoogleWriteAuth
+                ? `Hubungkan Google & Buat Sheet "${DEBT_SHEET_TAB_NAME}"`
+                : `Buat Sheet "${DEBT_SHEET_TAB_NAME}" Sekarang`}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* NOTIFIKASI JATUH TEMPO PEMBAYARAN (URGENT PAYMENT DUE NOTIFICATION BANNER) */}
       {urgentDueDebts.length > 0 && (

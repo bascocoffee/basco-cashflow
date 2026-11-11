@@ -1,3 +1,3 @@
-import app from "../apiServer";
+import app from "../apiServer.js";
 
 export default app;
