@@ -984,6 +984,12 @@ export default function Dashboard({
 
   // Summary Pengeluaran, Pemasukan, and Unpaid (0-amount) for PDF Print
   const pdfPrintData = useMemo(() => {
+    interface DateNoteEntry {
+      sortKey: number;
+      dateLabel: string;
+      notes: string[];
+    }
+
     interface AggItem {
       nama: string;
       frekuensi: number;
@@ -991,14 +997,85 @@ export default function Dashboard({
       presentase: number;
       klasifikasi: string;
       formattedDates: string;
+      dateEntries: { dateLabel: string; notes: string[] }[];
+      hasAnyNotes: boolean;
     }
 
+    interface MapBucket {
+      displayName: string;
+      frekuensi: number;
+      total: number;
+      klasifikasiSet: Set<string>;
+      dateMap: Map<string, DateNoteEntry>;
+    }
+
+    const getNormalizedDateInfo = (rawDate: string): { sortKey: number; label: string } => {
+      const trimmed = (rawDate || '').trim();
+      if (!trimmed) return { sortKey: Number.MAX_SAFE_INTEGER, label: '' };
+      const dt = parseDateString(trimmed);
+      if (!isNaN(dt.getTime())) {
+        const dd = String(dt.getDate()).padStart(2, '0');
+        const mm = String(dt.getMonth() + 1).padStart(2, '0');
+        const yyyy = dt.getFullYear();
+        return {
+          sortKey: new Date(yyyy, dt.getMonth(), dt.getDate()).getTime(),
+          label: `${dd}/${mm}/${yyyy}`,
+        };
+      }
+      return { sortKey: Number.MAX_SAFE_INTEGER, label: trimmed };
+    };
+
+    const extractNoteText = (t: Transaction): string => {
+      const parts: string[] = [];
+      const p2 = (t.jenisPengeluaran2 || '').replace(/\s+/g, ' ').trim();
+      const ket = (t.keterangan || '').replace(/\s+/g, ' ').trim();
+      if (p2 && p2 !== '-') parts.push(p2);
+      if (ket && ket !== '-') parts.push(ket);
+      return parts.join(' - ');
+    };
+
+    const recordBucketEntry = (
+      map: Record<string, MapBucket>,
+      normKey: string,
+      displayName: string,
+      amount: number,
+      t: Transaction
+    ) => {
+      if (!map[normKey]) {
+        map[normKey] = {
+          displayName,
+          frekuensi: 0,
+          total: 0,
+          klasifikasiSet: new Set(),
+          dateMap: new Map(),
+        };
+      }
+      const bucket = map[normKey];
+      bucket.frekuensi += 1;
+      bucket.total += amount;
+      if (t.operasionalDanManajemen && t.operasionalDanManajemen !== '-') {
+        bucket.klasifikasiSet.add(t.operasionalDanManajemen);
+      }
+
+      const { sortKey, label } = getNormalizedDateInfo(t.tanggal || '');
+      if (label) {
+        if (!bucket.dateMap.has(label)) {
+          bucket.dateMap.set(label, { sortKey, dateLabel: label, notes: [] });
+        }
+        const entry = bucket.dateMap.get(label)!;
+        const noteText = extractNoteText(t);
+        if (noteText && !entry.notes.some(n => n.toLowerCase() === noteText.toLowerCase())) {
+          entry.notes.push(noteText);
+        }
+      }
+    };
+
     // Map for Pengeluaran Terbayar (total > 0)
-    const pengeluaranMap: Record<string, { displayName: string; frekuensi: number; total: number; klasifikasiSet: Set<string>; dateSet: Set<string> }> = {};
+    const pengeluaranMap: Record<string, MapBucket> = {};
     // Map for Pengeluaran Belum Terbayar (total === 0)
-    const unpaidMap: Record<string, { displayName: string; frekuensi: number; total: number; klasifikasiSet: Set<string>; dateSet: Set<string> }> = {};
+    const unpaidMap: Record<string, MapBucket> = {};
     // Map for Pemasukan
-    const pemasukanMap: Record<string, { displayName: string; frekuensi: number; total: number; klasifikasiSet: Set<string>; dateSet: Set<string> }> = {};
+    const pemasukanMap: Record<string, MapBucket> = {};
 
     filteredTransactions.forEach(t => {
       const debitVal = Number(t.debit) || 0;
@@ -1006,27 +1083,15 @@ export default function Dashboard({
       const k2 = Number(t.kredit2) || 0;
       const totKredit = k1 + k2;
       const isDebit = debitVal > 0;
-      const dateStr = (t.tanggal || '').trim();
 
       if (isDebit) {
         // Pemasukan: Hanya ambil dari jenisPengeluaran (atau default jika kosong)
         const rawName = (t.jenisPengeluaran && t.jenisPengeluaran.trim() !== '' && t.jenisPengeluaran.trim() !== '-')
           ? t.jenisPengeluaran.trim()
           : 'Pendapatan Kasir / Penjualan POS';
-        const normKey = rawName.toUpperCase();
-
-        if (!pemasukanMap[normKey]) {
-          pemasukanMap[normKey] = { displayName: rawName, frekuensi: 0, total: 0, klasifikasiSet: new Set(), dateSet: new Set() };
-        }
-        pemasukanMap[normKey].frekuensi += 1;
-        pemasukanMap[normKey].total += debitVal;
-        if (dateStr) pemasukanMap[normKey].dateSet.add(dateStr);
-        if (t.operasionalDanManajemen && t.operasionalDanManajemen !== '-') {
-          pemasukanMap[normKey].klasifikasiSet.add(t.operasionalDanManajemen);
-        }
+        recordBucketEntry(pemasukanMap, rawName.toUpperCase(), rawName, debitVal, t);
       } else {
         // PENGELUARAN: WAJIB MURNI DARI "PENGELUARAN 1" (t.jenisPengeluaran)!
-        // JANGAN PERNAH mengambil t.keterangan atau t.jenisPengeluaran2 karena itu adalah catatan (seperti 'BULAN SEPTEMBER' / '75K')
         const rawName = (t.jenisPengeluaran && t.jenisPengeluaran.trim() !== '' && t.jenisPengeluaran.trim() !== '-')
           ? t.jenisPengeluaran.trim()
           : 'Lain-lain';
@@ -1034,100 +1099,54 @@ export default function Dashboard({
 
         // Jika jumlah nominal 0, masukkan ke tabel berbeda sebagai pengeluaran belum terbayar
         if (totKredit === 0) {
-          if (!unpaidMap[normKey]) {
-            unpaidMap[normKey] = { displayName: rawName, frekuensi: 0, total: 0, klasifikasiSet: new Set(), dateSet: new Set() };
-          }
-          unpaidMap[normKey].frekuensi += 1;
-          if (dateStr) unpaidMap[normKey].dateSet.add(dateStr);
-          if (t.operasionalDanManajemen && t.operasionalDanManajemen !== '-') {
-            unpaidMap[normKey].klasifikasiSet.add(t.operasionalDanManajemen);
-          }
+          recordBucketEntry(unpaidMap, normKey, rawName, 0, t);
         } else {
-          // Pengeluaran terbayar (total nominal > 0)
-          if (!pengeluaranMap[normKey]) {
-            pengeluaranMap[normKey] = { displayName: rawName, frekuensi: 0, total: 0, klasifikasiSet: new Set(), dateSet: new Set() };
-          }
-          pengeluaranMap[normKey].frekuensi += 1;
-          pengeluaranMap[normKey].total += totKredit;
-          if (dateStr) pengeluaranMap[normKey].dateSet.add(dateStr);
-          if (t.operasionalDanManajemen && t.operasionalDanManajemen !== '-') {
-            pengeluaranMap[normKey].klasifikasiSet.add(t.operasionalDanManajemen);
-          }
+          recordBucketEntry(pengeluaranMap, normKey, rawName, totKredit, t);
         }
       }
     });
 
-    // Helper to format dates string
-    const formatDatesList = (dates: Set<string>): string => {
-      if (!dates || dates.size === 0) return '-';
-      const arr = Array.from(dates).filter(Boolean);
-      arr.sort((a, b) => parseDateString(a).getTime() - parseDateString(b).getTime());
-      
-      const formattedArr = Array.from(new Set(arr.map(d => {
-        const dt = parseDateString(d);
-        if (!isNaN(dt.getTime())) {
-          const dd = String(dt.getDate()).padStart(2, '0');
-          const mm = String(dt.getMonth() + 1).padStart(2, '0');
-          const yyyy = dt.getFullYear();
-          return `${dd}/${mm}/${yyyy}`;
-        }
-        return d;
-      }).filter(Boolean)));
-
-      if (formattedArr.length === 0) return '-';
-      if (formattedArr.length === 1) {
-        return formattedArr[0];
-      }
-      if (formattedArr.length <= 4) {
-        return formattedArr.join(', ');
-      }
-      // If more than 4 dates, show date range with count
-      const first = formattedArr[0];
-      const last = formattedArr[formattedArr.length - 1];
-      return `${first} s.d. ${last} (${formattedArr.length} tgl berbeda)`;
+    const buildDateSummary = (dateMap: Map<string, DateNoteEntry>) => {
+      const sorted = Array.from(dateMap.values()).sort((a, b) => a.sortKey - b.sortKey);
+      const dateEntries = sorted.map(e => ({ dateLabel: e.dateLabel, notes: e.notes }));
+      const hasAnyNotes = dateEntries.some(e => e.notes.length > 0);
+      const formattedDates = dateEntries.length > 0 ? dateEntries.map(e => e.dateLabel).join(', ') : '-';
+      return { dateEntries, hasAnyNotes, formattedDates };
     };
+
+    const toAggList = (buckets: MapBucket[], grandTotal: number): AggItem[] =>
+      buckets.map(item => {
+        const { dateEntries, hasAnyNotes, formattedDates } = buildDateSummary(item.dateMap);
+        return {
+          nama: item.displayName,
+          frekuensi: item.frekuensi,
+          total: item.total,
+          presentase: grandTotal > 0 ? parseFloat(((item.total / grandTotal) * 100).toFixed(1)) : 0,
+          klasifikasi: Array.from(item.klasifikasiSet).join(', ') || '-',
+          formattedDates,
+          dateEntries,
+          hasAnyNotes,
+        };
+      });
 
     // 1. Process Pengeluaran Terbayar
     const paidExpensesRaw = Object.values(pengeluaranMap);
     const grandTotalPengeluaran = paidExpensesRaw.reduce((sum, i) => sum + i.total, 0);
     const totalFrekuensiPengeluaran = paidExpensesRaw.reduce((sum, i) => sum + i.frekuensi, 0);
-
     paidExpensesRaw.sort((a, b) => b.total - a.total);
-    const pengeluaranList: AggItem[] = paidExpensesRaw.map(item => ({
-      nama: item.displayName,
-      frekuensi: item.frekuensi,
-      total: item.total,
-      presentase: grandTotalPengeluaran > 0 ? parseFloat(((item.total / grandTotalPengeluaran) * 100).toFixed(1)) : 0,
-      klasifikasi: Array.from(item.klasifikasiSet).join(', ') || '-',
-      formattedDates: formatDatesList(item.dateSet)
-    }));
+    const pengeluaranList: AggItem[] = toAggList(paidExpensesRaw, grandTotalPengeluaran);
 
     // 2. Process Pengeluaran Belum Terbayar (Nominal Rp 0)
     const unpaidExpensesRaw = Object.values(unpaidMap);
     unpaidExpensesRaw.sort((a, b) => b.frekuensi - a.frekuensi);
-    const unpaidList: AggItem[] = unpaidExpensesRaw.map(item => ({
-      nama: item.displayName,
-      frekuensi: item.frekuensi,
-      total: 0,
-      presentase: 0,
-      klasifikasi: Array.from(item.klasifikasiSet).join(', ') || '-',
-      formattedDates: formatDatesList(item.dateSet)
-    }));
+    const unpaidList: AggItem[] = toAggList(unpaidExpensesRaw, 0);
 
     // 3. Process Pemasukan
     const pemasukanRaw = Object.values(pemasukanMap);
     const grandTotalPemasukan = pemasukanRaw.reduce((sum, i) => sum + i.total, 0);
     const totalFrekuensiPemasukan = pemasukanRaw.reduce((sum, i) => sum + i.frekuensi, 0);
-
     pemasukanRaw.sort((a, b) => b.total - a.total);
-    const pemasukanList: AggItem[] = pemasukanRaw.map(item => ({
-      nama: item.displayName,
-      frekuensi: item.frekuensi,
-      total: item.total,
-      presentase: grandTotalPemasukan > 0 ? parseFloat(((item.total / grandTotalPemasukan) * 100).toFixed(1)) : 0,
-      klasifikasi: Array.from(item.klasifikasiSet).join(', ') || '-',
-      formattedDates: formatDatesList(item.dateSet)
-    }));
+    const pemasukanList: AggItem[] = toAggList(pemasukanRaw, grandTotalPemasukan);
 
     return {
       pengeluaranList,
@@ -1140,6 +1159,56 @@ export default function Dashboard({
       totalFrekuensiPemasukan
     };
   }, [filteredTransactions]);
+
+  const renderPdfDateAndNotes = (
+    item: {
+      formattedDates: string;
+      dateEntries: { dateLabel: string; notes: string[] }[];
+      hasAnyNotes: boolean;
+    },
+    isAmber = false
+  ) => {
+    if (!item.dateEntries || item.dateEntries.length === 0) return null;
+
+    if (!item.hasAnyNotes) {
+      return (
+        <div
+          className={`text-[9.5px] font-mono mt-0.5 leading-snug ${
+            isAmber ? 'text-amber-800/80' : 'text-slate-500'
+          }`}
+        >
+          <span className={`font-semibold ${isAmber ? 'text-amber-900' : 'text-slate-600'}`}>
+            Tgl:
+          </span>{' '}
+          {item.formattedDates}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`text-[9.5px] mt-1 space-y-0.5 leading-snug ${
+          isAmber ? 'text-amber-900/85' : 'text-slate-600'
+        }`}
+      >
+        {item.dateEntries.map((entry, eIdx) => (
+          <div key={eIdx} className="flex items-start gap-1">
+            <span
+              className={`font-mono font-semibold shrink-0 ${
+                isAmber ? 'text-amber-900' : 'text-slate-700'
+              }`}
+            >
+              {entry.dateLabel}
+              {entry.notes.length > 0 ? ':' : ''}
+            </span>
+            {entry.notes.length > 0 && (
+              <span className="font-sans break-words">{entry.notes.join(', ')}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   // Backward compatible alias
   const pengeluaran1Summary = useMemo(() => ({
@@ -4058,11 +4127,7 @@ export default function Dashboard({
                       <div className="font-bold text-slate-900 uppercase">
                         {item.nama}
                       </div>
-                      {item.formattedDates && item.formattedDates !== '-' && (
-                        <div className="text-[9.5px] text-slate-500 font-mono mt-0.5 leading-snug">
-                          <span className="font-semibold text-slate-600">Tgl:</span> {item.formattedDates}
-                        </div>
-                      )}
+                      {renderPdfDateAndNotes(item, false)}
                     </td>
                     <td className="p-2 border border-slate-300 text-center font-mono text-slate-700 font-semibold">
                       {item.frekuensi}
@@ -4142,11 +4207,7 @@ export default function Dashboard({
                       <div className="font-bold text-slate-900 uppercase">
                         {item.nama}
                       </div>
-                      {item.formattedDates && item.formattedDates !== '-' && (
-                        <div className="text-[9.5px] text-slate-500 font-mono mt-0.5 leading-snug">
-                          <span className="font-semibold text-slate-600">Tgl:</span> {item.formattedDates}
-                        </div>
-                      )}
+                      {renderPdfDateAndNotes(item, false)}
                     </td>
                     <td className="p-2 border border-slate-300 text-center font-mono text-slate-700 font-semibold">
                       {item.frekuensi}
@@ -4222,11 +4283,7 @@ export default function Dashboard({
                       <div className="font-bold text-slate-900 uppercase">
                         {item.nama}
                       </div>
-                      {item.formattedDates && item.formattedDates !== '-' && (
-                        <div className="text-[9.5px] text-amber-800/80 font-mono mt-0.5 leading-snug">
-                          <span className="font-semibold text-amber-900">Tgl:</span> {item.formattedDates}
-                        </div>
-                      )}
+                      {renderPdfDateAndNotes(item, true)}
                     </td>
                     <td className="p-2 border border-amber-300 text-center font-mono text-slate-700 font-semibold">
                       {item.frekuensi}
