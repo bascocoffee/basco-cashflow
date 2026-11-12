@@ -501,6 +501,285 @@ app.post("/api/gemini/debt-analysis", async (req, res) => {
   }
 });
 
+// Helper: Extract pure base64 payload & mime type from data URL or raw base64
+function parseImagePayload(rawBase64: string, rawMimeType?: string): { base64: string; mimeType: string } | null {
+  const trimmed = String(rawBase64 || "").trim();
+  if (!trimmed) return null;
+
+  const dataUrlMatch = trimmed.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
+  if (dataUrlMatch) {
+    return {
+      mimeType: dataUrlMatch[1],
+      base64: dataUrlMatch[2].replace(/\s+/g, ""),
+    };
+  }
+
+  return {
+    mimeType: String(rawMimeType || "image/jpeg").trim() || "image/jpeg",
+    base64: trimmed.replace(/\s+/g, ""),
+  };
+}
+
+// Helper: Normalize JSON text returned by Vision AI models
+function extractJsonObjectFromText(rawText: string): any | null {
+  const cleaned = String(rawText || "")
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  if (!cleaned) return null;
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const startIdx = cleaned.indexOf("{");
+    const endIdx = cleaned.lastIndexOf("}");
+    if (startIdx >= 0 && endIdx > startIdx) {
+      try {
+        return JSON.parse(cleaned.slice(startIdx, endIdx + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+// API Route: Vision AI Scanner for Barista Daily Overall Sales Receipt Photo
+app.post("/api/cogs/scan-sales-receipt", async (req, res) => {
+  try {
+    const { imageBase64, mimeType, menuCatalog = [] } = req.body || {};
+    const parsedImage = parseImagePayload(imageBase64, mimeType);
+    if (!parsedImage || parsedImage.base64.length < 32) {
+      return res.status(400).json({ ok: false, error: "Gambar nota tidak valid atau kosong." });
+    }
+
+    const catalogList = Array.isArray(menuCatalog)
+      ? menuCatalog.map((m: any) => ({
+          id: String(m?.id || "").trim(),
+          nama: String(m?.nama || "").trim(),
+          kategori: String(m?.kategori || "Menu").trim(),
+          hargaJual: Number(m?.hargaJual || 0),
+        })).filter((m) => m.id && m.nama)
+      : [];
+
+    const catalogPromptLines = catalogList
+      .slice(0, 250)
+      .map((m) => `- menuId="${m.id}" | nama="${m.nama}" | kategori="${m.kategori}" | harga=Rp${m.hargaJual}`)
+      .join("\n");
+
+    const systemInstruction =
+      "Anda adalah sistem pembaca nota penjualan harian kafe (POS summary, struk thermal rekap harian, atau catatan tulis tangan). Tugas Anda membaca setiap item menu yang terjual dan total porsinya (qty) secara akurat, lalu mencocokkannya ke daftar menu katalog kafe. Balas HANYA JSON valid tanpa markdown.";
+
+    const userPrompt = `Baca foto nota penjualan keseluruhan harian ini.
+Daftar katalog menu kafe yang tersedia:
+${catalogPromptLines || "(katalog kosong)"}
+
+Aturan pembacaan:
+1. Ekstrak semua menu yang terjual beserta jumlah porsi terjual (qty bilangan bulat positif). Abaikan baris total, subtotal, pajak/PB1, service, diskon, cash/QRIS/debit/transfer, kembalian, kasir, jam, nomor struk, dan total qty.
+2. Cocokkan setiap item nota dengan menuId paling tepat dari daftar katalog di atas (pertimbangkan singkatan POS seperti Kopsus = Es Kopi Susu, Amer = Americano, Capp = Cappuccino, Choco = Chocolate, FF = French Fries, Nasgor = Nasi Goreng, varian Hot/Ice jika katalog menggabungnya).
+3. Jika ada menu di nota yang benar-benar tidak ada di katalog, masukkan ke "unmatched".
+4. Jika terdapat tanggal laporan pada nota, format sebagai "YYYY-MM-DD", jika tidak jelas beri null.
+
+Balas dengan JSON schema persis berikut:
+{
+  "tanggal": "YYYY-MM-DD" | null,
+  "items": [
+    {
+      "menuId": "string id dari katalog",
+      "matchedMenuName": "string nama di katalog",
+      "receiptName": "teks item yang tertulis pada nota",
+      "qty": 1,
+      "confidence": "high" | "medium"
+    }
+  ],
+  "unmatched": [
+    {
+      "receiptName": "teks item di nota yang belum ada di katalog",
+      "qty": 1
+    }
+  ],
+  "rawSummary": "ringkasan singkat item terbaca dari foto nota"
+}`;
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const claudeKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+
+    let rawJson: any = null;
+    let engineUsed = "";
+
+    // 1. Try Gemini Vision first (fast & native structured JSON)
+    if (isValidApiKey(geminiKey)) {
+      const ai = new GoogleGenAI({
+        apiKey: geminiKey!.trim(),
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+      });
+      for (const model of ["gemini-2.5-flash", "gemini-2.0-flash"]) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: userPrompt },
+                  { inlineData: { data: parsedImage.base64, mimeType: parsedImage.mimeType } },
+                ],
+              },
+            ],
+            config: {
+              systemInstruction,
+              temperature: 0.1,
+              responseMimeType: "application/json",
+            },
+          });
+          const parsed = extractJsonObjectFromText(response?.text || "");
+          if (parsed && (Array.isArray(parsed.items) || Array.isArray(parsed.unmatched))) {
+            rawJson = parsed;
+            engineUsed = model;
+            break;
+          }
+        } catch (err: any) {
+          console.warn(`[Receipt-Scan] Gemini model ${model} failed:`, err?.message || err);
+        }
+      }
+    }
+
+    // 2. Fallback to Claude Vision if available and Gemini didn't succeed
+    if (!rawJson && isValidApiKey(claudeKey)) {
+      const safeClaudeMime = (["image/jpeg", "image/png", "image/gif", "image/webp"].includes(parsedImage.mimeType)
+        ? parsedImage.mimeType
+        : "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+
+      for (const model of ["claude-3-7-sonnet-latest", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"]) {
+        try {
+          const apiRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": claudeKey!.trim(),
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model,
+              max_tokens: 1800,
+              system: systemInstruction,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "image",
+                      source: {
+                        type: "base64",
+                        media_type: safeClaudeMime,
+                        data: parsedImage.base64,
+                      },
+                    },
+                    { type: "text", text: userPrompt },
+                  ],
+                },
+              ],
+            }),
+          });
+          if (apiRes.ok) {
+            const apiData: any = await apiRes.json();
+            const parsed = extractJsonObjectFromText(apiData?.content?.[0]?.text || "");
+            if (parsed && (Array.isArray(parsed.items) || Array.isArray(parsed.unmatched))) {
+              rawJson = parsed;
+              engineUsed = model;
+              break;
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[Receipt-Scan] Claude model ${model} failed:`, err?.message || err);
+        }
+      }
+    }
+
+    if (!rawJson) {
+      return res.json({
+        ok: false,
+        visionUnavailable: true,
+        engine: "none",
+        items: [],
+        unmatched: [],
+      });
+    }
+
+    // Reconcile & aggregate duplicate menuIds safely against catalogList
+    const catalogById = new Map(catalogList.map((m) => [m.id, m]));
+    const aggregatedMap = new Map<string, {
+      menuId: string;
+      matchedMenuName: string;
+      receiptName: string;
+      qty: number;
+      confidence: "high" | "medium";
+    }>();
+    const unmatched: Array<{ receiptName: string; qty: number }> = [];
+
+    for (const item of Array.isArray(rawJson.items) ? rawJson.items : []) {
+      const qty = Math.max(0, Math.round(Number(item?.qty || 0)));
+      if (qty <= 0) continue;
+      const menuId = String(item?.menuId || "").trim();
+      const catalogEntry = catalogById.get(menuId);
+      const receiptName = String(item?.receiptName || item?.matchedMenuName || "").trim();
+
+      if (!catalogEntry) {
+        if (receiptName) unmatched.push({ receiptName, qty });
+        continue;
+      }
+
+      const existing = aggregatedMap.get(catalogEntry.id);
+      const confidence = item?.confidence === "medium" ? "medium" : "high";
+      if (existing) {
+        existing.qty += qty;
+        if (receiptName && !existing.receiptName.toLowerCase().includes(receiptName.toLowerCase())) {
+          existing.receiptName = `${existing.receiptName}, ${receiptName}`;
+        }
+      } else {
+        aggregatedMap.set(catalogEntry.id, {
+          menuId: catalogEntry.id,
+          matchedMenuName: catalogEntry.nama,
+          receiptName: receiptName || catalogEntry.nama,
+          qty,
+          confidence,
+        });
+      }
+    }
+
+    for (const u of Array.isArray(rawJson.unmatched) ? rawJson.unmatched : []) {
+      const qty = Math.max(0, Math.round(Number(u?.qty || 0)));
+      const receiptName = String(u?.receiptName || "").trim();
+      if (qty > 0 && receiptName) {
+        unmatched.push({ receiptName, qty });
+      }
+    }
+
+    const tanggalRaw = typeof rawJson.tanggal === "string" ? rawJson.tanggal.trim() : null;
+    const tanggal = tanggalRaw && /^\d{4}-\d{2}-\d{2}$/.test(tanggalRaw) ? tanggalRaw : null;
+
+    return res.json({
+      ok: true,
+      engine: engineUsed,
+      tanggal,
+      items: Array.from(aggregatedMap.values()),
+      unmatched,
+      rawSummary: String(rawJson.rawSummary || "").trim(),
+    });
+  } catch (error: any) {
+    console.error("Receipt Scan Error:", error);
+    return res.json({
+      ok: false,
+      visionUnavailable: true,
+      engine: "error-fallback",
+      items: [],
+      unmatched: [],
+    });
+  }
+});
+
 const KV_APP_KEY = "etem1g9b";
 const KV_BASE_URL = "https://keyvalue.immanuel.co/api/KeyVal";
 const PASTE_BASE_URL = "https://api.pastes.dev";

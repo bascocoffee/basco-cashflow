@@ -4,6 +4,7 @@ import RecipePdfModal from './RecipePdfModal';
 import SalesCogsReportPdfModal from './SalesCogsReportPdfModal';
 import HppAiForum from './HppAiForum';
 import { pushDailySalesToCloud, pullDailySalesFromCloud, loadCloudSlot } from '../utils/cloudSync';
+import { scanSalesReceiptImage, type ReceiptScanResult } from '../utils/receiptScanner';
 import { 
   FileText,
   DollarSign, 
@@ -49,7 +50,12 @@ import {
   Target,
   Copy,
   Bot,
-  PackagePlus
+  PackagePlus,
+  Camera,
+  Image as ImageIcon,
+  X,
+  Loader2,
+  Undo2
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -389,6 +395,17 @@ export default function CogsDailySalesPage({
   // Barista minimalist form filter states
   const [baristaSearch, setBaristaSearch] = useState<string>('');
   const [baristaCategory, setBaristaCategory] = useState<'ALL' | 'Minuman' | 'Makanan' | 'Snack'>('ALL');
+
+  // Barista photo receipt scanner states
+  const receiptCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const receiptFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [receiptApplyMode, setReceiptApplyMode] = useState<'replace' | 'add'>('replace');
+  const [isScanningReceipt, setIsScanningReceipt] = useState<boolean>(false);
+  const [receiptScanProgress, setReceiptScanProgress] = useState<string>('');
+  const [receiptScanError, setReceiptScanError] = useState<string | null>(null);
+  const [receiptScanResult, setReceiptScanResult] = useState<ReceiptScanResult | null>(null);
+  const [receiptUndoSnapshot, setReceiptUndoSnapshot] = useState<Record<string, { jatah: number; terjual: number }> | null>(null);
+  const [unmatchedAssignMap, setUnmatchedAssignMap] = useState<Record<number, string>>({});
 
   // Ensure view starts at the top navigation when entering this page
   useEffect(() => {
@@ -1282,6 +1299,147 @@ export default function CogsDailySalesPage({
     localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updatedMenus));
 
     alert('Berhasil mereset semua jatah barista menjadi 0 untuk semua bulan & menu! Anda sekarang bisa menginput secara manual.');
+  };
+
+  // Apply scanned receipt items immediately to itemizedInputs & live shared sync
+  const applyScannedReceiptItems = (
+    scannedItems: ReceiptScanResult['items'],
+    mode: 'replace' | 'add',
+    targetDateStr = selectedDate,
+    baseInputs = itemizedInputs
+  ) => {
+    const qtyByMenuId = new Map<string, number>();
+    scannedItems.forEach((item) => {
+      qtyByMenuId.set(item.menuId, (qtyByMenuId.get(item.menuId) || 0) + (Number(item.qty) || 0));
+    });
+
+    const nextInputs: Record<string, { jatah: number; terjual: number }> = {};
+    menuItems.forEach((m) => {
+      const existing = baseInputs[m.id] || { jatah: m.defaultJatah, terjual: 0 };
+      const scannedQty = qtyByMenuId.get(m.id) || 0;
+      nextInputs[m.id] = {
+        jatah: existing.jatah,
+        terjual: mode === 'add' ? (existing.terjual || 0) + scannedQty : scannedQty,
+      };
+    });
+
+    setItemizedInputs(nextInputs);
+    commitItemizedInputsLive(nextInputs, targetDateStr);
+  };
+
+  const handleReceiptPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setReceiptScanError(null);
+    setUnmatchedAssignMap({});
+    setIsScanningReceipt(true);
+    setReceiptScanProgress('Menyiapkan foto nota...');
+
+    // Save undo snapshot before applying new scan
+    const snapshot: Record<string, { jatah: number; terjual: number }> = {};
+    menuItems.forEach((m) => {
+      snapshot[m.id] = { ...(itemizedInputs[m.id] || { jatah: m.defaultJatah, terjual: 0 }) };
+    });
+
+    try {
+      const result = await scanSalesReceiptImage(file, menuItems, (msg) => {
+        setReceiptScanProgress(msg);
+      });
+      setReceiptScanResult(result);
+
+      if (result.items.length > 0) {
+        setReceiptUndoSnapshot(snapshot);
+        applyScannedReceiptItems(result.items, receiptApplyMode, selectedDate, snapshot);
+      } else {
+        setReceiptUndoSnapshot(null);
+        setReceiptScanError(
+          'Belum ada nama menu yang cocok otomatis dari foto ini. Pastikan tulisan nama menu dan jumlah terjual pada nota terlihat jelas.'
+        );
+      }
+    } catch (err: any) {
+      console.error('Receipt scan failed:', err);
+      setReceiptScanError(err?.message || 'Gagal membaca foto nota. Coba ambil ulang dengan cahaya yang lebih jelas.');
+    } finally {
+      setIsScanningReceipt(false);
+      setReceiptScanProgress('');
+    }
+  };
+
+  const handleUndoReceiptScan = () => {
+    if (!receiptUndoSnapshot) return;
+    setItemizedInputs(receiptUndoSnapshot);
+    commitItemizedInputsLive(receiptUndoSnapshot);
+    setReceiptUndoSnapshot(null);
+    setReceiptScanResult(null);
+    setReceiptScanError(null);
+  };
+
+  const handleAssignUnmatchedReceiptItem = (unmatchedIdx: number, receiptName: string, qty: number) => {
+    const chosenMenuId = unmatchedAssignMap[unmatchedIdx];
+    if (!chosenMenuId) return;
+    const chosenMenu = menuItems.find((m) => m.id === chosenMenuId);
+    if (!chosenMenu) return;
+
+    setItemizedInputs((prev) => {
+      const current = prev[chosenMenuId] || { jatah: chosenMenu.defaultJatah, terjual: 0 };
+      const next = {
+        ...prev,
+        [chosenMenuId]: {
+          ...current,
+          terjual: (current.terjual || 0) + qty,
+        },
+      };
+      commitItemizedInputsLive(next);
+      return next;
+    });
+
+    setReceiptScanResult((prev) => {
+      if (!prev) return prev;
+      const remainingUnmatched = prev.unmatched.filter((_, idx) => idx !== unmatchedIdx);
+      const existingIdx = prev.items.findIndex((it) => it.menuId === chosenMenuId);
+      const nextItems = [...prev.items];
+      if (existingIdx >= 0) {
+        nextItems[existingIdx] = {
+          ...nextItems[existingIdx],
+          qty: nextItems[existingIdx].qty + qty,
+          receiptName: `${nextItems[existingIdx].receiptName}, ${receiptName}`,
+        };
+      } else {
+        nextItems.push({
+          menuId: chosenMenuId,
+          matchedMenuName: chosenMenu.nama,
+          receiptName,
+          qty,
+          confidence: 'high',
+        });
+      }
+      return { ...prev, items: nextItems, unmatched: remainingUnmatched };
+    });
+
+    setUnmatchedAssignMap((prev) => {
+      const copy = { ...prev };
+      delete copy[unmatchedIdx];
+      return copy;
+    });
+  };
+
+  const handleApplyDetectedReceiptDate = (detectedDate: string) => {
+    if (!detectedDate || !receiptScanResult) return;
+    setSelectedDate(detectedDate);
+    if (receiptScanResult.items.length > 0) {
+      const existingRec = dailySales.find((d) => normalizeDateString(d.tanggal) === detectedDate);
+      const targetBase: Record<string, { jatah: number; terjual: number }> = {};
+      menuItems.forEach((m) => {
+        const found = existingRec?.menuSales?.find((ms) => ms.menuId === m.id);
+        targetBase[m.id] = {
+          jatah: found ? Number(found.jatah) || 0 : m.defaultJatah,
+          terjual: found ? Number(found.terjual) || 0 : 0,
+        };
+      });
+      applyScannedReceiptItems(receiptScanResult.items, receiptApplyMode, detectedDate, targetBase);
+    }
   };
 
   // Excel Input File Ref & Handlers
@@ -3208,6 +3366,256 @@ export default function CogsDailySalesPage({
                 {itemizedCalculations.totalJatah} <span className="text-[10px] font-bold">Porsi</span>
               </span>
             </div>
+          </div>
+
+          {/* Scan Foto Nota Penjualan Keseluruhan Harian */}
+          <div className="rounded-xl border-2 border-dashed border-emerald-300/90 bg-linear-to-br from-emerald-50/80 via-white to-amber-50/50 p-3.5 space-y-3">
+            {/* Hidden Camera & File Inputs */}
+            <input
+              ref={receiptCameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleReceiptPhotoUpload}
+              className="hidden"
+            />
+            <input
+              ref={receiptFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleReceiptPhotoUpload}
+              className="hidden"
+            />
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-start space-x-2.5">
+                <div className="p-2 bg-emerald-600 text-white rounded-xl shrink-0 shadow-xs">
+                  <Camera className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 leading-tight">
+                    Scan Foto Nota Penjualan Harian
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    Foto nota keseluruhan harian langsung membaca menu terjual &amp; mengisi form penjualan otomatis.
+                  </p>
+                </div>
+              </div>
+
+              {/* Mode Switch: Replace vs Add */}
+              <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg p-0.5 self-start sm:self-center shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setReceiptApplyMode('replace')}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold transition cursor-pointer ${
+                    receiptApplyMode === 'replace'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  title="Isi form terjual sesuai hasil scan nota harian"
+                >
+                  Isi Otomatis
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReceiptApplyMode('add')}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold transition cursor-pointer ${
+                    receiptApplyMode === 'add'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  title="Tambahkan jumlah hasil scan ke angka terjual yang sudah ada (cocok untuk gabungan nota shift)"
+                >
+                  + Tambah Shift
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={isScanningReceipt}
+                onClick={() => receiptCameraInputRef.current?.click()}
+                className="flex items-center justify-center space-x-2 px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-xs transition cursor-pointer disabled:opacity-60"
+              >
+                {isScanningReceipt ? (
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <Camera className="h-4 w-4 shrink-0" />
+                )}
+                <span>{isScanningReceipt ? 'Membaca Foto Nota...' : 'Ambil Foto Nota (Kamera)'}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isScanningReceipt}
+                onClick={() => receiptFileInputRef.current?.click()}
+                className="flex items-center justify-center space-x-2 px-3.5 py-2.5 bg-white hover:bg-slate-50 active:scale-[0.99] text-slate-800 border border-slate-300 font-bold text-xs rounded-xl shadow-2xs transition cursor-pointer disabled:opacity-60"
+              >
+                <ImageIcon className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>Pilih Gambar / Galeri Nota</span>
+              </button>
+            </div>
+
+            {/* Scanning Progress Indicator */}
+            {isScanningReceipt && (
+              <div className="flex items-center space-x-2 px-3 py-2 bg-white/90 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />
+                <span>{receiptScanProgress || 'Memproses foto nota penjualan...'}</span>
+              </div>
+            )}
+
+            {/* Scan Error Banner */}
+            {receiptScanError && (
+              <div className="flex items-start justify-between gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold">
+                <div className="flex items-start space-x-2">
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{receiptScanError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReceiptScanError(null)}
+                  className="text-rose-500 hover:text-rose-700 shrink-0 cursor-pointer"
+                  aria-label="Tutup pesan error scan"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Scan Results Preview & Auto-filled Summary */}
+            {receiptScanResult && (
+              <div className="bg-white border border-emerald-200 rounded-xl p-3 space-y-2.5 shadow-2xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <img
+                      src={receiptScanResult.previewUrl}
+                      alt="Preview Foto Nota"
+                      className="w-11 h-11 object-cover rounded-lg border border-slate-200 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs font-black text-emerald-900">
+                          {receiptScanResult.items.length} Menu Terisi Otomatis
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase">
+                          {receiptScanResult.engineUsed}
+                        </span>
+                      </div>
+                      <p className="text-[10.5px] text-slate-500 font-medium truncate">
+                        Total terbaca: {receiptScanResult.items.reduce((s, it) => s + it.qty, 0)} Porsi terjual (langsung masuk ke form di bawah)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-1 shrink-0">
+                    {receiptUndoSnapshot && (
+                      <button
+                        type="button"
+                        onClick={handleUndoReceiptScan}
+                        className="inline-flex items-center space-x-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                        title="Batalkan hasil scan & kembalikan angka sebelum scan"
+                      >
+                        <Undo2 className="h-3 w-3" />
+                        <span>Urungkan</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setReceiptScanResult(null)}
+                      className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                      aria-label="Tutup ringkasan scan"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Detected Receipt Date Prompt */}
+                {receiptScanResult.tanggal && receiptScanResult.tanggal !== selectedDate && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px]">
+                    <span className="text-amber-900 font-semibold">
+                      Tanggal pada nota terdeteksi: <strong className="font-mono">{receiptScanResult.tanggal}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyDetectedReceiptDate(receiptScanResult.tanggal!)}
+                      className="px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded text-[10px] cursor-pointer transition"
+                    >
+                      Gunakan Tanggal Ini
+                    </button>
+                  </div>
+                )}
+
+                {/* Matched Items Chips */}
+                {receiptScanResult.items.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {receiptScanResult.items.map((it) => (
+                      <span
+                        key={it.menuId}
+                        className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[10.5px] font-bold text-emerald-950"
+                        title={`Terbaca di nota: "${it.receiptName}"`}
+                      >
+                        <CheckCircle className="h-3 w-3 text-emerald-600 shrink-0" />
+                        <span>{it.matchedMenuName}</span>
+                        <span className="font-mono font-black text-emerald-700 bg-white px-1 rounded">
+                          ×{it.qty}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Unmatched Receipt Lines with 1-Click Manual Mapping */}
+                {receiptScanResult.unmatched.length > 0 && (
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-amber-800">
+                      Item Nota Belum Cocok Otomatis ({receiptScanResult.unmatched.length}):
+                    </p>
+                    <div className="space-y-1.5">
+                      {receiptScanResult.unmatched.map((u, idx) => (
+                        <div
+                          key={`${u.receiptName}-${idx}`}
+                          className="flex flex-col sm:flex-row sm:items-center gap-1.5 bg-amber-50/70 border border-amber-200/80 p-2 rounded-lg text-[11px]"
+                        >
+                          <div className="flex-1 min-w-0 flex items-center justify-between sm:justify-start gap-2">
+                            <span className="font-bold text-slate-800 truncate">"{u.receiptName}"</span>
+                            <span className="font-mono font-black text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded shrink-0">
+                              {u.qty} porsi
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={unmatchedAssignMap[idx] || ''}
+                              onChange={(ev) =>
+                                setUnmatchedAssignMap((prev) => ({ ...prev, [idx]: ev.target.value }))
+                              }
+                              className="flex-1 sm:w-44 px-2 py-1 bg-white border border-slate-300 rounded-lg text-[10.5px] font-semibold text-slate-800 focus:outline-none"
+                            >
+                              <option value="">Pilih Menu Katalog...</option>
+                              {sortedMenuItems.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.nama}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={!unmatchedAssignMap[idx]}
+                              onClick={() => handleAssignUnmatchedReceiptItem(idx, u.receiptName, u.qty)}
+                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-slate-950 font-black rounded-lg text-[10px] cursor-pointer shrink-0 transition"
+                            >
+                              + Input
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Search, Category Filter & Quick Reset Toolbar */}
