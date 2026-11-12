@@ -116,13 +116,16 @@ export default function EmployeeTaskPage({
         setLastSyncTime(timeNow);
         localStorage.setItem('basco_employee_tasks_last_sync', timeNow);
         setSyncMessage({ type: 'success', text: `Berhasil memuat ${sheetTasks.length} tugas dari Google Sheets` });
-      } else if (sheetTasks !== null && sheetTasks.length === 0) {
-        // Tab exists but empty, push local tasks to sheet
+      } else if (sheetTasks !== null && sheetTasks.length === 0 && tasks.length > 0) {
+        // Tab exists but empty, push user's existing local tasks to sheet
         await saveEmployeeTasksToSheet(spreadsheetId, tasks, token);
         const timeNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         setLastSyncTime(timeNow);
         localStorage.setItem('basco_employee_tasks_last_sync', timeNow);
-        setSyncMessage({ type: 'success', text: 'Tugas lokal berhasil diinisialisasi ke sheet Tugas Karyawan' });
+        setSyncMessage({ type: 'success', text: 'Tugas lokal berhasil disinkronkan ke sheet Tugas Karyawan' });
+      } else if (sheetTasks !== null && sheetTasks.length === 0) {
+        setTasks([]);
+        saveStoredEmployeeTasks([]);
       }
     } catch (err: any) {
       console.error('Fetch employee tasks error:', err);
@@ -714,7 +717,7 @@ export default function EmployeeTaskPage({
                       <p className="text-sm font-bold text-slate-800">Tidak ada catatan tugas</p>
                       <p className="text-xs text-slate-400">
                         {tasks.length === 0 
-                          ? 'Mulai catat tugas karyawan cafe Anda sekarang atau gunakan template awal.'
+                          ? 'Mulai catat tugas karyawan cafe Anda secara manual sekarang.'
                           : 'Tidak ada tugas yang sesuai dengan filter pencarian.'}
                       </p>
                       <button
@@ -917,7 +920,7 @@ export default function EmployeeTaskPage({
             {/* Form Fields */}
             <form onSubmit={handleFormSubmit} className="space-y-4 text-xs font-semibold">
               
-              {/* Field 1: Nama Karyawan with Quick Suggestion Badges */}
+              {/* Field 1: Nama Karyawan with Quick Suggestion Badges from manual entries */}
               <div className="space-y-1.5">
                 <label className="text-[10.5px] font-black uppercase tracking-wider text-slate-600 block">
                   Nama Karyawan / Staf <span className="text-red-500">*</span>
@@ -926,27 +929,35 @@ export default function EmployeeTaskPage({
                   type="text"
                   value={formNama}
                   onChange={(e) => setFormNama(e.target.value)}
-                  placeholder="Contoh: Rian Pratama"
+                  placeholder="Masukkan nama karyawan / staf..."
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none font-bold text-slate-900"
                   required
                 />
-                {/* Suggestions */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  <span className="text-[9.5px] text-slate-400 font-bold uppercase tracking-wider py-0.5">Pilih Cepat:</span>
-                  {COMMON_STAFF_SUGGESTIONS.slice(0, 4).map((s, idx) => {
-                    const cleanName = s.split(' (')[0];
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setFormNama(cleanName)}
-                        className="px-2 py-0.5 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 rounded text-[10px] font-medium transition cursor-pointer"
-                      >
-                        + {cleanName}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Dynamic quick-pick suggestions only from previously entered staff names */}
+                {(() => {
+                  const staffSuggestions = Array.from(
+                    new Set([
+                      ...tasks.map((t) => t.nama.trim()).filter(Boolean),
+                      ...COMMON_STAFF_SUGGESTIONS.map((s) => s.split(' (')[0].trim()).filter(Boolean),
+                    ])
+                  ).slice(0, 4);
+                  if (staffSuggestions.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <span className="text-[9.5px] text-slate-400 font-bold uppercase tracking-wider py-0.5">Pilih Cepat:</span>
+                      {staffSuggestions.map((cleanName, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setFormNama(cleanName)}
+                          className="px-2 py-0.5 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 rounded text-[10px] font-medium transition cursor-pointer"
+                        >
+                          + {cleanName}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Field 2 & 3: Gaji & Tanggal Pelaksanaan (2 Columns) */}

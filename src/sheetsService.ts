@@ -5,6 +5,7 @@ import { EmployeeTask } from './types/employeeTask';
 import { parseDateString } from './utils';
 import { saveCloudSlot, loadCloudSlot, pushDailySalesToCloud, pullDailySalesFromCloud } from './utils/cloudSync';
 import { DEFAULT_DEBTS, getStoredDebts, saveStoredDebts, CATEGORY_LABELS, DEBT_TYPE_LABELS } from './utils/debtUtils';
+import { stripDummyEmployeeTasks } from './utils/employeeTaskData';
 import { getAccessToken } from './firebase';
 
 export const DEFAULT_SPREADSHEET_ID = '1RG8LIT_hzbNl3ru6mCbUSH_P3oqN6yaHqAhUotPSpUc';
@@ -3923,8 +3924,14 @@ export async function fetchEmployeeTasksFromSheet(
       fetchSheetRowsWithFallback(spreadsheetId, tabName, `'${tabName}'!A1:K1000`, accessToken)
     ]);
 
-    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
-      return cloudSlot.items;
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items)) {
+      const cleanedCloud = stripDummyEmployeeTasks(cloudSlot.items);
+      if (cleanedCloud.length !== cloudSlot.items.length) {
+        saveCloudSlot('employee_tasks', { items: cleanedCloud }).catch(() => {});
+      }
+      if (cleanedCloud.length > 0) {
+        return cleanedCloud;
+      }
     }
 
     if (!rows) {
@@ -3994,7 +4001,7 @@ export async function fetchEmployeeTasksFromSheet(
       });
     }
 
-    return tasks;
+    return stripDummyEmployeeTasks(tasks);
   } catch (error) {
     console.error("Error fetching employee tasks from sheet:", error);
     return null;
@@ -4081,7 +4088,8 @@ export async function appendEmployeeTaskToSheet(
 ): Promise<void> {
   try {
     const existing = await loadCloudSlot<{ items?: EmployeeTask[] }>('employee_tasks');
-    const list = Array.isArray(existing?.items) ? [...existing.items, task] : [task];
+    const cleanedExisting = Array.isArray(existing?.items) ? stripDummyEmployeeTasks(existing.items) : [];
+    const list = [...cleanedExisting, task];
     await saveCloudSlot('employee_tasks', { items: list });
     if (!accessToken || accessToken.endsWith('-local-token')) return;
 
