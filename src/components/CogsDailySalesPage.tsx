@@ -162,9 +162,9 @@ export interface MenuItem {
   recipe?: MenuRecipeIngredient[];
 }
 
-/** Normalize menu name for alphabetical sorting by stripping invisible Unicode/leading whitespace. */
+/** Normalize menu name for alphabetical sorting by stripping invisible Unicode and collapsing whitespace. */
 const normalizeMenuSortName = (name?: string): string =>
-  (name || '').replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ').trim();
+  (name || '').replace(/[\u200B-\u200D\uFEFF\u00A0\s]+/g, ' ').trim();
 
 /** Locale-aware alphabetical comparator for menu names (A -> Z). */
 const compareMenuNamesAsc = (aName?: string, bName?: string): number =>
@@ -204,9 +204,52 @@ const writeDeletedMenuTombstones = (deletedIds: Set<string>, deletedNames: Set<s
   }
 };
 
+const scoreMenuCatalogRichness = (item: MenuItem): number => {
+  let score = 0;
+  if (Array.isArray(item.recipe) && item.recipe.length > 0) score += 1000 + item.recipe.length;
+  if ((Number(item.hargaJual) || 0) > 0) score += 100;
+  if ((Number(item.hpp) || 0) > 0) score += 10;
+  if (item.kategori && item.kategori !== 'Minuman') score += 2;
+  if (Array.isArray(item.aliases) && item.aliases.length > 0) score += 1;
+  return score;
+};
+
+/** Remove duplicate menus sharing the same normalized name (keeping the richest entry) and guarantee unique IDs. */
 const dedupeMenuCatalogItems = (items: MenuItem[]): MenuItem[] => {
+  const byName = new Map<string, MenuItem>();
+  const orderedKeys: string[] = [];
+
+  items.forEach((rawItem, idx) => {
+    if (!rawItem) return;
+    const cleanName = normalizeMenuSortName(rawItem.nama) || 'Menu';
+    const nameKey = cleanName.toLowerCase() || `__idx_${idx}`;
+    const item: MenuItem = cleanName !== rawItem.nama ? { ...rawItem, nama: cleanName } : rawItem;
+
+    const existing = byName.get(nameKey);
+    if (!existing) {
+      byName.set(nameKey, item);
+      orderedKeys.push(nameKey);
+      return;
+    }
+
+    const winner = scoreMenuCatalogRichness(item) > scoreMenuCatalogRichness(existing) ? item : existing;
+    const loser = winner === item ? existing : item;
+    const mergedAliases = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(winner.aliases) ? winner.aliases : []),
+          ...(Array.isArray(loser.aliases) ? loser.aliases : []),
+        ]
+          .map(a => normalizeMenuSortName(a))
+          .filter(a => a && a.toLowerCase() !== nameKey)
+      )
+    );
+    byName.set(nameKey, mergedAliases.length > 0 ? { ...winner, aliases: mergedAliases } : winner);
+  });
+
   const seenIds = new Set<string>();
-  return items.map((item, idx) => {
+  return orderedKeys.map((key, idx) => {
+    const item = byName.get(key)!;
     const baseId = (item.id || '').trim() || `m-row-${idx + 1}`;
     let uniqueId = baseId;
     let suffix = 2;
@@ -562,7 +605,7 @@ export default function CogsDailySalesPage({
 
   // Menu Catalog State
   const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
-    const { deletedIds } = readDeletedMenuTombstones();
+    const { deletedIds, deletedNames } = readDeletedMenuTombstones();
     const saved = localStorage.getItem('aruskas_cogs_page_menu_catalog');
     if (saved) {
       try {
@@ -570,13 +613,20 @@ export default function CogsDailySalesPage({
         if (Array.isArray(parsed)) {
           return dedupeMenuCatalogItems(
             parsed
-              .filter((item: MenuItem) => item && !deletedIds.has(item.id))
+              .filter(
+                (item: MenuItem) =>
+                  item &&
+                  !deletedIds.has(item.id) &&
+                  !deletedNames.has(normalizeMenuSortName(item.nama).toLowerCase())
+              )
               .map((item: MenuItem) => ({ ...item, defaultJatah: 0 }))
           );
         }
       } catch (e) { /* ignore */ }
     }
-    return DEFAULT_MENU_ITEMS.filter(item => !deletedIds.has(item.id));
+    return DEFAULT_MENU_ITEMS.filter(
+      item => !deletedIds.has(item.id) && !deletedNames.has(normalizeMenuSortName(item.nama).toLowerCase())
+    );
   });
   const menuItemsRef = useRef<MenuItem[]>(menuItems);
   useEffect(() => {
@@ -941,12 +991,27 @@ export default function CogsDailySalesPage({
           if (cloudMenu && cloudMenu.length > 0) {
             const cleanedCloudMenu = dedupeMenuCatalogItems(
               cloudMenu.filter(
-                (m: MenuItem) => m && !mergedDeletedIds.has(m.id)
+                (m: MenuItem) =>
+                  m &&
+                  !mergedDeletedIds.has(m.id) &&
+                  !mergedDeletedNames.has(normalizeMenuSortName(m.nama).toLowerCase())
               )
             );
             setMenuItems(cleanedCloudMenu);
             activeMenu = cleanedCloudMenu;
             localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(cleanedCloudMenu));
+            // Persist cleaned catalog back if duplicate/deleted rows were stripped
+            if (cleanedCloudMenu.length < cloudMenu.length) {
+              const cleanTs = Date.now();
+              lastMenuCatalogUpdatedAtRef.current = Math.max(lastMenuCatalogUpdatedAtRef.current, cleanTs);
+              saveMenuCatalogToSheet(
+                spreadsheetId,
+                cleanedCloudMenu,
+                token,
+                Array.from(mergedDeletedIds),
+                Array.from(mergedDeletedNames)
+              ).catch(() => {});
+            }
           }
 
           // 4. Fetch Cross-Device Cloud & Shared Server Daily Sales (Barista <-> Owner/Manager) & Remote Google Sheet Daily Sales
@@ -1235,7 +1300,12 @@ export default function CogsDailySalesPage({
               writeDeletedMenuTombstones(tombs.deletedIds, tombs.deletedNames);
 
               const nextRemoteItems = dedupeMenuCatalogItems(
-                remoteCatalog.items.filter(m => m && !tombs.deletedIds.has(m.id))
+                remoteCatalog.items.filter(
+                  m =>
+                    m &&
+                    !tombs.deletedIds.has(m.id) &&
+                    !tombs.deletedNames.has(normalizeMenuSortName(m.nama).toLowerCase())
+                )
               );
               setMenuItems(prev => {
                 const prevSig = `${prev.length}::` + prev.map(m => `${m.id}:${m.nama}:${m.hargaJual}:${m.hpp}:${m.defaultJatah}`).join('|');
@@ -3243,17 +3313,19 @@ export default function CogsDailySalesPage({
 
     const tombs = readDeletedMenuTombstones();
     if (targetMenu.id) tombs.deletedIds.add(targetMenu.id);
-    const targetNameLower = (targetMenu.nama || '').trim().toLowerCase();
+    const targetNameLower = normalizeMenuSortName(targetMenu.nama).toLowerCase();
     if (targetNameLower) tombs.deletedNames.add(targetNameLower);
     if (Array.isArray(targetMenu.aliases)) {
       targetMenu.aliases.forEach(a => {
-        const al = (a || '').trim().toLowerCase();
+        const al = normalizeMenuSortName(a).toLowerCase();
         if (al) tombs.deletedNames.add(al);
       });
     }
     writeDeletedMenuTombstones(tombs.deletedIds, tombs.deletedNames);
 
-    const updated = menuItemsRef.current.filter(m => m.id !== targetMenu.id);
+    const updated = menuItemsRef.current.filter(
+      m => m.id !== targetMenu.id && (!targetNameLower || normalizeMenuSortName(m.nama).toLowerCase() !== targetNameLower)
+    );
     setMenuItems(updated);
     localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updated));
 
@@ -6996,7 +7068,7 @@ export default function CogsDailySalesPage({
                                 <Edit3 className="h-3.5 w-3.5" />
                               </button>
                               {confirmDeleteMenuId === m.id ? (
-                                <div className="inline-flex items-center space-x-1 bg-red-50 border border-red-200 rounded-lg px-1.5 py-0.5">
+                                <div className="inline-flex items-center space-x-1 bg-red-50 border border-red-200 rounded-lg px-1.5 py-0.5 whitespace-nowrap">
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteMenu(m)}
