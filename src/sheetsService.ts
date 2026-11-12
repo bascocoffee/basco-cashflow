@@ -720,11 +720,27 @@ export async function createCustomSheetTab(spreadsheetId: string, title: string,
 }
 
 // --- MENU CATALOG SYNC ---
+const readStoredMenuTombstones = (): { deletedIds: string[]; deletedNames: string[] } => {
+  if (typeof window === 'undefined') return { deletedIds: [], deletedNames: [] };
+  try {
+    const rawIds = localStorage.getItem('aruskas_cogs_deleted_menu_ids');
+    const rawNames = localStorage.getItem('aruskas_cogs_deleted_menu_names');
+    const parsedIds = rawIds ? JSON.parse(rawIds) : [];
+    const parsedNames = rawNames ? JSON.parse(rawNames) : [];
+    return {
+      deletedIds: Array.isArray(parsedIds) ? parsedIds.filter((x): x is string => typeof x === 'string' && x.length > 0) : [],
+      deletedNames: Array.isArray(parsedNames) ? parsedNames.filter((x): x is string => typeof x === 'string' && x.length > 0) : [],
+    };
+  } catch {
+    return { deletedIds: [], deletedNames: [] };
+  }
+};
+
 export async function fetchMenuCatalogFromSheet(spreadsheetId: string, accessToken: string): Promise<any[] | null> {
   try {
     const [cloudSlot, rows] = await Promise.all([
-      loadCloudSlot<{ items?: any[] }>('menu_catalog'),
-      fetchSheetRowsWithFallback(spreadsheetId, "Catalog Menu", "'Catalog Menu'!A1:G500", accessToken)
+      loadCloudSlot<{ items?: any[]; deletedIds?: string[]; deletedNames?: string[]; updatedAt?: number }>('menu_catalog'),
+      fetchSheetRowsWithFallback(spreadsheetId, "Catalog Menu", "'Catalog Menu'!A1:G2000", accessToken)
     ]);
 
     const items: any[] = [];
@@ -750,29 +766,52 @@ export async function fetchMenuCatalogFromSheet(spreadsheetId: string, accessTok
       }
     }
 
-    if (cloudSlot?.items && Array.isArray(cloudSlot.items) && cloudSlot.items.length > 0) {
-      // If cloudSlot has non-default catalog items, merge or prefer cloudSlot
-      const isDefault8 = cloudSlot.items.length <= 8 && cloudSlot.items.some((m: any) => m.id === 'm-1');
-      if (!isDefault8 || items.length === 0) {
+    const remoteDeletedIds = new Set<string>(Array.isArray(cloudSlot?.deletedIds) ? cloudSlot!.deletedIds! : []);
+    const remoteDeletedNames = new Set<string>(
+      (Array.isArray(cloudSlot?.deletedNames) ? cloudSlot!.deletedNames! : []).map(n => n.trim().toLowerCase())
+    );
+
+    if (cloudSlot?.items && Array.isArray(cloudSlot.items)) {
+      const hasTimestamp = Number(cloudSlot.updatedAt || 0) > 0;
+      const isDefault8 = cloudSlot.items.length <= 8 && cloudSlot.items.some((m: any) => m.id === 'm-1') && remoteDeletedIds.size === 0;
+      if ((cloudSlot.items.length > 0 || (hasTimestamp && remoteDeletedIds.size > 0)) && (!isDefault8 || items.length === 0)) {
         return cloudSlot.items;
       }
     }
 
-    return items.length > 0 ? items : null;
+    const filteredSheetItems = items.filter(
+      it => !remoteDeletedIds.has(it.id) && !remoteDeletedNames.has(String(it.nama || '').trim().toLowerCase())
+    );
+    return filteredSheetItems.length > 0 ? filteredSheetItems : null;
   } catch (error) {
     console.error("Error fetching menu catalog from sheet:", error);
     return null;
   }
 }
 
-export async function saveMenuCatalogToSheet(spreadsheetId: string, menuItems: any[], accessToken: string): Promise<void> {
+export async function saveMenuCatalogToSheet(
+  spreadsheetId: string,
+  menuItems: any[],
+  accessToken: string,
+  deletedIds?: string[],
+  deletedNames?: string[]
+): Promise<void> {
   try {
-    await saveCloudSlot('menu_catalog', { items: menuItems, updatedAt: Date.now() });
-    if (!accessToken || accessToken.endsWith('-local-token')) return;
+    const stored = readStoredMenuTombstones();
+    const mergedDeletedIds = Array.from(new Set([...(deletedIds || []), ...stored.deletedIds]));
+    const mergedDeletedNames = Array.from(new Set([...(deletedNames || []), ...stored.deletedNames]));
+
+    await saveCloudSlot('menu_catalog', {
+      items: menuItems,
+      deletedIds: mergedDeletedIds,
+      deletedNames: mergedDeletedNames,
+      updatedAt: Date.now()
+    });
+    if (!spreadsheetId || !accessToken || accessToken.endsWith('-local-token')) return;
 
     await createCustomSheetTab(spreadsheetId, "Catalog Menu", accessToken);
 
-    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Catalog Menu'!A1:G500:clear`;
+    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Catalog Menu'!A1:G2000:clear`;
     await fetch(clearUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}` }
@@ -793,7 +832,7 @@ export async function saveMenuCatalogToSheet(spreadsheetId: string, menuItems: a
     ];
 
     const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Catalog Menu'!A1:G${rows.length}?valueInputOption=USER_ENTERED`;
-    await fetch(writeUrl, {
+    const writeRes = await fetch(writeUrl, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -801,6 +840,9 @@ export async function saveMenuCatalogToSheet(spreadsheetId: string, menuItems: a
       },
       body: JSON.stringify({ values: rows })
     });
+    if (!writeRes.ok) {
+      console.warn('Warning saving menu catalog to sheet:', await writeRes.text());
+    }
   } catch (error) {
     console.error("Error saving menu catalog to sheet:", error);
   }

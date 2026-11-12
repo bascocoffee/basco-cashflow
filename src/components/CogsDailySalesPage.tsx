@@ -173,6 +173,51 @@ const compareMenuNamesAsc = (aName?: string, bName?: string): number =>
     numeric: true,
   });
 
+const DELETED_MENU_IDS_STORAGE_KEY = 'aruskas_cogs_deleted_menu_ids';
+const DELETED_MENU_NAMES_STORAGE_KEY = 'aruskas_cogs_deleted_menu_names';
+
+const readDeletedMenuTombstones = (): { deletedIds: Set<string>; deletedNames: Set<string> } => {
+  try {
+    const rawIds = localStorage.getItem(DELETED_MENU_IDS_STORAGE_KEY);
+    const rawNames = localStorage.getItem(DELETED_MENU_NAMES_STORAGE_KEY);
+    const ids = rawIds ? JSON.parse(rawIds) : [];
+    const names = rawNames ? JSON.parse(rawNames) : [];
+    return {
+      deletedIds: new Set<string>(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string' && x.length > 0) : []),
+      deletedNames: new Set<string>(
+        Array.isArray(names)
+          ? names.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map(x => x.trim().toLowerCase())
+          : []
+      ),
+    };
+  } catch {
+    return { deletedIds: new Set<string>(), deletedNames: new Set<string>() };
+  }
+};
+
+const writeDeletedMenuTombstones = (deletedIds: Set<string>, deletedNames: Set<string>) => {
+  try {
+    localStorage.setItem(DELETED_MENU_IDS_STORAGE_KEY, JSON.stringify(Array.from(deletedIds)));
+    localStorage.setItem(DELETED_MENU_NAMES_STORAGE_KEY, JSON.stringify(Array.from(deletedNames)));
+  } catch {
+    // ignore storage errors
+  }
+};
+
+const dedupeMenuCatalogItems = (items: MenuItem[]): MenuItem[] => {
+  const seenIds = new Set<string>();
+  return items.map((item, idx) => {
+    const baseId = (item.id || '').trim() || `m-row-${idx + 1}`;
+    let uniqueId = baseId;
+    let suffix = 2;
+    while (seenIds.has(uniqueId)) {
+      uniqueId = `${baseId}-${suffix++}`;
+    }
+    seenIds.add(uniqueId);
+    return uniqueId === item.id ? item : { ...item, id: uniqueId };
+  });
+};
+
 export const findIngredientHelper = (ingredientsList: RecipeIngredient[], ingId: string): RecipeIngredient | undefined => {
   if (!ingredientsList || ingredientsList.length === 0 || !ingId) return undefined;
   let found = ingredientsList.find(i => i.id === ingId);
@@ -485,15 +530,16 @@ export default function CogsDailySalesPage({
   ];
 
   const [catalogSortOption, setCatalogSortOption] = useState<CatalogSortOption>(() => {
-    const saved = localStorage.getItem('aruskas_cogs_catalog_sort_option') as CatalogSortOption | null;
+    const saved = localStorage.getItem('aruskas_cogs_catalog_sort_v2') as CatalogSortOption | null;
     return saved && (VALID_CATALOG_SORT_OPTIONS as readonly string[]).includes(saved)
       ? saved
-      : 'margin_pct_desc';
+      : 'nama_asc';
   });
   const catalogSortSelectRef = useRef<HTMLSelectElement | null>(null);
+  const [confirmDeleteMenuId, setConfirmDeleteMenuId] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('aruskas_cogs_catalog_sort_option', catalogSortOption);
+    localStorage.setItem('aruskas_cogs_catalog_sort_v2', catalogSortOption);
     // Keep DOM <select> value aligned in case browser form-restoration overrides controlled value
     if (catalogSortSelectRef.current && catalogSortSelectRef.current.value !== catalogSortOption) {
       catalogSortSelectRef.current.value = catalogSortOption;
@@ -516,17 +562,26 @@ export default function CogsDailySalesPage({
 
   // Menu Catalog State
   const [menuItems, setMenuItems] = useState<MenuItem[]>(() => {
+    const { deletedIds } = readDeletedMenuTombstones();
     const saved = localStorage.getItem('aruskas_cogs_page_menu_catalog');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.map((item: MenuItem) => ({ ...item, defaultJatah: 0 }));
+          return dedupeMenuCatalogItems(
+            parsed
+              .filter((item: MenuItem) => item && !deletedIds.has(item.id))
+              .map((item: MenuItem) => ({ ...item, defaultJatah: 0 }))
+          );
         }
       } catch (e) { /* ignore */ }
     }
-    return DEFAULT_MENU_ITEMS;
+    return DEFAULT_MENU_ITEMS.filter(item => !deletedIds.has(item.id));
   });
+  const menuItemsRef = useRef<MenuItem[]>(menuItems);
+  useEffect(() => {
+    menuItemsRef.current = menuItems;
+  }, [menuItems]);
 
   // Menu sorting mode state (default: bestseller_qty -> terbanyak terjual ke terbawah)
   const [menuSortMode, setMenuSortMode] = useState<'bestseller_qty' | 'bestseller_omset' | 'bestseller_profit' | 'alphabetical'>(() => {
@@ -639,7 +694,7 @@ export default function CogsDailySalesPage({
     );
     const activeDate = normalizeDateString(explicitSelectedDate || selectedDate) || explicitSelectedDate || selectedDate;
 
-    // 1. Always push dailySales to cross-device cloud & shared server cache so Barista <-> Owner/Manajer syncs across devices
+    // 1. Always push dailySales & menu_catalog to cross-device cloud & shared server cache so Barista <-> Owner/Manajer syncs across devices
     try {
       await pushDailySalesToCloud({
         records: cleanSales,
@@ -650,7 +705,21 @@ export default function CogsDailySalesPage({
       // ignore offline error
     }
 
-    if (!spreadsheetId) return;
+    const { deletedIds: tombIds, deletedNames: tombNames } = readDeletedMenuTombstones();
+    const deletedIdsArr = Array.from(tombIds);
+    const deletedNamesArr = Array.from(tombNames);
+
+    if (!spreadsheetId) {
+      const nowTs = Date.now();
+      lastMenuCatalogUpdatedAtRef.current = nowTs;
+      await saveCloudSlot('menu_catalog', {
+        items: currentMenu,
+        deletedIds: deletedIdsArr,
+        deletedNames: deletedNamesArr,
+        updatedAt: nowTs,
+      }).catch(() => {});
+      return;
+    }
 
     // Resolve valid OAuth token (fallback to shared Google OAuth token if logged in via role password)
     let activeOAuthToken = token && !token.endsWith('-local-token') ? token : (localStorage.getItem('aruskas_google_access_token') || '');
@@ -684,7 +753,8 @@ export default function CogsDailySalesPage({
 
     setIsSyncingSheet(true);
     try {
-      await saveMenuCatalogToSheet(spreadsheetId, currentMenu, effectiveToken);
+      lastMenuCatalogUpdatedAtRef.current = Date.now();
+      await saveMenuCatalogToSheet(spreadsheetId, currentMenu, effectiveToken, deletedIdsArr, deletedNamesArr);
       await saveDailySalesToSheet(spreadsheetId, cleanSales, effectiveToken, currentMenu);
       await saveIngredientsToSheet(spreadsheetId, currentIngs, effectiveToken);
       await saveBiayaListToSheet(spreadsheetId, currentBiaya, effectiveToken);
@@ -715,7 +785,7 @@ export default function CogsDailySalesPage({
     currentBiaya = biayaList,
     currentIncoming = incomingBatches
   ) => {
-    if (!spreadsheetId || !token || isApplyingRemoteRef.current) return;
+    if (isApplyingRemoteRef.current) return;
     if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
     autoSaveTimeoutRef.current = setTimeout(() => {
       if (isApplyingRemoteRef.current) return;
@@ -846,13 +916,37 @@ export default function CogsDailySalesPage({
             localStorage.setItem('aruskas_cogs_page_biaya', JSON.stringify(cloudBiaya));
           }
 
-          // 3. Fetch Remote Menu Catalog
-          const cloudMenu = await fetchMenuCatalogFromSheet(spreadsheetId, token);
-          let activeMenu = menuItems;
+          // 3. Fetch Remote Menu Catalog & sync deletion tombstones
+          const [cloudMenu, remoteMenuSlot] = await Promise.all([
+            fetchMenuCatalogFromSheet(spreadsheetId, token),
+            loadCloudSlot<{ items?: MenuItem[]; deletedIds?: string[]; deletedNames?: string[]; updatedAt?: number }>('menu_catalog').catch(() => null),
+          ]);
+          const localTombs = readDeletedMenuTombstones();
+          const mergedDeletedIds = new Set<string>(localTombs.deletedIds);
+          const mergedDeletedNames = new Set<string>(localTombs.deletedNames);
+          (remoteMenuSlot?.deletedIds || []).forEach(id => { if (id) mergedDeletedIds.add(id); });
+          (remoteMenuSlot?.deletedNames || []).forEach(n => {
+            const nl = (n || '').trim().toLowerCase();
+            if (nl) mergedDeletedNames.add(nl);
+          });
+          writeDeletedMenuTombstones(mergedDeletedIds, mergedDeletedNames);
+          if (remoteMenuSlot?.updatedAt) {
+            lastMenuCatalogUpdatedAtRef.current = Math.max(
+              lastMenuCatalogUpdatedAtRef.current,
+              Number(remoteMenuSlot.updatedAt) || 0
+            );
+          }
+
+          let activeMenu = menuItemsRef.current;
           if (cloudMenu && cloudMenu.length > 0) {
-            setMenuItems(cloudMenu);
-            activeMenu = cloudMenu;
-            localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(cloudMenu));
+            const cleanedCloudMenu = dedupeMenuCatalogItems(
+              cloudMenu.filter(
+                (m: MenuItem) => m && !mergedDeletedIds.has(m.id)
+              )
+            );
+            setMenuItems(cleanedCloudMenu);
+            activeMenu = cleanedCloudMenu;
+            localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(cleanedCloudMenu));
           }
 
           // 4. Fetch Cross-Device Cloud & Shared Server Daily Sales (Barista <-> Owner/Manager) & Remote Google Sheet Daily Sales
@@ -993,7 +1087,8 @@ export default function CogsDailySalesPage({
               return mergedList;
             });
 
-            // Auto-merge newly discovered menu items from Google Sheet into activeMenu catalog (ignoring renamed aliases/existing IDs)
+            // Auto-merge newly discovered menu items from Google Sheet into activeMenu catalog (ignoring renamed aliases, existing IDs, & deleted menus)
+            const { deletedIds: deletedIdSet, deletedNames: deletedNameSet } = readDeletedMenuTombstones();
             const currentIds = new Set(activeMenu.map(m => m.id));
             const currentNames = new Set<string>();
             activeMenu.forEach(m => {
@@ -1013,7 +1108,11 @@ export default function CogsDailySalesPage({
                 rec.menuSales.forEach((ms: any) => {
                   const nameLower = (ms.nama || '').trim().toLowerCase();
                   const hasKnownId = Boolean(ms.menuId && currentIds.has(ms.menuId));
-                  if (!hasKnownId && nameLower && !currentNames.has(nameLower)) {
+                  const isDeletedMenu = Boolean(
+                    (ms.menuId && deletedIdSet.has(ms.menuId)) ||
+                    (nameLower && deletedNameSet.has(nameLower))
+                  );
+                  if (!hasKnownId && !isDeletedMenu && nameLower && !currentNames.has(nameLower)) {
                     currentNames.add(nameLower);
                     newMenus.push({
                       id: ms.menuId || `menu-${nameLower.replace(/[^a-z0-9]/g, '-')}`,
@@ -1030,7 +1129,7 @@ export default function CogsDailySalesPage({
             });
 
             if (newMenus.length > 0) {
-              const mergedCatalog = [...activeMenu, ...newMenus];
+              const mergedCatalog = dedupeMenuCatalogItems([...activeMenu, ...newMenus]);
               setMenuItems(mergedCatalog);
               localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(mergedCatalog));
             }
@@ -1116,23 +1215,38 @@ export default function CogsDailySalesPage({
           }
         }
 
-        // Realtime poll for Catalog Menu / Recipe renames & updates across devices & roles
+        // Realtime poll for Catalog Menu / Recipe renames & deletions across devices & roles
         try {
-          const remoteCatalog = await loadCloudSlot<{ items?: MenuItem[]; updatedAt?: number }>('menu_catalog');
-          if (isMounted && remoteCatalog?.items && Array.isArray(remoteCatalog.items) && remoteCatalog.items.length > 0) {
+          const remoteCatalog = await loadCloudSlot<{ items?: MenuItem[]; deletedIds?: string[]; deletedNames?: string[]; updatedAt?: number }>('menu_catalog');
+          if (isMounted && remoteCatalog && Array.isArray(remoteCatalog.items)) {
             const remoteCatalogTs = Number(remoteCatalog.updatedAt) || 0;
-            if (remoteCatalogTs > lastMenuCatalogUpdatedAtRef.current) {
+            if (remoteCatalogTs > lastMenuCatalogUpdatedAtRef.current && (remoteCatalog.items.length > 0 || remoteCatalogTs > 0)) {
               lastMenuCatalogUpdatedAtRef.current = remoteCatalogTs;
+              const tombs = readDeletedMenuTombstones();
+              if (Array.isArray(remoteCatalog.deletedIds)) {
+                remoteCatalog.deletedIds.forEach(id => { if (id) tombs.deletedIds.add(id); });
+              }
+              if (Array.isArray(remoteCatalog.deletedNames)) {
+                remoteCatalog.deletedNames.forEach(n => {
+                  const nl = (n || '').trim().toLowerCase();
+                  if (nl) tombs.deletedNames.add(nl);
+                });
+              }
+              writeDeletedMenuTombstones(tombs.deletedIds, tombs.deletedNames);
+
+              const nextRemoteItems = dedupeMenuCatalogItems(
+                remoteCatalog.items.filter(m => m && !tombs.deletedIds.has(m.id))
+              );
               setMenuItems(prev => {
-                const prevSig = prev.map(m => `${m.id}:${m.nama}:${m.hargaJual}:${m.hpp}:${m.defaultJatah}`).join('|');
-                const nextSig = remoteCatalog.items!.map(m => `${m.id}:${m.nama}:${m.hargaJual}:${m.hpp}:${m.defaultJatah}`).join('|');
+                const prevSig = `${prev.length}::` + prev.map(m => `${m.id}:${m.nama}:${m.hargaJual}:${m.hpp}:${m.defaultJatah}`).join('|');
+                const nextSig = `${nextRemoteItems.length}::` + nextRemoteItems.map(m => `${m.id}:${m.nama}:${m.hargaJual}:${m.hpp}:${m.defaultJatah}`).join('|');
                 if (prevSig === nextSig) return prev;
                 isApplyingRemoteRef.current = true;
-                localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(remoteCatalog.items));
+                localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(nextRemoteItems));
                 setTimeout(() => {
                   isApplyingRemoteRef.current = false;
                 }, 300);
-                return remoteCatalog.items!;
+                return nextRemoteItems;
               });
             }
           }
@@ -2288,11 +2402,18 @@ export default function CogsDailySalesPage({
   }, [sortedMenuItems, cogsCategoryFilter]);
 
   const catalogFilteredMenuItems = useMemo(() => {
-    let list = catalogCategoryFilter === 'ALL' 
-      ? [...menuItems] 
+    const list = catalogCategoryFilter === 'ALL'
+      ? [...menuItems]
       : menuItems.filter(m => m.kategori === catalogCategoryFilter);
 
     return list.sort((a, b) => {
+      if (catalogSortOption === 'nama_asc') {
+        return compareMenuNamesAsc(a.nama, b.nama) || a.id.localeCompare(b.id);
+      }
+      if (catalogSortOption === 'nama_desc') {
+        return compareMenuNamesAsc(b.nama, a.nama) || b.id.localeCompare(a.id);
+      }
+
       const hppA = calculateMenuItemHppFromRecipe(a, ingredients) || a.hpp;
       const hppB = calculateMenuItemHppFromRecipe(b, ingredients) || b.hpp;
       const marginA = a.hargaJual - hppA;
@@ -2317,9 +2438,6 @@ export default function CogsDailySalesPage({
           return (hppB - hppA) || compareMenuNamesAsc(a.nama, b.nama);
         case 'hpp_asc':
           return (hppA - hppB) || compareMenuNamesAsc(a.nama, b.nama);
-        case 'nama_desc':
-          return compareMenuNamesAsc(b.nama, a.nama) || b.id.localeCompare(a.id);
-        case 'nama_asc':
         default:
           return compareMenuNamesAsc(a.nama, b.nama) || a.id.localeCompare(b.id);
       }
@@ -2920,9 +3038,25 @@ export default function CogsDailySalesPage({
   ) => {
     const nowTs = Date.now();
     lastMenuCatalogUpdatedAtRef.current = nowTs;
-    setMenuItems(updatedCatalog);
-    localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updatedCatalog));
-    saveCloudSlot('menu_catalog', { items: updatedCatalog, updatedAt: nowTs }).catch(() => {});
+
+    // Clear tombstones if any active menu reuses an old ID/name
+    const tombs = readDeletedMenuTombstones();
+    updatedCatalog.forEach(m => {
+      if (m.id) tombs.deletedIds.delete(m.id);
+      const nl = (m.nama || '').trim().toLowerCase();
+      if (nl) tombs.deletedNames.delete(nl);
+    });
+    writeDeletedMenuTombstones(tombs.deletedIds, tombs.deletedNames);
+
+    const cleanCatalog = dedupeMenuCatalogItems(updatedCatalog);
+    setMenuItems(cleanCatalog);
+    localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(cleanCatalog));
+    saveCloudSlot('menu_catalog', {
+      items: cleanCatalog,
+      deletedIds: Array.from(tombs.deletedIds),
+      deletedNames: Array.from(tombs.deletedNames),
+      updatedAt: nowTs,
+    }).catch(() => {});
 
     let nextSales = dailySales;
     if (renamedMenu) {
@@ -3103,13 +3237,42 @@ export default function CogsDailySalesPage({
     }, 100);
   };
 
-  const handleDeleteMenu = (id: string) => {
-    if (window.confirm('Hapus menu ini dari katalog data sheet?')) {
-      const updated = menuItems.filter(m => m.id !== id);
-      setMenuItems(updated);
-      if (spreadsheetId && token) {
-        syncDataToCloud(updated, dailySales);
-      }
+  const handleDeleteMenu = (targetMenu: MenuItem) => {
+    const nowTs = Date.now();
+    lastMenuCatalogUpdatedAtRef.current = nowTs;
+
+    const tombs = readDeletedMenuTombstones();
+    if (targetMenu.id) tombs.deletedIds.add(targetMenu.id);
+    const targetNameLower = (targetMenu.nama || '').trim().toLowerCase();
+    if (targetNameLower) tombs.deletedNames.add(targetNameLower);
+    if (Array.isArray(targetMenu.aliases)) {
+      targetMenu.aliases.forEach(a => {
+        const al = (a || '').trim().toLowerCase();
+        if (al) tombs.deletedNames.add(al);
+      });
+    }
+    writeDeletedMenuTombstones(tombs.deletedIds, tombs.deletedNames);
+
+    const updated = menuItemsRef.current.filter(m => m.id !== targetMenu.id);
+    setMenuItems(updated);
+    localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updated));
+
+    if (confirmDeleteMenuId === targetMenu.id) setConfirmDeleteMenuId(null);
+    if (editingMenuItemId === targetMenu.id) {
+      setEditingMenuItemId(null);
+      setShowAddMenuModal(false);
+    }
+    if (expandedRecipeMenuId === targetMenu.id) setExpandedRecipeMenuId(null);
+
+    saveCloudSlot('menu_catalog', {
+      items: updated,
+      deletedIds: Array.from(tombs.deletedIds),
+      deletedNames: Array.from(tombs.deletedNames),
+      updatedAt: nowTs,
+    }).catch(() => {});
+
+    if (spreadsheetId) {
+      syncDataToCloud(updated, dailySales);
     }
   };
 
@@ -6459,7 +6622,18 @@ export default function CogsDailySalesPage({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    <th className="py-2.5 px-3">Nama Menu</th>
+                    <th className="py-2.5 px-3">
+                      <button
+                        type="button"
+                        onClick={() => setCatalogSortOption(prev => prev === 'nama_asc' ? 'nama_desc' : 'nama_asc')}
+                        className="inline-flex items-center space-x-1 uppercase tracking-wider hover:text-amber-700 transition cursor-pointer font-black"
+                        title="Klik untuk mengurutkan berdasarkan Nama Menu (A-Z / Z-A)"
+                      >
+                        <span>Nama Menu</span>
+                        {catalogSortOption === 'nama_asc' && <span className="text-amber-600">▲</span>}
+                        {catalogSortOption === 'nama_desc' && <span className="text-amber-600">▼</span>}
+                      </button>
+                    </th>
                     <th className="py-2.5 px-3">Kategori</th>
                     <th className="py-2.5 px-3 text-right">Harga Jual (Rp)</th>
                     <th className="py-2.5 px-3 text-right">HPP (COGS)</th>
@@ -6821,14 +6995,35 @@ export default function CogsDailySalesPage({
                               >
                                 <Edit3 className="h-3.5 w-3.5" />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteMenu(m.id)}
-                                className="p-1 text-slate-300 hover:text-red-600 transition cursor-pointer"
-                                title="Hapus Menu"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              {confirmDeleteMenuId === m.id ? (
+                                <div className="inline-flex items-center space-x-1 bg-red-50 border border-red-200 rounded-lg px-1.5 py-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMenu(m)}
+                                    className="px-1.5 py-0.5 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black rounded transition cursor-pointer"
+                                    title="Konfirmasi Hapus Menu"
+                                  >
+                                    Hapus
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteMenuId(null)}
+                                    className="px-1.5 py-0.5 bg-white hover:bg-slate-100 text-slate-600 text-[10px] font-bold rounded border border-slate-200 transition cursor-pointer"
+                                    title="Batal Hapus"
+                                  >
+                                    Batal
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteMenuId(m.id)}
+                                  className="p-1 text-slate-400 hover:text-red-600 transition cursor-pointer"
+                                  title="Hapus Menu"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
