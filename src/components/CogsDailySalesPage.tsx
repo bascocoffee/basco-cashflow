@@ -3178,7 +3178,7 @@ export default function CogsDailySalesPage({
       }
     }
 
-    if (spreadsheetId && token) {
+    if (spreadsheetId) {
       syncDataToCloud(updatedCatalog, nextSales);
     } else if (renamedMenu) {
       pushDailySalesToCloud({ records: nextSales, selectedDate, immediate: true }).catch(() => {});
@@ -3224,21 +3224,26 @@ export default function CogsDailySalesPage({
 
   const handleSaveMenu = (e: React.FormEvent) => {
     e.preventDefault();
-    const harga = parseFloat(newMenuHarga) || 0;
-    const hppVal = parseFloat(newMenuHpp) || 0;
-    const jatah = parseFloat(newMenuJatah) || 0;
+    const harga = Math.max(0, parseFloat(newMenuHarga) || 0);
+    const hppVal = Math.max(0, parseFloat(newMenuHpp) || 0);
+    const jatah = Math.max(0, parseFloat(newMenuJatah) || 0);
     const trimmedName = newMenuNama.trim();
 
-    if (!trimmedName || harga <= 0) return;
+    if (!trimmedName) {
+      alert('Nama menu tidak boleh kosong.');
+      return;
+    }
+
+    const latestCatalog = menuItemsRef.current;
 
     if (editingMenuItemId) {
-      const existing = menuItems.find(m => m.id === editingMenuItemId);
+      const existing = latestCatalog.find(m => m.id === editingMenuItemId);
       const prevAliases = existing && Array.isArray(existing.aliases) ? existing.aliases : [];
       const nextAliases = existing && existing.nama.trim().toLowerCase() !== trimmedName.toLowerCase()
         ? Array.from(new Set([...prevAliases, existing.nama.trim()].filter(a => a && a.toLowerCase() !== trimmedName.toLowerCase())))
         : prevAliases;
 
-      const updatedList = menuItems.map(m => m.id === editingMenuItemId ? {
+      const updatedList = latestCatalog.map(m => m.id === editingMenuItemId ? {
         ...m,
         nama: trimmedName,
         aliases: nextAliases,
@@ -3273,7 +3278,7 @@ export default function CogsDailySalesPage({
         defaultJatah: jatah,
         recipe: newMenuRecipe
       };
-      const updatedList = [...menuItems, newMenu];
+      const updatedList = [...latestCatalog, newMenu];
       commitRenamedCatalogAndSales(updatedList);
     }
 
@@ -6377,7 +6382,7 @@ export default function CogsDailySalesPage({
 
             {/* Form Add Menu Baru (Top of table when creating new menu) */}
             {showAddMenuModal && !editingMenuItemId && (
-              <form onSubmit={handleSaveMenu} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+              <form noValidate onSubmit={handleSaveMenu} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                   <span className="text-xs font-black uppercase tracking-wider text-slate-800">
                     Tambah Menu Baru ke Catalog Sheet
@@ -6421,10 +6426,11 @@ export default function CogsDailySalesPage({
                     <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Harga Jual (Rp)</label>
                     <input
                       type="number"
+                      step="any"
+                      min="0"
                       value={newMenuHarga}
                       onChange={(e) => setNewMenuHarga(e.target.value)}
                       className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:outline-none"
-                      required
                     />
                   </div>
 
@@ -6437,10 +6443,11 @@ export default function CogsDailySalesPage({
                     </label>
                     <input
                       type="number"
+                      step="any"
+                      min="0"
                       value={newMenuHpp}
                       onChange={(e) => setNewMenuHpp(e.target.value)}
                       className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-extrabold focus:outline-none text-amber-900 bg-amber-50/50"
-                      required
                     />
                   </div>
 
@@ -6448,10 +6455,11 @@ export default function CogsDailySalesPage({
                     <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Jatah Barista Default (Porsi)</label>
                     <input
                       type="number"
+                      step="any"
+                      min="0"
                       value={newMenuJatah}
                       onChange={(e) => setNewMenuJatah(e.target.value)}
                       className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:outline-none"
-                      required
                     />
                   </div>
                 </div>
@@ -6730,7 +6738,7 @@ export default function CogsDailySalesPage({
                         {isEditingThisMenu && (
                           <tr id={`edit-menu-row-${m.id}`} className="bg-amber-100/60 border-2 border-amber-400">
                             <td colSpan={8} className="p-3.5 sm:p-4">
-                              <form onSubmit={handleSaveMenu} className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-4 shadow-sm">
+                              <form noValidate onSubmit={handleSaveMenu} className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-4 shadow-sm">
                                 <div className="flex justify-between items-center border-b border-amber-300 pb-2">
                                   <span className="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center space-x-1.5">
                                     <Edit3 className="h-4 w-4 text-amber-700" />
@@ -6777,10 +6785,11 @@ export default function CogsDailySalesPage({
                                     <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Harga Jual (Rp)</label>
                                     <input
                                       type="number"
+                                      step="any"
+                                      min="0"
                                       value={newMenuHarga}
                                       onChange={(e) => setNewMenuHarga(e.target.value)}
                                       className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                      required
                                     />
                                   </div>
 
@@ -6793,10 +6802,11 @@ export default function CogsDailySalesPage({
                                     </label>
                                     <input
                                       type="number"
+                                      step="any"
+                                      min="0"
                                       value={newMenuHpp}
                                       onChange={(e) => setNewMenuHpp(e.target.value)}
                                       className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-extrabold focus:outline-none text-amber-900 bg-amber-100/50"
-                                      required
                                     />
                                   </div>
 
@@ -6804,10 +6814,11 @@ export default function CogsDailySalesPage({
                                     <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">Jatah Barista Default</label>
                                     <input
                                       type="number"
+                                      step="any"
+                                      min="0"
                                       value={newMenuJatah}
                                       onChange={(e) => setNewMenuJatah(e.target.value)}
                                       className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                      required
                                     />
                                   </div>
                                 </div>
