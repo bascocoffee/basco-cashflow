@@ -424,7 +424,6 @@ export default function CogsDailySalesPage({
   const [isMinCatalog, setIsMinCatalog] = useState<boolean>(false);
   const [isMinRecipeCalc, setIsMinRecipeCalc] = useState<boolean>(false);
   const [isMinMatrix, setIsMinMatrix] = useState<boolean>(false);
-  const [isMinSim, setIsMinSim] = useState<boolean>(false);
   const [isMinIngredientReport, setIsMinIngredientReport] = useState<boolean>(false);
 
   // Recipe PDF Export Modal States
@@ -494,7 +493,6 @@ export default function CogsDailySalesPage({
   const [hargaPerCup, setHargaPerCup] = useState<number>(19000);
   const [hppPerCup, setHppPerCup] = useState<number>(9018);
   const [targetProfit, setTargetProfit] = useState<number>(3500000);
-  const [investorSharePct, setInvestorSharePct] = useState<number>(60); // 60%
   const [useDailySalesAccumulation, setUseDailySalesAccumulation] = useState<boolean>(true);
   const [manualOmsetBulanan, setManualOmsetBulanan] = useState<number>(24357500);
 
@@ -1825,11 +1823,6 @@ export default function CogsDailySalesPage({
   const [recipeFormIngId, setRecipeFormIngId] = useState<string>('');
   const [recipeFormTakaran, setRecipeFormTakaran] = useState<string>('18');
 
-  // Biaya Item Form State
-  const [newBiayaNama, setNewBiayaNama] = useState<string>('');
-  const [newBiayaJumlah, setNewBiayaJumlah] = useState<string>('');
-  const [newBiayaKategori, setNewBiayaKategori] = useState<'Gaji' | 'Sewa & Utilitas'>('Gaji');
-
   // Expanded row in history table
   const [expandedDailyId, setExpandedDailyId] = useState<string | null>(null);
 
@@ -2609,15 +2602,9 @@ export default function CogsDailySalesPage({
     return useDailySalesAccumulation ? totalDailyHppCalculated : (estimasiPenjualanCups * hppPerCup);
   }, [useDailySalesAccumulation, totalDailyHppCalculated, estimasiPenjualanCups, hppPerCup]);
 
-  // Laba Rugi & Profit Sharing
+  // Laba Rugi
   const grossProfit = useMemo(() => omsetBulanan - totalEstimasiHPP, [omsetBulanan, totalEstimasiHPP]);
   const netProfit = useMemo(() => grossProfit - totalBiayaBulanan, [grossProfit, totalBiayaBulanan]);
-
-  const investorPct = investorSharePct / 100;
-  const pengelolaPct = (100 - investorSharePct) / 100;
-
-  const bagianInvestor = useMemo(() => Math.max(0, netProfit) * investorPct, [netProfit, investorPct]);
-  const bagianPengelola = useMemo(() => Math.max(0, netProfit) * pengelolaPct, [netProfit, pengelolaPct]);
 
   // Save Itemized Daily Entry
   const handleSaveItemizedDaily = async (e: React.FormEvent) => {
@@ -3280,27 +3267,6 @@ export default function CogsDailySalesPage({
     });
   };
 
-  // Biaya Item Handlers
-  const handleAddBiaya = (e: React.FormEvent) => {
-    e.preventDefault();
-    const jm = parseFloat(newBiayaJumlah) || 0;
-    if (!newBiayaNama.trim() || jm <= 0) return;
-
-    const newItem: BiayaOperasionalItem = {
-      id: `b-${Date.now()}`,
-      nama: newBiayaNama.trim(),
-      jumlah: jm,
-      kategori: newBiayaKategori
-    };
-    setBiayaList(prev => [...prev, newItem]);
-    setNewBiayaNama('');
-    setNewBiayaJumlah('');
-  };
-
-  const handleDeleteBiaya = (id: string) => {
-    setBiayaList(prev => prev.filter(item => item.id !== id));
-  };
-
   const handleDeleteDaily = (id: string) => {
     if (window.confirm('Hapus catatan penjualan harian ini?')) {
       setDailySales(prev => prev.filter(item => item.id !== id));
@@ -3352,7 +3318,6 @@ export default function CogsDailySalesPage({
       setHppPerCup(9018);
       setManualOmsetBulanan(24357500);
       setTargetProfit(3500000);
-      setInvestorSharePct(60);
       setUseDailySalesAccumulation(true);
       setMenuItems(DEFAULT_MENU_ITEMS.map(item => ({ ...item, defaultJatah: 0 })));
       setBiayaList(DEFAULT_BIAYA_ITEMS);
@@ -3389,8 +3354,6 @@ export default function CogsDailySalesPage({
     csvLines.push(`"Total Biaya Operasional (Gaji & Utilitas):","Rp ${totalBiayaBulanan.toLocaleString('id-ID')}"`);
     csvLines.push(`"Keuntungan Kotor (Gross Profit):","Rp ${Math.round(grossProfit).toLocaleString('id-ID')}"`);
     csvLines.push(`"Keuntungan Bersih (Net Profit):","Rp ${Math.round(netProfit).toLocaleString('id-ID')}"`);
-    csvLines.push(`"Bagian Investor (${investorSharePct}%):","Rp ${Math.round(bagianInvestor).toLocaleString('id-ID')}"`);
-    csvLines.push(`"Bagian Pengelola (${100 - investorSharePct}%):","Rp ${Math.round(bagianPengelola).toLocaleString('id-ID')}"`);
     csvLines.push(``);
 
     csvLines.push(`"--- C. REKAPITULASI PENJUALAN HARIAN ---"`);
@@ -4068,7 +4031,7 @@ export default function CogsDailySalesPage({
               COGS & Penjualan Harian
             </h2>
             <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed font-medium">
-              Sistem pencatatan harian sales & jatah menu, pengolahan katalog harga jual & HPP, serta kalkulator resep COGS dan simulasi profit sharing.
+              Sistem pencatatan harian sales &amp; jatah menu, pengolahan katalog harga jual &amp; HPP, serta kalkulator resep COGS.
             </p>
           </div>
 
@@ -7833,174 +7796,6 @@ export default function CogsDailySalesPage({
                   })}
                 </tbody>
               </table>
-            </div>
-            </>
-            )}
-          </div>
-
-          {/* B. SIMULASI PARAMETER MASTER & BAGI HASIL */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-blue-100 text-blue-800 rounded-xl">
-                  <Sliders className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black uppercase tracking-wider text-slate-900">
-                    Simulasi Financial & Profit Sharing Investor
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">
-                    Atur persentase bagi hasil, target laba bersih, serta biaya fixed operasional.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsMinSim(!isMinSim)}
-                className="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
-                title={isMinSim ? "Perluas Modul" : "Minimalkan Modul"}
-              >
-                <span>{isMinSim ? 'Perluas' : 'Minimize'}</span>
-                {isMinSim ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-              </button>
-            </div>
-
-            {!isMinSim && (
-              <>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Box 1: Parameter Price & Cost */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-800 block">
-                  Parameter Rata-Rata Produk
-                </span>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Harga Jual Rata-Rata / Cup (Rp)</label>
-                  <input
-                    type="number"
-                    value={hargaPerCup}
-                    onChange={(e) => setHargaPerCup(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">HPP / COGS Rata-Rata / Cup (Rp)</label>
-                  <input
-                    type="number"
-                    value={hppPerCup}
-                    onChange={(e) => setHppPerCup(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-amber-900"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-slate-200 text-xs font-mono space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Margin / Cup:</span>
-                    <span className="font-bold text-emerald-700">{formatRupiah(marginPerCup)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Gross Margin %:</span>
-                    <span className="font-extrabold text-emerald-800">{(marginPersentase * 100).toFixed(1)}%</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Box 2: Target Laba & Share Investor */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-800 block">
-                  Target Laba & Skema Investor
-                </span>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Target Net Profit Bulanan (Rp)</label>
-                  <input
-                    type="number"
-                    value={targetProfit}
-                    onChange={(e) => setTargetProfit(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Porsi Bagi Hasil Investor (%)</label>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={investorSharePct}
-                      onChange={(e) => setInvestorSharePct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                      className="w-20 px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-blue-900"
-                    />
-                    <span className="text-xs text-slate-500 font-bold">% Investor / {(100 - investorSharePct)}% Pengelola</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-200 text-xs font-mono space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Bagian Investor:</span>
-                    <span className="font-bold text-blue-800">{formatRupiah(Math.round(bagianInvestor))}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Bagian Pengelola:</span>
-                    <span className="font-bold text-slate-800">{formatRupiah(Math.round(bagianPengelola))}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Box 3: Fixed Costs Breakdown */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-800">
-                    Total Biaya Operasional
-                  </span>
-                  <span className="text-xs font-mono font-black text-slate-900">
-                    {formatRupiah(totalBiayaBulanan)}
-                  </span>
-                </div>
-
-                <div className="text-[11px] font-mono space-y-1.5 bg-white p-3 rounded-xl border border-slate-200">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Gaji Barista ({biayaList.filter(b => b.kategori === 'Gaji').length} orang):</span>
-                    <span className="font-bold">{formatRupiah(totalGaji)}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Sewa & Utilitas:</span>
-                    <span className="font-bold">{formatRupiah(totalSewaUtilitas)}</span>
-                  </div>
-                </div>
-
-                {/* Form Add Biaya */}
-                <form onSubmit={handleAddBiaya} className="space-y-2 pt-1">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      placeholder="Nama Biaya Baru"
-                      value={newBiayaNama}
-                      onChange={(e) => setNewBiayaNama(e.target.value)}
-                      className="px-2 py-1 bg-white border border-slate-300 rounded text-xs"
-                      required
-                    />
-                    <input
-                      type="number"
-                      placeholder="Nominal (Rp)"
-                      value={newBiayaJumlah}
-                      onChange={(e) => setNewBiayaJumlah(e.target.value)}
-                      className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-mono"
-                      required
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full py-1 bg-slate-800 text-white rounded font-bold text-[10px] uppercase"
-                  >
-                    Tambah Biaya
-                  </button>
-                </form>
-              </div>
             </div>
             </>
             )}
