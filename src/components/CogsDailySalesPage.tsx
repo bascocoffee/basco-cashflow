@@ -5,6 +5,7 @@ import SalesCogsReportPdfModal from './SalesCogsReportPdfModal';
 import HppAiForum from './HppAiForum';
 import { pushDailySalesToCloud, pullDailySalesFromCloud, loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
 import { scanSalesReceiptImage, type ReceiptScanResult } from '../utils/receiptScanner';
+import { logAppActivity } from '../utils/activityLogger';
 import { 
   FileText,
   DollarSign, 
@@ -916,6 +917,13 @@ export default function CogsDailySalesPage({
       }
       return next;
     });
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: 'create',
+      module: 'Stok Barang Masuk',
+      description: `Menambahkan barang masuk "${newBatch.namaBahan}" (${newBatch.berat} ${newBatch.satuan}) tgl ${created.tanggal}`,
+    });
   };
 
   const handleUpdateIncomingBatch = (updatedBatch: IncomingIngredientBatch) => {
@@ -932,9 +940,17 @@ export default function CogsDailySalesPage({
       }
       return next;
     });
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: 'update',
+      module: 'Stok Barang Masuk',
+      description: `Memperbarui barang masuk "${updatedBatch.namaBahan}" (${updatedBatch.berat} ${updatedBatch.satuan})`,
+    });
   };
 
   const handleDeleteIncomingBatch = (id: string) => {
+    const targetBatch = incomingBatches.find(b => b.id === id);
     setIncomingBatches(prev => {
       const next = prev.filter(b => b.id !== id);
       localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
@@ -942,6 +958,13 @@ export default function CogsDailySalesPage({
         saveIncomingBatchesToSheet(spreadsheetId, next, token || 'local-token', [id]).catch(() => {});
       }
       return next;
+    });
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: 'delete',
+      module: 'Stok Barang Masuk',
+      description: `Menghapus catatan barang masuk ${targetBatch ? `"${targetBatch.namaBahan}"` : id}`,
     });
   };
 
@@ -1641,6 +1664,14 @@ export default function CogsDailySalesPage({
       if (result.items.length > 0) {
         setReceiptUndoSnapshot(snapshot);
         applyScannedReceiptItems(result.items, receiptApplyMode, selectedDate, snapshot);
+        const totalQty = result.items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+        logAppActivity({
+          role: userRole,
+          actorName: user?.displayName || user?.email || undefined,
+          actionType: 'scan_receipt',
+          module: 'Pencatatan Barista & Nota AI',
+          description: `Scan foto nota penjualan tgl ${selectedDate}: ${result.items.length} menu terdeteksi (${totalQty} porsi)`,
+        });
       } else {
         setReceiptUndoSnapshot(null);
         setReceiptScanError(
@@ -2917,6 +2948,14 @@ export default function CogsDailySalesPage({
     });
     syncDataToCloud(menuItems, nextDailySales, ingredients, biayaList, incomingBatches, normSelected);
 
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: existingIndex >= 0 ? 'update' : 'create',
+      module: 'Penjualan & Jatah Harian',
+      description: `${existingIndex >= 0 ? 'Memperbarui' : 'Menyimpan'} penjualan harian tgl ${normSelected}: ${cups} porsi terjual (Omset ${formatRupiah(omset)})`,
+    });
+
     alert(`Data penjualan & jatah menu harian tanggal ${selectedDate} berhasil disimpan dan otomatis tersinkron ke semua perangkat (Owner, Manajer & Barista)!`);
   };
 
@@ -3268,6 +3307,13 @@ export default function CogsDailySalesPage({
             }
           : undefined
       );
+      logAppActivity({
+        role: userRole,
+        actorName: user?.displayName || user?.email || undefined,
+        actionType: 'update',
+        module: 'Data Menu & HPP',
+        description: `Mengubah menu "${existing?.nama || trimmedName}" -> "${trimmedName}" (Harga ${formatRupiah(harga)}, HPP ${formatRupiah(hppVal)})`,
+      });
     } else {
       const newMenu: MenuItem = {
         id: `m-${Date.now()}`,
@@ -3280,6 +3326,13 @@ export default function CogsDailySalesPage({
       };
       const updatedList = [...latestCatalog, newMenu];
       commitRenamedCatalogAndSales(updatedList);
+      logAppActivity({
+        role: userRole,
+        actorName: user?.displayName || user?.email || undefined,
+        actionType: 'create',
+        module: 'Data Menu & HPP',
+        description: `Menambahkan menu baru "${trimmedName}" (${newMenuKategori}, Harga ${formatRupiah(harga)})`,
+      });
     }
 
     setNewMenuNama('');
@@ -3351,6 +3404,14 @@ export default function CogsDailySalesPage({
     if (spreadsheetId) {
       syncDataToCloud(updated, dailySales);
     }
+
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: 'delete',
+      module: 'Data Menu & HPP',
+      description: `Menghapus menu "${targetMenu.nama}" (${targetMenu.kategori}) dari katalog`,
+    });
   };
 
   // Ingredient Handlers

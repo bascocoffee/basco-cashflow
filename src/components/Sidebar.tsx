@@ -27,7 +27,8 @@ import {
   BellRing,
   CreditCard,
   ShoppingCart,
-  UserCheck
+  UserCheck,
+  History
 } from 'lucide-react';
 import { logout } from '../firebase';
 import { CALENDAR_NOTES_STORAGE_KEY, DEFAULT_CALENDAR_ACTIVITIES, computeH1Alerts } from '../utils/calendarNotesData';
@@ -35,7 +36,7 @@ import { getStoredDebts, getDueDateStatus } from '../utils/debtUtils';
 import { SHOPPING_LIST_STORAGE_KEY, DEFAULT_SHOPPING_ITEMS, computeShoppingMetrics } from '../utils/shoppingListData';
 import { AppRole } from '../types';
 
-export type TabType = 'dashboard' | 'employee_tasks' | 'calendar_notes' | 'barista_schedule' | 'omset_cogs' | 'cogs' | 'shopping_report' | 'categories' | 'fixed_cost' | 'debt_tracker' | 'ai_chat';
+export type TabType = 'dashboard' | 'employee_tasks' | 'calendar_notes' | 'barista_schedule' | 'omset_cogs' | 'cogs' | 'shopping_report' | 'categories' | 'fixed_cost' | 'debt_tracker' | 'ai_chat' | 'usage_history';
 
 interface SidebarProps {
   user: User;
@@ -327,6 +328,19 @@ export default function Sidebar({
             icon: Bot, 
             badge: 'AI',
             description: 'Konsultasi finansial cafe cerdas'
+          }
+        ]
+      },
+      {
+        groupTitle: 'Audit & Riwayat (Owner)',
+        items: [
+          {
+            id: 'usage_history' as TabType,
+            label: 'Riwayat Penggunaan',
+            icon: History,
+            badge: 'Owner',
+            badgeColor: 'amber' as const,
+            description: 'Log aktivitas 3 role (Owner, Manajer, Barista)'
           }
         ]
       }

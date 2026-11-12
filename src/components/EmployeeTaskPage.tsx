@@ -39,6 +39,7 @@ import {
   saveEmployeeTasksToSheet, 
   appendEmployeeTaskToSheet 
 } from '../sheetsService';
+import { logAppActivity } from '../utils/activityLogger';
 
 interface EmployeeTaskPageProps {
   spreadsheetId: string | null;
@@ -148,6 +149,11 @@ export default function EmployeeTaskPage({
       setLastSyncTime(timeNow);
       localStorage.setItem('basco_employee_tasks_last_sync', timeNow);
       setSyncMessage({ type: 'success', text: `Sukses menyimpan ${tasks.length} tugas ke tab 'Tugas Karyawan' Google Sheets` });
+      logAppActivity({
+        actionType: 'sync',
+        module: 'Tugas Karyawan',
+        description: `Menyinkronkan ${tasks.length} tugas karyawan ke Google Sheets`,
+      });
     } catch (err: any) {
       console.error('Sync error:', err);
       setSyncMessage({ type: 'error', text: 'Gagal menyimpan ke Google Sheets' });
@@ -234,6 +240,11 @@ export default function EmployeeTaskPage({
           console.warn('Background sync error on edit:', err);
         });
       }
+      logAppActivity({
+        actionType: 'update',
+        module: 'Tugas Karyawan',
+        description: `Memperbarui tugas "${updated.tugas}" untuk ${updated.nama} (Status: ${updated.status})`,
+      });
     } else {
       // Add new task
       const newTask: EmployeeTask = {
@@ -263,11 +274,17 @@ export default function EmployeeTaskPage({
           });
         });
       }
+      logAppActivity({
+        actionType: 'create',
+        module: 'Tugas Karyawan',
+        description: `Menambahkan tugas "${newTask.tugas}" untuk ${newTask.nama} (Shift ${newTask.shift})`,
+      });
     }
   };
 
   // Quick toggle task status
   const handleQuickStatusChange = async (taskId: string, newStatus: TaskStatus) => {
+    const targetTask = tasks.find(t => t.id === taskId);
     const updated = tasks.map(t => {
       if (t.id === taskId) {
         return {
@@ -286,11 +303,17 @@ export default function EmployeeTaskPage({
         console.warn('Quick status sync error:', err);
       });
     }
+    logAppActivity({
+      actionType: 'update',
+      module: 'Tugas Karyawan',
+      description: `Mengubah status tugas ${targetTask ? `"${targetTask.tugas}" (${targetTask.nama})` : taskId} menjadi "${newStatus}"`,
+    });
   };
 
   // Confirm delete task
   const handleDeleteConfirm = async () => {
     if (!taskToDelete) return;
+    const deletedSnapshot = taskToDelete;
     const filtered = tasks.filter(t => t.id !== taskToDelete.id);
     setTasks(filtered);
     setTaskToDelete(null);
@@ -300,6 +323,11 @@ export default function EmployeeTaskPage({
         console.warn('Delete sync error:', err);
       });
     }
+    logAppActivity({
+      actionType: 'delete',
+      module: 'Tugas Karyawan',
+      description: `Menghapus tugas "${deletedSnapshot.tugas}" (${deletedSnapshot.nama})`,
+    });
   };
 
   // Export CSV
@@ -327,6 +355,11 @@ export default function EmployeeTaskPage({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    logAppActivity({
+      actionType: 'export',
+      module: 'Tugas Karyawan',
+      description: `Mengekspor ${filteredTasks.length} tugas karyawan ke file CSV`,
+    });
   };
 
   // Metrics computation

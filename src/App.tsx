@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { User } from "firebase/auth";
 import {
   TrendingUp,
@@ -69,6 +69,8 @@ import DebtTrackerPage from "./components/DebtTrackerPage";
 import ShoppingReportPage from "./components/ShoppingReportPage";
 import BackupRestoreModal from "./components/BackupRestoreModal";
 import EmployeeTaskPage from "./components/EmployeeTaskPage";
+import UsageHistoryPage from "./components/UsageHistoryPage";
+import { logAppActivity } from "./utils/activityLogger";
 import {
   KeyRound,
   UserCheck,
@@ -569,6 +571,48 @@ export default function App() {
     }
   }, [userRole, activeTab]);
 
+  // Track tab navigation across all 3 roles
+  const lastLoggedNavRef = useRef<string>("");
+  useEffect(() => {
+    if (!user) {
+      lastLoggedNavRef.current = "";
+      return;
+    }
+    if (userRole === "barista" && activeTab !== "omset_cogs") return;
+    if (
+      userRole === "manager" &&
+      !["employee_tasks", "barista_schedule", "omset_cogs", "shopping_report", "cogs"].includes(activeTab)
+    ) {
+      return;
+    }
+    const navKey = `${userRole}:${activeTab}`;
+    if (lastLoggedNavRef.current === navKey) return;
+    lastLoggedNavRef.current = navKey;
+
+    const moduleTitleMap: Record<TabType, string> = {
+      dashboard: userRole === "manager" ? "Dashboard Pencatatan Harian" : "Dasbor Utama & Arus Kas",
+      employee_tasks: userRole === "barista" ? "Tugas & SOP Barista" : userRole === "manager" ? "Tugas Karyawan" : "Pencatatan Tugas Karyawan",
+      calendar_notes: "Catatan & Agenda Kalender",
+      barista_schedule: userRole === "barista" ? "Jadwal Shift & Slip Gaji" : "Jadwal Operasional",
+      omset_cogs: userRole === "barista" ? "Pencatatan Penjualan & Jatah Harian" : userRole === "manager" ? "Penjualan Menu" : "Analisis COGS & Sales",
+      cogs: userRole === "barista" ? "Stok Opname & Resep" : "Stok Opname Bulanan",
+      shopping_report: "Bahan yang Harus Dibelanjakan",
+      categories: "Kategori Pengeluaran",
+      fixed_cost: "Simulasi Biaya Tetap & BEP",
+      debt_tracker: "Pencatatan Hutang & Liabilitas",
+      ai_chat: "Tanya AI Analyst Cafe",
+      usage_history: "Riwayat Penggunaan Aplikasi",
+    };
+    const modName = moduleTitleMap[activeTab] || activeTab;
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: "navigate",
+      module: modName,
+      description: `Membuka halaman ${modName}`,
+    });
+  }, [user, userRole, activeTab]);
+
   // Unified Role Password Login Handler (Owner, Manager, Barista)
   const handleLoginWithRolePin = async (role: AppRole, pinCode?: string) => {
     const inputClean = (pinCode || rolePinInput || "").trim().toLowerCase();
@@ -637,6 +681,16 @@ export default function App() {
       setActiveTab("dashboard");
     }
 
+    logAppActivity({
+      role,
+      actorName: ROLE_USERS[role].displayName || undefined,
+      authMethod: "password",
+      actionType: "login",
+      module: "Autentikasi",
+      description: `Login ke aplikasi sebagai role ${role === "owner" ? "Owner" : role === "manager" ? "Manajer" : "Barista"} menggunakan Password Role`,
+      immediateSync: true,
+    });
+
     setShowPinModal(false);
     setRolePinError(null);
     setRolePinInput("");
@@ -651,6 +705,14 @@ export default function App() {
 
   // Logout from any mode
   const handleLogoutManager = async () => {
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: "logout",
+      module: "Autentikasi",
+      description: `Logout dari sesi role ${userRole === "owner" ? "Owner" : userRole === "manager" ? "Manajer" : "Barista"}`,
+      immediateSync: true,
+    });
     setIsManagerMode(false);
     localStorage.removeItem("aruskas_is_manager_mode");
     localStorage.removeItem("aruskas_user_role");
@@ -866,6 +928,16 @@ export default function App() {
         } else {
           setActiveTab("dashboard");
         }
+
+        logAppActivity({
+          role: chosenRole,
+          actorName: result.user?.displayName || result.user?.email || undefined,
+          authMethod: "google",
+          actionType: "login",
+          module: "Autentikasi",
+          description: `Login via Google OAuth sebagai role ${chosenRole === "owner" ? "Owner" : chosenRole === "manager" ? "Manajer" : "Barista"}`,
+          immediateSync: true,
+        });
       }
     } catch (err: any) {
       console.error("Google Sign-in error:", err);
@@ -1006,11 +1078,20 @@ export default function App() {
         }
       }
       await loadTransactionsFromSheet(spreadsheetId, activeToken);
+      logAppActivity({
+        role: userRole,
+        actorName: user?.displayName || user?.email || undefined,
+        actionType: "sync",
+        module: "Sinkronisasi Google Sheets",
+        description: "Memuat ulang data transaksi dari Google Sheets",
+      });
     }
   };
 
   // Add / Edit submission
   const handleFormSubmit = async (data: Omit<Transaction, "id">) => {
+    const actorName = user?.displayName || user?.email || undefined;
+    const isEdit = Boolean(editingTransaction);
     if (!spreadsheetId || spreadsheetId.startsWith("local_")) {
       let updated: Transaction[];
       if (editingTransaction) {
@@ -1028,6 +1109,15 @@ export default function App() {
         "aruskas_manager_transactions",
         JSON.stringify(updated),
       );
+      const txNominal = Number(data.debit || data.kredit || data.kredit2 || 0);
+      const txKind = Number(data.debit || 0) > 0 ? "pemasukan" : "pengeluaran";
+      logAppActivity({
+        role: userRole,
+        actorName,
+        actionType: isEdit ? "update" : "create",
+        module: "Dasbor Utama & Arus Kas",
+        description: `${isEdit ? "Mengubah" : "Menambahkan"} transaksi ${txKind} (${data.jenisPengeluaran || "-"}: ${data.keterangan || "-"}) sebesar Rp ${txNominal.toLocaleString("id-ID")}`,
+      });
       return;
     }
 
@@ -1045,12 +1135,24 @@ export default function App() {
       await addTransaction(spreadsheetId, data, effectiveToken);
     }
 
+    const txNominal = Number(data.debit || data.kredit || data.kredit2 || 0);
+    const txKind = Number(data.debit || 0) > 0 ? "pemasukan" : "pengeluaran";
+    logAppActivity({
+      role: userRole,
+      actorName,
+      actionType: isEdit ? "update" : "create",
+      module: "Dasbor Utama & Arus Kas",
+      description: `${isEdit ? "Mengubah" : "Menambahkan"} transaksi ${txKind} (${data.jenisPengeluaran || "-"}: ${data.keterangan || "-"}) sebesar Rp ${txNominal.toLocaleString("id-ID")}`,
+    });
+
     // Refresh transactions
     await loadTransactionsFromSheet(spreadsheetId, effectiveToken);
   };
 
   // Delete transaction action
   const handleDeleteTransaction = async (id: string) => {
+    const targetTx = transactions.find((t) => t.id === id);
+    const actorName = user?.displayName || user?.email || undefined;
     if (!spreadsheetId || spreadsheetId.startsWith("local_")) {
       const updated = transactions.filter((t) => t.id !== id);
       setTransactions(updated);
@@ -1058,12 +1160,26 @@ export default function App() {
         "aruskas_manager_transactions",
         JSON.stringify(updated),
       );
+      logAppActivity({
+        role: userRole,
+        actorName,
+        actionType: "delete",
+        module: "Dasbor Utama & Arus Kas",
+        description: `Menghapus transaksi ${targetTx ? `${targetTx.jenisPengeluaran || "-"}: ${targetTx.keterangan || "-"}` : id}`,
+      });
       return;
     }
     const effectiveToken = token || `${userRole}-local-token`;
     try {
       setIsLoadingData(true);
       await deleteTransaction(spreadsheetId, id, effectiveToken);
+      logAppActivity({
+        role: userRole,
+        actorName,
+        actionType: "delete",
+        module: "Dasbor Utama & Arus Kas",
+        description: `Menghapus transaksi ${targetTx ? `${targetTx.jenisPengeluaran || "-"}: ${targetTx.keterangan || "-"}` : id}`,
+      });
       await loadTransactionsFromSheet(spreadsheetId, effectiveToken);
     } catch (err: any) {
       console.error(err);
@@ -1082,6 +1198,13 @@ export default function App() {
     }
     const updated = [...categories, trimmed];
     setCategories(updated);
+    logAppActivity({
+      role: userRole,
+      actorName: user?.displayName || user?.email || undefined,
+      actionType: "create",
+      module: "Kategori Pengeluaran",
+      description: `Menambahkan kategori pengeluaran baru: "${trimmed}"`,
+    });
 
     if (spreadsheetId && token) {
       setIsLoadingData(true);
@@ -1976,6 +2099,11 @@ export default function App() {
       subtitle:
         "Asisten AI cerdas untuk efisiensi operasional & konsultasi finansial",
     },
+    usage_history: {
+      title: "Riwayat Penggunaan Aplikasi",
+      subtitle:
+        "Pantau jejak aktivitas 3 role (Owner, Manajer, Barista) secara real-time (Khusus Owner)",
+    },
   };
 
   const currentTabInfo = tabTitles[activeTab] || tabTitles.dashboard;
@@ -2255,6 +2383,8 @@ export default function App() {
             />
           ) : activeTab === "ai_chat" ? (
             <AiChat transactions={transactions} />
+          ) : activeTab === "usage_history" && userRole === "owner" ? (
+            <UsageHistoryPage />
           ) : (
             <Dashboard
               transactions={transactions}
