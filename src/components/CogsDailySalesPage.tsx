@@ -3776,7 +3776,7 @@ export default function CogsDailySalesPage({
           </div>
 
           {/* Date Picker & Live Summary Counters (Mobile Responsive Grid) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
             <div className="col-span-2 sm:col-span-1 flex items-center space-x-2.5 bg-white p-2.5 rounded-lg border border-slate-200">
               <Calendar className="h-4.5 w-4.5 text-indigo-600 shrink-0" />
               <div className="min-w-0 flex-1">
@@ -3807,6 +3807,15 @@ export default function CogsDailySalesPage({
               </span>
               <span className="text-sm sm:text-base font-black font-mono text-indigo-950">
                 {itemizedCalculations.totalJatah} <span className="text-[10px] font-bold">Porsi</span>
+              </span>
+            </div>
+
+            <div className="col-span-2 sm:col-span-1 bg-emerald-50/90 border border-emerald-200/90 p-2.5 rounded-lg flex flex-col justify-center">
+              <span className="text-[9.5px] font-bold uppercase tracking-wider text-emerald-700">
+                Total Sales Harian
+              </span>
+              <span className="text-sm sm:text-base font-black font-mono text-emerald-950 truncate" title={formatRupiah(itemizedCalculations.totalOmset)}>
+                {formatRupiah(itemizedCalculations.totalOmset)}
               </span>
             </div>
           </div>
@@ -4301,6 +4310,20 @@ export default function CogsDailySalesPage({
                 onChange={(e) => setDailyNotes(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:border-slate-400 focus:outline-none"
               />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-emerald-50/90 border border-emerald-200 rounded-xl">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                  Total Sales Harian ({formatDateDDMMYYYY(selectedDate)})
+                </span>
+                <span className="text-[11px] font-semibold text-slate-600">
+                  {itemizedCalculations.totalCups} Porsi Terjual • {itemizedCalculations.totalJatah} Porsi Jatah
+                </span>
+              </div>
+              <span className="text-base sm:text-lg font-black font-mono text-emerald-950">
+                {formatRupiah(itemizedCalculations.totalOmset)}
+              </span>
             </div>
 
             <button
