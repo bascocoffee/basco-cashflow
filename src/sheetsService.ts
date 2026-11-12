@@ -767,7 +767,7 @@ export async function fetchMenuCatalogFromSheet(spreadsheetId: string, accessTok
 
 export async function saveMenuCatalogToSheet(spreadsheetId: string, menuItems: any[], accessToken: string): Promise<void> {
   try {
-    await saveCloudSlot('menu_catalog', { items: menuItems });
+    await saveCloudSlot('menu_catalog', { items: menuItems, updatedAt: Date.now() });
     if (!accessToken || accessToken.endsWith('-local-token')) return;
 
     await createCustomSheetTab(spreadsheetId, "Catalog Menu", accessToken);
@@ -1086,11 +1086,16 @@ export async function fetchDailySalesFromSheet(
       if (menuCatalog && menuCatalog.length > 0) {
         menuCatalog.forEach(m => {
           const nLower = (m.nama || '').trim().toLowerCase();
+          const aliasLowers = Array.isArray(m.aliases)
+            ? m.aliases.map((a: string) => String(a || '').trim().toLowerCase()).filter(Boolean)
+            : [];
+          aliasLowers.forEach((a: string) => seenNames.add(a));
           if (nLower && !seenNames.has(nLower)) {
             seenNames.add(nLower);
             masterMenuList.push({
               id: m.id,
               nama: m.nama,
+              aliases: aliasLowers,
               kategori: m.kategori || 'Minuman',
               hargaJual: m.hargaJual || 0,
               hpp: m.hpp || 0,
@@ -1131,12 +1136,13 @@ export async function fetchDailySalesFromSheet(
 
         masterMenuList.forEach(m => {
           const mNameLower = m.nama.trim().toLowerCase();
+          const mAliasSet = new Set<string>([mNameLower, ...(Array.isArray(m.aliases) ? m.aliases : [])]);
           let terjual = 0;
           let jatah = m.defaultJatah || 0;
 
           // Sum sales from matching columns in salesColMap
           Object.entries(salesColMap).forEach(([colIdxStr, colMenuName]) => {
-            if (colMenuName.trim().toLowerCase() === mNameLower) {
+            if (mAliasSet.has(colMenuName.trim().toLowerCase())) {
               const colIdx = Number(colIdxStr);
               terjual += parseSheetNumber(row[colIdx]);
             }
@@ -1145,7 +1151,7 @@ export async function fetchDailySalesFromSheet(
           // Jatah fallback from saved tab
           if (fallbackInfo?.menuSales) {
             const fbItem = fallbackInfo.menuSales.find((s: any) =>
-              s.menuId === m.id || (s.nama && s.nama.trim().toLowerCase() === mNameLower)
+              s.menuId === m.id || (s.nama && mAliasSet.has(s.nama.trim().toLowerCase()))
             );
             if (fbItem && typeof fbItem.jatah === 'number') {
               jatah = fbItem.jatah;
@@ -1154,7 +1160,7 @@ export async function fetchDailySalesFromSheet(
 
           // Jatah column in sheet row override if present
           Object.entries(jatahColMap).forEach(([colIdxStr, targetName]) => {
-            if (targetName === mNameLower) {
+            if (mAliasSet.has(targetName)) {
               const colIdx = Number(colIdxStr);
               const rawVal = row[colIdx];
               if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '') {

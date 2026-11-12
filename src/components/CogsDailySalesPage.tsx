@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import RecipePdfModal from './RecipePdfModal';
 import SalesCogsReportPdfModal from './SalesCogsReportPdfModal';
 import HppAiForum from './HppAiForum';
-import { pushDailySalesToCloud, pullDailySalesFromCloud, loadCloudSlot } from '../utils/cloudSync';
+import { pushDailySalesToCloud, pullDailySalesFromCloud, loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
 import { scanSalesReceiptImage, type ReceiptScanResult } from '../utils/receiptScanner';
 import { 
   FileText,
@@ -154,6 +154,7 @@ export interface MenuRecipeIngredient {
 export interface MenuItem {
   id: string;
   nama: string;
+  aliases?: string[];
   kategori: 'Minuman' | 'Makanan' | 'Snack';
   hargaJual: number;
   hpp: number;
@@ -644,7 +645,12 @@ export default function CogsDailySalesPage({
   const isCloudLoadedRef = useRef(false);
   const isApplyingRemoteRef = useRef(false);
   const lastRemoteUpdatedAtRef = useRef<number>(0);
+  const lastMenuCatalogUpdatedAtRef = useRef<number>(0);
   const autoSaveTimeoutRef = useRef<any>(null);
+
+  // Inline recipe name editing states (for renaming directly inside Recipe Drawer)
+  const [editingRecipeNameId, setEditingRecipeNameId] = useState<string | null>(null);
+  const [editingRecipeNameValue, setEditingRecipeNameValue] = useState<string>('');
 
   const triggerAutoSaveToCloud = (
     currentMenu = menuItems,
@@ -931,15 +937,27 @@ export default function CogsDailySalesPage({
               return mergedList;
             });
 
-            // Auto-merge newly discovered menu items from Google Sheet into activeMenu catalog
-            const currentNames = new Set(activeMenu.map(m => (m.nama || '').trim().toLowerCase()));
+            // Auto-merge newly discovered menu items from Google Sheet into activeMenu catalog (ignoring renamed aliases/existing IDs)
+            const currentIds = new Set(activeMenu.map(m => m.id));
+            const currentNames = new Set<string>();
+            activeMenu.forEach(m => {
+              const nm = (m.nama || '').trim().toLowerCase();
+              if (nm) currentNames.add(nm);
+              if (Array.isArray(m.aliases)) {
+                m.aliases.forEach(a => {
+                  const al = (a || '').trim().toLowerCase();
+                  if (al) currentNames.add(al);
+                });
+              }
+            });
             const newMenus: MenuItem[] = [];
 
             cloudSales.forEach(rec => {
               if (rec.menuSales) {
                 rec.menuSales.forEach((ms: any) => {
                   const nameLower = (ms.nama || '').trim().toLowerCase();
-                  if (nameLower && !currentNames.has(nameLower)) {
+                  const hasKnownId = Boolean(ms.menuId && currentIds.has(ms.menuId));
+                  if (!hasKnownId && nameLower && !currentNames.has(nameLower)) {
                     currentNames.add(nameLower);
                     newMenus.push({
                       id: ms.menuId || `menu-${nameLower.replace(/[^a-z0-9]/g, '-')}`,
@@ -1040,6 +1058,30 @@ export default function CogsDailySalesPage({
             localStorage.setItem('aruskas_cogs_selected_date', normRemoteDate);
             setSelectedDate(normRemoteDate);
           }
+        }
+
+        // Realtime poll for Catalog Menu / Recipe renames & updates across devices & roles
+        try {
+          const remoteCatalog = await loadCloudSlot<{ items?: MenuItem[]; updatedAt?: number }>('menu_catalog');
+          if (isMounted && remoteCatalog?.items && Array.isArray(remoteCatalog.items) && remoteCatalog.items.length > 0) {
+            const remoteCatalogTs = Number(remoteCatalog.updatedAt) || 0;
+            if (remoteCatalogTs > lastMenuCatalogUpdatedAtRef.current) {
+              lastMenuCatalogUpdatedAtRef.current = remoteCatalogTs;
+              setMenuItems(prev => {
+                const prevSig = prev.map(m => `${m.id}:${m.nama}:${m.hargaJual}:${m.hpp}:${m.defaultJatah}`).join('|');
+                const nextSig = remoteCatalog.items!.map(m => `${m.id}:${m.nama}:${m.hargaJual}:${m.hpp}:${m.defaultJatah}`).join('|');
+                if (prevSig === nextSig) return prev;
+                isApplyingRemoteRef.current = true;
+                localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(remoteCatalog.items));
+                setTimeout(() => {
+                  isApplyingRemoteRef.current = false;
+                }, 300);
+                return remoteCatalog.items!;
+              });
+            }
+          }
+        } catch {
+          // ignore cloud catalog poll error
         }
 
         // Realtime poll for "Barang Masuk & Pembelian" from Google Spreadsheet
@@ -1164,6 +1206,13 @@ export default function CogsDailySalesPage({
           const parsed = JSON.parse(e.newValue);
           if (Array.isArray(parsed)) {
             setDailySales(parsed);
+          }
+        } catch {}
+      } else if (e.key === 'aruskas_cogs_page_menu_catalog' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setMenuItems(parsed);
           }
         } catch {}
       } else if (e.key === 'aruskas_cogs_selected_date' && e.newValue) {
@@ -1872,9 +1921,12 @@ export default function CogsDailySalesPage({
 
       if (existingRecord && existingRecord.menuSales) {
         const itemNamaLower = (item.nama || '').trim().toLowerCase();
+        const aliasSet = new Set(
+          [itemNamaLower, ...(Array.isArray(item.aliases) ? item.aliases.map(a => a.trim().toLowerCase()) : [])].filter(Boolean)
+        );
         const found = existingRecord.menuSales.find(ms => 
           ms.menuId === item.id || 
-          (ms.nama && ms.nama.trim().toLowerCase() === itemNamaLower)
+          (ms.nama && aliasSet.has(ms.nama.trim().toLowerCase()))
         );
         if (found) {
           jatahVal = typeof found.jatah === 'number' ? found.jatah : item.defaultJatah;
@@ -2806,44 +2858,171 @@ export default function CogsDailySalesPage({
     });
   };
 
+  /** Persist catalog updates across localStorage, cloudSlot, dailySales records & Sheets. */
+  const commitRenamedCatalogAndSales = (
+    updatedCatalog: MenuItem[],
+    renamedMenu?: {
+      id: string;
+      oldName: string;
+      newName: string;
+      kategori: MenuItem['kategori'];
+      hargaJual: number;
+      hpp: number;
+    }
+  ) => {
+    const nowTs = Date.now();
+    lastMenuCatalogUpdatedAtRef.current = nowTs;
+    setMenuItems(updatedCatalog);
+    localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updatedCatalog));
+    saveCloudSlot('menu_catalog', { items: updatedCatalog, updatedAt: nowTs }).catch(() => {});
+
+    let nextSales = dailySales;
+    if (renamedMenu) {
+      const oldLower = renamedMenu.oldName.trim().toLowerCase();
+      const targetMenu = updatedCatalog.find(m => m.id === renamedMenu.id);
+      const aliasSet = new Set<string>(
+        [
+          oldLower,
+          renamedMenu.newName.trim().toLowerCase(),
+          ...(Array.isArray(targetMenu?.aliases)
+            ? targetMenu!.aliases!.map(a => a.trim().toLowerCase())
+            : []),
+        ].filter(Boolean)
+      );
+
+      let salesChanged = false;
+      nextSales = dailySales.map(rec => {
+        if (!rec.menuSales || rec.menuSales.length === 0) return rec;
+        let recModified = false;
+        const updatedMenuSales = rec.menuSales.map(ms => {
+          const msNameLower = (ms.nama || '').trim().toLowerCase();
+          if (ms.menuId === renamedMenu.id || (msNameLower && aliasSet.has(msNameLower))) {
+            if (ms.nama !== renamedMenu.newName || ms.menuId !== renamedMenu.id) {
+              recModified = true;
+              return {
+                ...ms,
+                menuId: renamedMenu.id,
+                nama: renamedMenu.newName,
+                kategori: renamedMenu.kategori,
+                hargaJual: renamedMenu.hargaJual || ms.hargaJual,
+                hpp: renamedMenu.hpp || ms.hpp,
+              };
+            }
+          }
+          return ms;
+        });
+        if (!recModified) return rec;
+        salesChanged = true;
+        return {
+          ...rec,
+          menuSales: updatedMenuSales,
+          updatedAt: nowTs,
+        };
+      });
+
+      if (salesChanged) {
+        setDailySales(nextSales);
+        localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(nextSales));
+      }
+    }
+
+    if (spreadsheetId && token) {
+      syncDataToCloud(updatedCatalog, nextSales);
+    } else if (renamedMenu) {
+      pushDailySalesToCloud({ records: nextSales, selectedDate, immediate: true }).catch(() => {});
+    }
+  };
+
+  const handleRenameMenuFromRecipe = (menuId: string, rawNewName: string) => {
+    const trimmed = rawNewName.trim();
+    if (!trimmed) return;
+    const existing = menuItems.find(m => m.id === menuId);
+    if (!existing) return;
+
+    if (existing.nama.trim() === trimmed) {
+      setEditingRecipeNameId(null);
+      return;
+    }
+
+    const prevAliases = Array.isArray(existing.aliases) ? existing.aliases : [];
+    const nextAliases = Array.from(
+      new Set([...prevAliases, existing.nama.trim()].filter(a => a && a.toLowerCase() !== trimmed.toLowerCase()))
+    );
+
+    const updatedList = menuItems.map(m =>
+      m.id === menuId
+        ? { ...m, nama: trimmed, aliases: nextAliases }
+        : m
+    );
+
+    commitRenamedCatalogAndSales(updatedList, {
+      id: existing.id,
+      oldName: existing.nama,
+      newName: trimmed,
+      kategori: existing.kategori,
+      hargaJual: existing.hargaJual,
+      hpp: existing.hpp,
+    });
+
+    if (editingMenuItemId === menuId) {
+      setNewMenuNama(trimmed);
+    }
+    setEditingRecipeNameId(null);
+  };
+
   const handleSaveMenu = (e: React.FormEvent) => {
     e.preventDefault();
     const harga = parseFloat(newMenuHarga) || 0;
     const hppVal = parseFloat(newMenuHpp) || 0;
     const jatah = parseFloat(newMenuJatah) || 0;
+    const trimmedName = newMenuNama.trim();
 
-    if (!newMenuNama.trim() || harga <= 0) return;
-
-    let updatedList: MenuItem[] = [];
+    if (!trimmedName || harga <= 0) return;
 
     if (editingMenuItemId) {
-      updatedList = menuItems.map(m => m.id === editingMenuItemId ? {
+      const existing = menuItems.find(m => m.id === editingMenuItemId);
+      const prevAliases = existing && Array.isArray(existing.aliases) ? existing.aliases : [];
+      const nextAliases = existing && existing.nama.trim().toLowerCase() !== trimmedName.toLowerCase()
+        ? Array.from(new Set([...prevAliases, existing.nama.trim()].filter(a => a && a.toLowerCase() !== trimmedName.toLowerCase())))
+        : prevAliases;
+
+      const updatedList = menuItems.map(m => m.id === editingMenuItemId ? {
         ...m,
-        nama: newMenuNama.trim(),
+        nama: trimmedName,
+        aliases: nextAliases,
         kategori: newMenuKategori,
         hargaJual: harga,
         hpp: hppVal,
         defaultJatah: jatah,
         recipe: newMenuRecipe
       } : m);
-      setMenuItems(updatedList);
+
       setEditingMenuItemId(null);
+      commitRenamedCatalogAndSales(
+        updatedList,
+        existing
+          ? {
+              id: existing.id,
+              oldName: existing.nama,
+              newName: trimmedName,
+              kategori: newMenuKategori,
+              hargaJual: harga,
+              hpp: hppVal,
+            }
+          : undefined
+      );
     } else {
       const newMenu: MenuItem = {
         id: `m-${Date.now()}`,
-        nama: newMenuNama.trim(),
+        nama: trimmedName,
         kategori: newMenuKategori,
         hargaJual: harga,
         hpp: hppVal,
         defaultJatah: jatah,
         recipe: newMenuRecipe
       };
-      updatedList = [...menuItems, newMenu];
-      setMenuItems(updatedList);
-    }
-
-    if (spreadsheetId && token) {
-      syncDataToCloud(updatedList, dailySales);
+      const updatedList = [...menuItems, newMenu];
+      commitRenamedCatalogAndSales(updatedList);
     }
 
     setNewMenuNama('');
@@ -6634,12 +6813,64 @@ export default function CogsDailySalesPage({
                                     <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
                                       <Utensils className="h-4 w-4" />
                                     </div>
-                                    <div>
-                                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
-                                        Komposisi Resep Bahan Baku: <span className="text-amber-800 font-extrabold">{m.nama}</span>
-                                      </h4>
-                                      <p className="text-[11px] text-slate-500 font-medium">
-                                        Pilih bahan baku dari master list untuk membentuk resep menu ini.
+                                    <div className="min-w-0 flex-1">
+                                      {editingRecipeNameId === m.id ? (
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="text-xs font-black uppercase tracking-wider text-slate-900">
+                                            Nama Resep / Menu:
+                                          </span>
+                                          <input
+                                            type="text"
+                                            value={editingRecipeNameValue}
+                                            onChange={(e) => setEditingRecipeNameValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleRenameMenuFromRecipe(m.id, editingRecipeNameValue);
+                                              } else if (e.key === 'Escape') {
+                                                setEditingRecipeNameId(null);
+                                              }
+                                            }}
+                                            className="px-2.5 py-1 bg-white border border-amber-400 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 min-w-[200px]"
+                                            autoFocus
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRenameMenuFromRecipe(m.id, editingRecipeNameValue)}
+                                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black rounded-lg transition cursor-pointer flex items-center space-x-1"
+                                          >
+                                            <Check className="h-3 w-3" />
+                                            <span>Simpan</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingRecipeNameId(null)}
+                                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg transition cursor-pointer"
+                                          >
+                                            Batal
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                                            Komposisi Resep Bahan Baku: <span className="text-amber-800 font-extrabold">{m.nama}</span>
+                                          </h4>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingRecipeNameId(m.id);
+                                              setEditingRecipeNameValue(m.nama);
+                                            }}
+                                            className="inline-flex items-center space-x-1 px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-md text-[10px] font-bold transition cursor-pointer"
+                                            title="Ubah nama menu/resep ini (otomatis memperbarui form input catatan penjualan)"
+                                          >
+                                            <Edit3 className="h-3 w-3" />
+                                            <span>Ubah Nama</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                        Pilih bahan baku dari master list untuk membentuk resep menu ini. Perubahan nama otomatis sinkron ke Form Catatan Penjualan.
                                       </p>
                                     </div>
                                   </div>
