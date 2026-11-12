@@ -162,6 +162,17 @@ export interface MenuItem {
   recipe?: MenuRecipeIngredient[];
 }
 
+/** Normalize menu name for alphabetical sorting by stripping invisible Unicode/leading whitespace. */
+const normalizeMenuSortName = (name?: string): string =>
+  (name || '').replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ').trim();
+
+/** Locale-aware alphabetical comparator for menu names (A -> Z). */
+const compareMenuNamesAsc = (aName?: string, bName?: string): number =>
+  normalizeMenuSortName(aName).localeCompare(normalizeMenuSortName(bName), 'id', {
+    sensitivity: 'base',
+    numeric: true,
+  });
+
 export const findIngredientHelper = (ingredientsList: RecipeIngredient[], ingId: string): RecipeIngredient | undefined => {
   if (!ingredientsList || ingredientsList.length === 0 || !ingId) return undefined;
   let found = ingredientsList.find(i => i.id === ingId);
@@ -447,10 +458,47 @@ export default function CogsDailySalesPage({
   const [cogsCategoryFilter, setCogsCategoryFilter] = useState<'ALL' | 'Minuman' | 'Makanan' | 'Snack'>('ALL');
   const [catalogCategoryFilter, setCatalogCategoryFilter] = useState<'ALL' | 'Minuman' | 'Makanan' | 'Snack'>('ALL');
 
-  // Catalog Sorting State ('margin_pct_desc' | 'margin_pct_asc' | 'margin_desc' | 'margin_asc' | 'harga_desc' | 'harga_asc' | 'hpp_desc' | 'hpp_asc' | 'nama_asc')
-  const [catalogSortOption, setCatalogSortOption] = useState<
-    'margin_pct_desc' | 'margin_pct_asc' | 'margin_desc' | 'margin_asc' | 'harga_desc' | 'harga_asc' | 'hpp_desc' | 'hpp_asc' | 'nama_asc'
-  >('margin_pct_desc');
+  // Catalog Sorting State ('margin_pct_desc' | 'margin_pct_asc' | 'margin_desc' | 'margin_asc' | 'harga_desc' | 'harga_asc' | 'hpp_desc' | 'hpp_asc' | 'nama_asc' | 'nama_desc')
+  type CatalogSortOption =
+    | 'margin_pct_desc'
+    | 'margin_pct_asc'
+    | 'margin_desc'
+    | 'margin_asc'
+    | 'harga_desc'
+    | 'harga_asc'
+    | 'hpp_desc'
+    | 'hpp_asc'
+    | 'nama_asc'
+    | 'nama_desc';
+
+  const VALID_CATALOG_SORT_OPTIONS: readonly CatalogSortOption[] = [
+    'margin_pct_desc',
+    'margin_pct_asc',
+    'margin_desc',
+    'margin_asc',
+    'harga_desc',
+    'harga_asc',
+    'hpp_desc',
+    'hpp_asc',
+    'nama_asc',
+    'nama_desc',
+  ];
+
+  const [catalogSortOption, setCatalogSortOption] = useState<CatalogSortOption>(() => {
+    const saved = localStorage.getItem('aruskas_cogs_catalog_sort_option') as CatalogSortOption | null;
+    return saved && (VALID_CATALOG_SORT_OPTIONS as readonly string[]).includes(saved)
+      ? saved
+      : 'margin_pct_desc';
+  });
+  const catalogSortSelectRef = useRef<HTMLSelectElement | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('aruskas_cogs_catalog_sort_option', catalogSortOption);
+    // Keep DOM <select> value aligned in case browser form-restoration overrides controlled value
+    if (catalogSortSelectRef.current && catalogSortSelectRef.current.value !== catalogSortOption) {
+      catalogSortSelectRef.current.value = catalogSortOption;
+    }
+  }, [catalogSortOption]);
 
   // AI Menu Margin Analysis State
   const [targetIdealMarginPct, setTargetIdealMarginPct] = useState<number>(65); // Default target 65%
@@ -481,7 +529,17 @@ export default function CogsDailySalesPage({
   });
 
   // Menu sorting mode state (default: bestseller_qty -> terbanyak terjual ke terbawah)
-  const [menuSortMode, setMenuSortMode] = useState<'bestseller_qty' | 'bestseller_omset' | 'bestseller_profit' | 'alphabetical'>('bestseller_qty');
+  const [menuSortMode, setMenuSortMode] = useState<'bestseller_qty' | 'bestseller_omset' | 'bestseller_profit' | 'alphabetical'>(() => {
+    const saved = localStorage.getItem('aruskas_cogs_menu_sort_mode');
+    if (saved === 'bestseller_qty' || saved === 'bestseller_omset' || saved === 'bestseller_profit' || saved === 'alphabetical') {
+      return saved;
+    }
+    return 'bestseller_qty';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aruskas_cogs_menu_sort_mode', menuSortMode);
+  }, [menuSortMode]);
 
   // Chart view mode state ('daily' trend or 'monthly' aggregated comparison)
   const [chartViewType, setChartViewType] = useState<'daily' | 'monthly'>('daily');
@@ -2199,7 +2257,8 @@ export default function CogsDailySalesPage({
         if (b.grossProfit !== a.grossProfit) return b.grossProfit - a.grossProfit;
         return b.totalTerjual - a.totalTerjual;
       } else if (menuSortMode === 'alphabetical') {
-        return a.nama.localeCompare(b.nama, 'id', { sensitivity: 'base' });
+        const cmp = compareMenuNamesAsc(a.nama, b.nama);
+        return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
       } else {
         // Default: bestseller_qty (Terbanyak porsi terjual -> terbawah)
         if (b.totalTerjual !== a.totalTerjual) {
@@ -2243,24 +2302,26 @@ export default function CogsDailySalesPage({
 
       switch (catalogSortOption) {
         case 'margin_desc':
-          return marginB - marginA;
+          return (marginB - marginA) || compareMenuNamesAsc(a.nama, b.nama);
         case 'margin_asc':
-          return marginA - marginB;
+          return (marginA - marginB) || compareMenuNamesAsc(a.nama, b.nama);
         case 'margin_pct_desc':
-          return marginPctB - marginPctA;
+          return (marginPctB - marginPctA) || compareMenuNamesAsc(a.nama, b.nama);
         case 'margin_pct_asc':
-          return marginPctA - marginPctB;
+          return (marginPctA - marginPctB) || compareMenuNamesAsc(a.nama, b.nama);
         case 'harga_desc':
-          return b.hargaJual - a.hargaJual;
+          return (b.hargaJual - a.hargaJual) || compareMenuNamesAsc(a.nama, b.nama);
         case 'harga_asc':
-          return a.hargaJual - b.hargaJual;
+          return (a.hargaJual - b.hargaJual) || compareMenuNamesAsc(a.nama, b.nama);
         case 'hpp_desc':
-          return hppB - hppA;
+          return (hppB - hppA) || compareMenuNamesAsc(a.nama, b.nama);
         case 'hpp_asc':
-          return hppA - hppB;
+          return (hppA - hppB) || compareMenuNamesAsc(a.nama, b.nama);
+        case 'nama_desc':
+          return compareMenuNamesAsc(b.nama, a.nama) || b.id.localeCompare(a.id);
         case 'nama_asc':
         default:
-          return a.nama.localeCompare(b.nama);
+          return compareMenuNamesAsc(a.nama, b.nama) || a.id.localeCompare(b.id);
       }
     });
   }, [menuItems, catalogCategoryFilter, catalogSortOption, ingredients]);
@@ -3818,6 +3879,7 @@ export default function CogsDailySalesPage({
               </div>
 
               <select
+                autoComplete="off"
                 value={menuSortMode}
                 onChange={(e) => setMenuSortMode(e.target.value as any)}
                 className="px-2.5 py-1.5 bg-slate-100 text-slate-700 font-bold rounded-lg text-[11px] border border-slate-200 focus:outline-none cursor-pointer"
@@ -4614,6 +4676,7 @@ export default function CogsDailySalesPage({
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <select
+                      autoComplete="off"
                       value={menuSortMode}
                       onChange={(e) => setMenuSortMode(e.target.value as any)}
                       className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 font-black rounded-lg text-xs transition cursor-pointer shadow-2xs border border-amber-300"
@@ -5460,6 +5523,7 @@ export default function CogsDailySalesPage({
 
                 {/* Sort Selector */}
                 <select
+                  autoComplete="off"
                   value={menuSortMode}
                   onChange={(e) => setMenuSortMode(e.target.value as any)}
                   className="px-3 py-1.5 bg-amber-100 border border-amber-300 rounded-xl text-xs font-black text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer shadow-2xs"
@@ -6365,8 +6429,10 @@ export default function CogsDailySalesPage({
                   <ArrowUpDown className="h-3.5 w-3.5 text-amber-600" />
                   <span className="text-[10px] font-black uppercase text-slate-600 whitespace-nowrap">Urutkan Data:</span>
                   <select
+                    ref={catalogSortSelectRef}
+                    autoComplete="off"
                     value={catalogSortOption}
-                    onChange={(e) => setCatalogSortOption(e.target.value as any)}
+                    onChange={(e) => setCatalogSortOption(e.target.value as CatalogSortOption)}
                     className="bg-transparent text-xs font-black text-slate-900 focus:outline-none cursor-pointer pr-1"
                   >
                     <option value="margin_pct_desc">📊 Margin % (Tertinggi ➔ Terendah)</option>
@@ -6378,6 +6444,7 @@ export default function CogsDailySalesPage({
                     <option value="hpp_desc">🏷️ HPP / COGS (Tertinggi ➔ Terendah)</option>
                     <option value="hpp_asc">🏷️ HPP / COGS (Terendah ➔ Tertinggi)</option>
                     <option value="nama_asc">🔤 Nama Menu (A ➔ Z)</option>
+                    <option value="nama_desc">🔤 Nama Menu (Z ➔ A)</option>
                   </select>
                 </div>
 
