@@ -1039,17 +1039,10 @@ export default function CogsDailySalesPage({
 
           // 4. Fetch Cross-Device Cloud & Shared Server Daily Sales (Barista <-> Owner/Manager) & Remote Google Sheet Daily Sales
           let sharedServerRecords: DailySalesRecord[] = [];
-          let sharedLastSelectedDate: string | null = null;
           try {
             const sharedData = await pullDailySalesFromCloud();
             if (sharedData?.updatedAt && sharedData.updatedAt > lastRemoteUpdatedAtRef.current) {
               lastRemoteUpdatedAtRef.current = sharedData.updatedAt;
-            }
-            if (sharedData?.lastSelectedDate) {
-              const normSharedDate = normalizeDateString(sharedData.lastSelectedDate) || sharedData.lastSelectedDate;
-              sharedLastSelectedDate = normSharedDate;
-              localStorage.setItem('aruskas_cogs_selected_date', normSharedDate);
-              setSelectedDate(normSharedDate);
             }
             if (sharedData?.recordsByDate && typeof sharedData.recordsByDate === 'object') {
               sharedServerRecords = (Object.values(sharedData.recordsByDate) as DailySalesRecord[]).filter(
@@ -1159,18 +1152,6 @@ export default function CogsDailySalesPage({
 
               const mergedList = Array.from(mergedMap.values()).sort((a, b) => a.tanggal.localeCompare(b.tanggal));
               localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(mergedList));
-
-              // If the newly opened device has no record for its current selectedDate, snap to sharedLastSelectedDate or the most recent recorded date with data
-              const targetCheckDate = sharedLastSelectedDate || normalizeDateString(selectedDate) || selectedDate;
-              const hasTargetRecord = mergedList.some(r => (normalizeDateString(r.tanggal) || r.tanggal) === targetCheckDate);
-              if (!hasTargetRecord && mergedList.length > 0) {
-                const latestWithData = [...mergedList].reverse().find(r => (r.cups || 0) > 0 || (r.omset || 0) > 0 || (r.menuSales || []).some(ms => (ms.jatah || 0) > 0 || (ms.terjual || 0) > 0)) || mergedList[mergedList.length - 1];
-                if (latestWithData?.tanggal) {
-                  const latestNorm = normalizeDateString(latestWithData.tanggal) || latestWithData.tanggal;
-                  localStorage.setItem('aruskas_cogs_selected_date', latestNorm);
-                  setSelectedDate(latestNorm);
-                }
-              }
 
               return mergedList;
             });
@@ -1294,13 +1275,8 @@ export default function CogsDailySalesPage({
           }
         }
 
-        if (hasNewRemoteUpdate && sharedData.lastSelectedDate) {
+        if (hasNewRemoteUpdate) {
           lastRemoteUpdatedAtRef.current = remoteUpdated;
-          const normRemoteDate = normalizeDateString(sharedData.lastSelectedDate) || sharedData.lastSelectedDate;
-          if (normRemoteDate) {
-            localStorage.setItem('aruskas_cogs_selected_date', normRemoteDate);
-            setSelectedDate(normRemoteDate);
-          }
         }
 
         // Realtime poll for Catalog Menu / Recipe renames & deletions across devices & roles
@@ -1478,8 +1454,6 @@ export default function CogsDailySalesPage({
             setMenuItems(parsed);
           }
         } catch {}
-      } else if (e.key === 'aruskas_cogs_selected_date' && e.newValue) {
-        setSelectedDate(e.newValue);
       }
     };
     window.addEventListener('storage', handleStorageSync);
@@ -3841,9 +3815,24 @@ export default function CogsDailySalesPage({
             <div className="col-span-2 sm:col-span-1 flex items-center space-x-2.5 bg-white p-2.5 rounded-lg border border-slate-200">
               <Calendar className="h-4.5 w-4.5 text-indigo-600 shrink-0" />
               <div className="min-w-0 flex-1">
-                <label className="block text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
-                  Tanggal Laporan
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
+                    Tanggal Laporan
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      const y = now.getFullYear();
+                      const m = String(now.getMonth() + 1).padStart(2, '0');
+                      const d = String(now.getDate()).padStart(2, '0');
+                      setSelectedDate(`${y}-${m}-${d}`);
+                    }}
+                    className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 underline"
+                  >
+                    Hari Ini
+                  </button>
+                </div>
                 <input
                   type="date"
                   value={selectedDate}
