@@ -4176,3 +4176,156 @@ export async function appendEmployeeTaskToSheet(
   }
 }
 
+// ==========================================
+// GLOBAL PERFORMANCE & FINANCIAL EVALUATION
+// ==========================================
+
+export interface GlobalPerformanceSnapshot {
+  id: string;
+  timestamp: string;
+  timeframeMode: 'harian' | 'bulanan' | 'tahunan';
+  periodLabel: string;
+  omsetPenjualan: number;
+  cashInflow: number;
+  cashOutflow: number;
+  netCashflow: number;
+  totalFixedCost: number;
+  totalDebtInstallment: number;
+  totalCogs: number;
+  operatingProfit: number;
+  netProfit: number;
+  netMarginPct: number;
+  fixedCostRatioPct: number;
+  status: string;
+  aiSummary: string;
+}
+
+export async function saveGlobalPerformanceToSheet(
+  spreadsheetId: string | null | undefined,
+  snapshot: GlobalPerformanceSnapshot,
+  accessToken: string | null | undefined,
+  tabName = 'Evaluasi Kinerja Global'
+): Promise<{ success: boolean; message: string }> {
+  try {
+    // 1. Save to cloud slot for cross-device persistence
+    const existing = await loadCloudSlot<{ items?: GlobalPerformanceSnapshot[] }>('global_performance_evaluations');
+    const existingItems = Array.isArray(existing?.items) ? existing.items : [];
+    const updatedItems = [snapshot, ...existingItems.filter(item => item.id !== snapshot.id)].slice(0, 60);
+    await saveCloudSlot('global_performance_evaluations', { items: updatedItems });
+
+    // 2. Persist to local storage
+    try {
+      localStorage.setItem('aruskas_global_performance_records', JSON.stringify(updatedItems));
+    } catch {}
+
+    if (!spreadsheetId || !accessToken || accessToken.endsWith('-local-token')) {
+      return {
+        success: true,
+        message: 'Snapshot evaluasi berhasil disimpan ke penyimpanan lokal & cloud perangkat.'
+      };
+    }
+
+    // 3. Ensure sheet tab exists
+    await createCustomSheetTab(spreadsheetId, tabName, accessToken);
+
+    // 4. Check if header row exists
+    const checkUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tabName)}'!A1:O1`;
+    let hasHeaders = false;
+    try {
+      const checkRes = await fetch(checkUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (checkRes.ok) {
+        const checkData = await checkRes.json();
+        hasHeaders = Array.isArray(checkData.values) && checkData.values.length > 0;
+      }
+    } catch {}
+
+    const headers = [
+      "Waktu Simpan",
+      "Mode Periode",
+      "Label Periode",
+      "Omset Penjualan (Rp)",
+      "Arus Kas Masuk (Rp)",
+      "Arus Kas Keluar (Rp)",
+      "Arus Kas Bersih (Rp)",
+      "Beban Biaya Tetap (Rp)",
+      "Beban Cicilan Hutang (Rp)",
+      "Estimasi HPP/COGS (Rp)",
+      "Laba Bersih Setelah Beban (Rp)",
+      "Margin Bersih (%)",
+      "Rasio Beban Tetap (%)",
+      "Status Kemampuan Kafe",
+      "Ringkasan Analisis AI"
+    ];
+
+    const dataRow = [
+      snapshot.timestamp,
+      snapshot.timeframeMode.toUpperCase(),
+      snapshot.periodLabel,
+      String(snapshot.omsetPenjualan || 0),
+      String(snapshot.cashInflow || 0),
+      String(snapshot.cashOutflow || 0),
+      String(snapshot.netCashflow || 0),
+      String(snapshot.totalFixedCost || 0),
+      String(snapshot.totalDebtInstallment || 0),
+      String(snapshot.totalCogs || 0),
+      String(snapshot.netProfit || 0),
+      `${(snapshot.netMarginPct || 0).toFixed(1)}%`,
+      `${(snapshot.fixedCostRatioPct || 0).toFixed(1)}%`,
+      snapshot.status,
+      (snapshot.aiSummary || '').replace(/\n+/g, ' ').slice(0, 500)
+    ];
+
+    const rowsToAppend = hasHeaders ? [dataRow] : [headers, dataRow];
+    const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tabName)}'!A:O:append?valueInputOption=USER_ENTERED`;
+    const res = await fetch(appendUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ values: rowsToAppend })
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Google Sheets API error: ${err}`);
+    }
+
+    return {
+      success: true,
+      message: `Evaluasi kinerja global berhasil disimpan ke tab Google Sheets '${tabName}'!`
+    };
+  } catch (err: any) {
+    console.error("Error saving global performance to sheet:", err);
+    return {
+      success: false,
+      message: err?.message || 'Gagal menyimpan snapshot ke Google Sheets.'
+    };
+  }
+}
+
+export async function fetchGlobalPerformanceFromSheet(
+  _spreadsheetId?: string | null,
+  _accessToken?: string | null
+): Promise<GlobalPerformanceSnapshot[]> {
+  try {
+    const cloud = await loadCloudSlot<{ items?: GlobalPerformanceSnapshot[] }>('global_performance_evaluations');
+    if (cloud?.items && Array.isArray(cloud.items) && cloud.items.length > 0) {
+      return cloud.items;
+    }
+    const local = localStorage.getItem('aruskas_global_performance_records');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+

@@ -313,9 +313,11 @@ export default function Sidebar({
           },
           { 
             id: 'fixed_cost' as TabType, 
-            label: 'Simulasi Fixed Cost', 
+            label: 'Kinerja Global & Fixed Cost', 
             icon: Calculator,
-            description: 'BEP & biaya sewa/operasional'
+            badge: 'AI',
+            badgeColor: 'emerald' as const,
+            description: 'Evaluasi harian, bulanan & tahunan'
           },
         ]
       },

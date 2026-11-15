@@ -598,7 +598,7 @@ export default function App() {
       cogs: userRole === "barista" ? "Stok Opname & Resep" : "Stok Opname Bulanan",
       shopping_report: "Bahan yang Harus Dibelanjakan",
       categories: "Kategori Pengeluaran",
-      fixed_cost: "Simulasi Biaya Tetap & BEP",
+      fixed_cost: "Kinerja Global & Fixed Cost",
       debt_tracker: "Pencatatan Hutang & Liabilitas",
       ai_chat: "Tanya AI Analyst Cafe",
       usage_history: "Riwayat Penggunaan Aplikasi",
@@ -2086,8 +2086,9 @@ export default function App() {
         "Rincian alokasi biaya operasional, bahan baku, dan pemeliharaan bar",
     },
     fixed_cost: {
-      title: "Simulasi Biaya Tetap & BEP",
-      subtitle: "Kalkulasi Break Even Point, sewa tempat, listrik & gaji tetap",
+      title: "Evaluasi Kemampuan & Kinerja Global Kafe",
+      subtitle:
+        "Monitoring menyeluruh harian, bulanan & tahunan (Penjualan, Cashflow, Fixed Cost, Hutang & COGS) berbasis Analisis AI & Google Sheets",
     },
     debt_tracker: {
       title: "Pencatatan Hutang & Liabilitas Cafe",
@@ -2373,7 +2374,14 @@ export default function App() {
               onBackToDashboard={() => setActiveTab("dashboard")}
             />
           ) : activeTab === "fixed_cost" ? (
-            <FixedCostSimulator />
+            <FixedCostSimulator
+              transactions={transactions}
+              spreadsheetId={spreadsheetId}
+              spreadsheetName={spreadsheetName}
+              spreadsheetUrl={spreadsheetUrl}
+              token={token}
+              userRole={userRole}
+            />
           ) : activeTab === "debt_tracker" ? (
             <DebtTrackerPage
               transactions={transactions}

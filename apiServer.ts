@@ -285,24 +285,80 @@ app.post("/api/gemini/cogs-analysis", async (req, res) => {
   }
 });
 
-// API Route for Fixed Cost Simulation
+// API Route for Global Performance & Fixed Cost Analysis (Claude / Gemini)
 app.post("/api/gemini/fixed-cost-analysis", async (req, res) => {
   try {
-    const { fixedCosts = [], totalFixedCost = 0, revenueContext = {}, provider = "claude" } = req.body || {};
-    const cm = Number(revenueContext?.contributionMargin || 65) / 100;
-    const bep = cm > 0 ? Math.round(Number(totalFixedCost || 0) / cm) : 0;
-    const fallback = () =>
-      `### Analisis Beban Biaya Tetap (Fixed Cost) & Titik Impas (BEP)\n- **Total Fixed Cost Bulanan**: **Rp ${Number(totalFixedCost || 0).toLocaleString("id-ID")}** (${fixedCosts.length} komponen biaya)\n- **Estimasi Margin Kontribusi**: **${revenueContext?.contributionMargin || 65}%**\n- **Break-Even Point (BEP Omset Minimal)**: **Rp ${bep.toLocaleString("id-ID")} / bulan** (atau **Rp ${Math.round(bep / 30).toLocaleString("id-ID")} / hari**)\n\n#### Rekomendasi Efisiensi:\n- Pastikan rasio biaya tetap (sewa + gaji tetap + listrik/internet) tidak melebihi **30%–35%** dari rata-rata omset bulanan.\n- Evaluasi jadwal *shift* barista pada jam sepi untuk menjaga produktivitas per jam kerja.`;
+    const {
+      fixedCosts = [],
+      totalFixedCost = 0,
+      revenueContext = {},
+      timeframeMode = "bulanan",
+      periodLabel = "",
+      metrics,
+      salesData,
+      cashflowData,
+      debtData,
+      cogsData,
+      provider = "claude"
+    } = req.body || {};
+
+    const cm = Number(metrics?.contributionMarginPct || revenueContext?.contributionMargin || 65) / 100;
+    const bep = cm > 0 ? Math.round(Number(metrics?.totalFixedCost || totalFixedCost || 0) / cm) : 0;
+
+    const isGlobalMode = Boolean(metrics || salesData || cashflowData || debtData);
+
+    const fallback = () => {
+      if (!isGlobalMode) {
+        return `### Analisis Beban Biaya Tetap (Fixed Cost) & Titik Impas (BEP)\n- **Total Fixed Cost Bulanan**: **Rp ${Number(totalFixedCost || 0).toLocaleString("id-ID")}** (${fixedCosts.length} komponen biaya)\n- **Estimasi Margin Kontribusi**: **${revenueContext?.contributionMargin || 65}%**\n- **Break-Even Point (BEP Omset Minimal)**: **Rp ${bep.toLocaleString("id-ID")} / bulan** (atau **Rp ${Math.round(bep / 30).toLocaleString("id-ID")} / hari**)\n\n#### Rekomendasi Efisiensi:\n- Pastikan rasio biaya tetap (sewa + gaji tetap + listrik/internet) tidak melebihi **30%–35%** dari rata-rata omset bulanan.\n- Evaluasi jadwal *shift* barista pada jam sepi untuk menjaga produktivitas per jam kerja.`;
+      }
+
+      const modeTitle = timeframeMode === 'harian' ? 'Harian' : timeframeMode === 'tahunan' ? 'Tahunan' : 'Bulanan';
+      const omsetVal = Number(metrics?.omsetPenjualan || salesData?.totalOmset || 0);
+      const inflowVal = Number(metrics?.cashInflow || cashflowData?.cashInflow || omsetVal);
+      const outflowVal = Number(metrics?.cashOutflow || cashflowData?.cashOutflow || 0);
+      const netCashVal = Number(metrics?.netCashflow || cashflowData?.netCashflow || (inflowVal - outflowVal));
+      const fixedVal = Number(metrics?.totalFixedCost || totalFixedCost || 0);
+      const debtVal = Number(metrics?.totalDebtInstallment || debtData?.totalInstallment || 0);
+      const cogsVal = Number(metrics?.totalCogs || cogsData?.totalCogs || 0);
+      const netProfitVal = Number(metrics?.netProfit || (omsetVal - cogsVal - fixedVal - debtVal));
+      const netMarginVal = omsetVal > 0 ? ((netProfitVal / omsetVal) * 100).toFixed(1) : "0.0";
+      const fcRatioVal = omsetVal > 0 ? ((fixedVal / omsetVal) * 100).toFixed(1) : "0.0";
+      const statusVal = netProfitVal > 0
+        ? (omsetVal >= bep * 1.2 ? "PRIMA (Sangat Sehat)" : "SEHAT (Stabil)")
+        : (netProfitVal > -fixedVal * 0.25 ? "WASPADA (Perlu Efisiensi)" : "DEFISIT (Tekanan Finansial)");
+
+      return `### Laporan Evaluasi Kemampuan & Kinerja Global Kafe (Mode ${modeTitle}: ${periodLabel || 'Periode Aktif'})\n\n` +
+        `#### 1. Ringkasan Realtime Multi-Dimensi\n` +
+        `- **Omset Penjualan**: **Rp ${omsetVal.toLocaleString("id-ID")}**\n` +
+        `- **Arus Kas Bersih (Cashflow)**: **Rp ${netCashVal.toLocaleString("id-ID")}** (Inflow Rp ${inflowVal.toLocaleString("id-ID")} / Outflow Rp ${outflowVal.toLocaleString("id-ID")})\n` +
+        `- **Beban Biaya Tetap (Fixed Cost)**: **Rp ${fixedVal.toLocaleString("id-ID")}** (Rasio: **${fcRatioVal}%** omset)\n` +
+        `- **Beban Angsuran Hutang**: **Rp ${debtVal.toLocaleString("id-ID")}** (Sisa total pokok hutang aktif terkelola)\n` +
+        `- **Estimasi Beban Bahan Baku (COGS)**: **Rp ${cogsVal.toLocaleString("id-ID")}** (${omsetVal > 0 ? Math.round((cogsVal / omsetVal) * 100) : 35}% omset)\n` +
+        `- **Laba Bersih Akhir (Net Capacity)**: **Rp ${netProfitVal.toLocaleString("id-ID")}** (Margin Bersih: **${netMarginVal}%**)\n\n` +
+        `#### 2. Uji Titik Impas (BEP) & Daya Tahan Finansial\n` +
+        `- **Target BEP Omset**: **Rp ${bep.toLocaleString("id-ID")}**\n` +
+        `- **Capaian Target BEP**: **${bep > 0 ? Math.round((omsetVal / bep) * 100) : 0}%**\n` +
+        `- **Status Kemampuan Kafe**: **${statusVal}**\n\n` +
+        `#### 3. Rekomendasi Strategis & Rencana Aksi Pemilik Kafe:\n` +
+        `1. **Pengendalian Rasio Beban Tetap**: Pertahankan beban sewa ruko dan upah kerja tetap di bawah 33% dari omset agar tidak menggerus modal kerja.\n` +
+        `2. **Manajemen Likuiditas Kas**: Selalu sisihkan minimum 10%–15% dari omset harian/bulanan ke rekening cadangan operasional (reserve cash).\n` +
+        `3. **Pengelolaan Hutang & COGS**: Pastikan laba operasional menutup cicilan hutang minimal 1.5x (Debt Service Coverage) dan tinjau resep menu dengan food cost di atas 38%.\n` +
+        `4. **Optimasi Penjualan & Jam Sibuk**: Tingkatkan strategi upselling (upsize & paket bundle makanan-minuman) pada jam sibuk shift bar untuk melipatgandakan margin kotor.`;
+    };
+
+    const systemInstruction = isGlobalMode
+      ? "Anda adalah Basco Senior Financial & Strategic Cafe Advisor berbasis Claude & Gemini. Evaluasi kemampuan komprehensif kafe dari aspek penjualan, cashflow kas riil, beban biaya tetap, beban angsuran hutang, dan efisiensi COGS. Berikan angka Rupiah presisi, status kesehatan finansial (PRIMA/SEHAT/WASPADA/DEFISIT), dan 4 langkah aksi konkret."
+      : "Anda adalah Basco Fixed Cost Advisor.";
 
     const result = await generateUnifiedAiResponse({
       provider,
-      systemInstruction: "Anda adalah Basco Fixed Cost Advisor.",
+      systemInstruction,
       userPrompt: fallback(),
       fallbackFn: fallback,
     });
     res.json({ analysis: result.text, engine: result.engineUsed });
   } catch (error: any) {
-    res.json({ analysis: "Analisis Fixed Cost siap.", engine: "hybrid-fallback" });
+    res.json({ analysis: "Analisis Kinerja Global siap digunakan.", engine: "hybrid-fallback" });
   }
 });
 
