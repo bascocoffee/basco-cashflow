@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Calculator,
   Sparkles,
@@ -27,7 +27,10 @@ import {
   Sliders,
   HelpCircle,
   Activity,
-  Bot
+  Bot,
+  MessageSquare,
+  Send,
+  User
 } from 'lucide-react';
 import { Transaction, AppRole, DebtItem } from '../types';
 import { getStoredDebts } from '../utils/debtUtils';
@@ -171,6 +174,35 @@ export default function FixedCostSimulator({
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [aiEngineUsed, setAiEngineUsed] = useState<string>('');
   const [isCopiedAi, setIsCopiedAi] = useState(false);
+
+  // AI Chat & Discussion Sub-Tab State
+  const [aiSubTab, setAiSubTab] = useState<'analysis' | 'chat'>('analysis');
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'model'; content: string; timestamp: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('basco_fixed_cost_chat');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      {
+        role: 'model',
+        content: 'Halo! Saya AI Financial Advisor Basco Coffee. Tanyakan apa saja mengenai evaluasi titik impas (BEP), efisiensi pos biaya tetap, keamanan cicilan hutang, atau strategi mendongkrak margin laba bersih kafe.',
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      }
+    ];
+  });
+  const [chatInput, setChatInput] = useState('');
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem('basco_fixed_cost_chat', JSON.stringify(chatMessages));
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (aiSubTab === 'chat') {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, aiSubTab]);
 
   // 6. Interactive Stress Test & Simulation
   const [omsetSliderAdjust, setOmsetSliderAdjust] = useState<number>(0); // -30% to +30%
@@ -515,6 +547,74 @@ export default function FixedCostSimulator({
       setAiAnalysis(`Maaf, terjadi kendala saat menghubungkan ke AI. Silakan coba kembali.`);
     } finally {
       setIsLoadingAi(false);
+    }
+  };
+
+  // Handler: Send Chat Question inside AI Panel
+  const handleSendPanelChat = async (overridePrompt?: string) => {
+    const text = (overridePrompt || chatInput).trim();
+    if (!text || isSendingChat) return;
+
+    const userMsg = {
+      role: 'user' as const,
+      content: text,
+      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    };
+    const next = [...chatMessages, userMsg];
+    setChatMessages(next);
+    setChatInput('');
+    setIsSendingChat(true);
+
+    try {
+      const res = await fetch('/api/gemini/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: aiProvider,
+          question: text,
+          messages: next,
+          stats: {
+            totalDebit: liveMetrics.cashInflow,
+            totalKredit: liveMetrics.cashOutflow,
+            saldo: liveMetrics.netCashflow
+          },
+          context: {
+            mode: timeframeMode,
+            period: currentPeriodLabel,
+            omset: liveMetrics.effectiveOmset,
+            fixedCost: liveMetrics.timeframeFixedCost,
+            debtCost: liveMetrics.timeframeDebtCost,
+            cogs: liveMetrics.effectiveCogs,
+            netProfit: liveMetrics.netProfit,
+            bepRevenue: liveMetrics.bepRevenue,
+            bepProgressPct: liveMetrics.bepProgressPct,
+            status: liveMetrics.status
+          }
+        })
+      });
+
+      if (!res.ok) throw new Error('Chat API error');
+      const data = await res.json();
+      const reply = data.reply || data.answer || 'Siap menganalisis kondisi keuangan kafe.';
+      setChatMessages(prev => [
+        ...prev,
+        {
+          role: 'model',
+          content: reply,
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } catch {
+      setChatMessages(prev => [
+        ...prev,
+        {
+          role: 'model',
+          content: `Untuk periode ${currentPeriodLabel}, omset kafe tercatat **${formatRupiah(liveMetrics.effectiveOmset)}** dengan laba bersih **${formatRupiah(liveMetrics.netProfit)}**. Beban biaya tetap periode ini adalah **${formatRupiah(liveMetrics.timeframeFixedCost)}** (${liveMetrics.fixedCostRatioPct.toFixed(1)}% omset) dan target BEP **${formatRupiah(liveMetrics.bepRevenue)}** (capaian ${liveMetrics.bepProgressPct}%). Posisi keuangan kafe berstatus **${liveMetrics.status}**.`,
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } finally {
+      setIsSendingChat(false);
     }
   };
 
@@ -1283,7 +1383,7 @@ export default function FixedCostSimulator({
           </div>
         </div>
 
-        {/* Right Side (5 Cols): AI Strategic Advisor Panel */}
+        {/* Right Side (5 Cols): AI Strategic Advisor & Chat Panel */}
         <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1296,7 +1396,7 @@ export default function FixedCostSimulator({
                     AI Financial Advisor
                   </h3>
                   <span className="text-[10px] font-bold text-indigo-700">
-                    Analisis Strategis 360° Realtime
+                    Analisis Mendalam & Chat Realtime
                   </span>
                 </div>
               </div>
@@ -1324,56 +1424,181 @@ export default function FixedCostSimulator({
               </div>
             </div>
 
-            {/* AI Text Output Area */}
-            <div className="mt-3.5 max-h-[340px] overflow-y-auto pr-1">
-              {isLoadingAi ? (
-                <div className="py-12 flex flex-col items-center justify-center space-y-3 text-slate-400">
-                  <RefreshCw className="h-7 w-7 text-indigo-600 animate-spin" />
-                  <span className="text-xs font-bold text-slate-600">
-                    AI sedang mengalkulasi data omset, cashflow, fixed cost & hutang...
-                  </span>
-                </div>
-              ) : aiAnalysis ? (
-                <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 text-xs">
-                  {renderFormattedAiText(aiAnalysis)}
-                </div>
-              ) : (
-                <div className="py-10 text-center px-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                  <Sparkles className="h-8 w-8 text-indigo-400 mx-auto mb-2 opacity-80" />
-                  <p className="text-xs font-bold text-slate-700">Belum ada analisis AI untuk sesi ini.</p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Klik tombol di bawah untuk mengevaluasi kemampuan finansial kafe secara otomatis.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Action buttons bottom */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-            {aiAnalysis ? (
+            {/* Sub-Tab Navigation inside AI Panel: Laporan vs Chat */}
+            <div className="flex items-center space-x-2 pt-3 pb-2 border-b border-slate-100">
               <button
                 type="button"
-                onClick={handleCopyAi}
-                className="inline-flex items-center space-x-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 transition"
+                onClick={() => setAiSubTab('analysis')}
+                className={`flex-1 py-1 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 ${
+                  aiSubTab === 'analysis'
+                    ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
               >
-                {isCopiedAi ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                <span>{isCopiedAi ? 'Tersalin' : 'Salin Laporan'}</span>
+                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                <span>Laporan Analisis</span>
               </button>
-            ) : (
-              <div />
-            )}
+              <button
+                type="button"
+                onClick={() => setAiSubTab('chat')}
+                className={`flex-1 py-1 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 ${
+                  aiSubTab === 'chat'
+                    ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <MessageSquare className="h-3.5 w-3.5 text-indigo-600" />
+                <span>Diskusi & Chat AI</span>
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={handleRequestAiAnalysis}
-              disabled={isLoadingAi}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition active:scale-95 disabled:opacity-50"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-              <span>{isLoadingAi ? 'Menganalisis...' : 'Minta Analisis AI'}</span>
-            </button>
+            {/* TAB CONTENT 1: LAPORAN ANALISIS */}
+            {aiSubTab === 'analysis' ? (
+              <div className="mt-3.5 max-h-[330px] overflow-y-auto pr-1">
+                {isLoadingAi ? (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-3 text-slate-400">
+                    <RefreshCw className="h-7 w-7 text-indigo-600 animate-spin" />
+                    <span className="text-xs font-bold text-slate-600">
+                      AI sedang mengalkulasi data omset, cashflow, fixed cost & hutang...
+                    </span>
+                  </div>
+                ) : aiAnalysis ? (
+                  <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 text-xs">
+                    {renderFormattedAiText(aiAnalysis)}
+                  </div>
+                ) : (
+                  <div className="py-10 text-center px-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                    <Sparkles className="h-8 w-8 text-indigo-400 mx-auto mb-2 opacity-80" />
+                    <p className="text-xs font-bold text-slate-700">Belum ada analisis mendalam untuk sesi ini.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Klik tombol di bawah untuk meminta audit komprehensif performa kafe secara otomatis.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* TAB CONTENT 2: CHAT & TANYA JAWAB AI */
+              <div className="mt-3 flex flex-col h-[330px]">
+                {/* Chat message stream */}
+                <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                  {chatMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-start space-x-2 ${
+                        msg.role === 'user' ? 'justify-end' : 'justify-start'
+                      }`}
+                    >
+                      {msg.role === 'model' && (
+                        <div className="p-1 bg-indigo-950 text-emerald-400 rounded-lg shrink-0 mt-0.5">
+                          <Bot className="h-3.5 w-3.5" />
+                        </div>
+                      )}
+                      <div
+                        className={`max-w-[85%] p-2.5 rounded-2xl text-xs font-medium leading-relaxed ${
+                          msg.role === 'user'
+                            ? 'bg-indigo-600 text-white rounded-br-none shadow-xs'
+                            : 'bg-slate-50 text-slate-800 rounded-bl-none border border-slate-200 shadow-xs'
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <span
+                          className={`text-[9px] block text-right mt-1 ${
+                            msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'
+                          }`}
+                        >
+                          {msg.timestamp}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {isSendingChat && (
+                    <div className="flex items-center space-x-2 text-slate-400 text-xs italic py-1">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600" />
+                      <span>AI sedang berpikir & menyusun rekomendasi...</span>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Quick Prompts Chips */}
+                <div className="pt-2 pb-1.5 flex items-center space-x-1.5 overflow-x-auto text-[10px] font-bold border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => handleSendPanelChat('Bagaimana cara menurunkan titik impas (BEP) kafe?')}
+                    className="whitespace-nowrap px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 transition"
+                  >
+                    Turunkan BEP?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendPanelChat('Apakah beban cicilan hutang saat ini aman?')}
+                    className="whitespace-nowrap px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                  >
+                    Keamanan Hutang?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendPanelChat('Strategi menaikkan omset harian tanpa menambah biaya')}
+                    className="whitespace-nowrap px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                  >
+                    Dongkrak Omset?
+                  </button>
+                </div>
+
+                {/* Chat Input form */}
+                <form
+                  onSubmit={e => {
+                    e.preventDefault();
+                    handleSendPanelChat();
+                  }}
+                  className="pt-2 border-t border-slate-100 flex items-center space-x-2"
+                >
+                  <input
+                    type="text"
+                    placeholder="Tanyakan analisis keuangan kafe..."
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatInput.trim() || isSendingChat}
+                    className="p-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl disabled:opacity-50 transition shadow-xs shrink-0"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
+
+          {/* Action buttons bottom (only on analysis sub-tab) */}
+          {aiSubTab === 'analysis' && (
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+              {aiAnalysis ? (
+                <button
+                  type="button"
+                  onClick={handleCopyAi}
+                  className="inline-flex items-center space-x-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 transition"
+                >
+                  {isCopiedAi ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{isCopiedAi ? 'Tersalin' : 'Salin Laporan'}</span>
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <button
+                type="button"
+                onClick={handleRequestAiAnalysis}
+                disabled={isLoadingAi}
+                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition active:scale-95 disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                <span>{isLoadingAi ? 'Menganalisis...' : 'Minta Analisis AI'}</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

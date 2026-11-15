@@ -70,6 +70,7 @@ import ShoppingReportPage from "./components/ShoppingReportPage";
 import BackupRestoreModal from "./components/BackupRestoreModal";
 import EmployeeTaskPage from "./components/EmployeeTaskPage";
 import UsageHistoryPage from "./components/UsageHistoryPage";
+import BascoAiRobotDailyReport from "./components/BascoAiRobotDailyReport";
 import { logAppActivity } from "./utils/activityLogger";
 import {
   KeyRound,
@@ -2441,6 +2442,14 @@ export default function App() {
           onClose={() => setIsGlobalBackupModalOpen(false)}
           transactions={transactions}
           categories={categories}
+        />
+
+        {/* Robot AI Basco Daily Intelligence Report - Floating, Draggable & Closable */}
+        <BascoAiRobotDailyReport
+          userRole={userRole}
+          transactions={transactions}
+          spreadsheetUrl={spreadsheetUrl}
+          onNavigateToTab={(tab) => setActiveTab(tab as TabType)}
         />
 
         {/* Modern Compact Footer */}
