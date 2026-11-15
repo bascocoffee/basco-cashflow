@@ -902,6 +902,39 @@ export default function CogsDailySalesPage({
     }
   };
 
+  const handleRefreshJatahFromSheet = async (showSuccessAlert = true) => {
+    if (!spreadsheetId) {
+      if (showSuccessAlert) alert('Spreadsheet ID belum terhubung.');
+      return;
+    }
+    const effToken = token || 'local-token';
+    setIsSyncingSheet(true);
+    try {
+      const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, effToken, menuItemsRef.current);
+      if (cloudSales && cloudSales.length > 0) {
+        isApplyingRemoteRef.current = true;
+        setDailySales(cloudSales);
+        localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(cloudSales));
+        setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+        setTimeout(() => {
+          isApplyingRemoteRef.current = false;
+        }, 300);
+        if (showSuccessAlert) {
+          alert(`✅ Berhasil menarik data jatah harian dari sheet JATAH HARIAN Google Sheets (${cloudSales.length} tanggal terupdate)!`);
+        }
+      } else if (showSuccessAlert) {
+        alert('Tidak ditemukan data jatah baru pada Google Sheets.');
+      }
+    } catch (err) {
+      console.error('Error refreshing jatah from sheet:', err);
+      if (showSuccessAlert) {
+        alert('Gagal menyinkronkan data jatah dari Google Sheets.');
+      }
+    } finally {
+      setIsSyncingSheet(false);
+    }
+  };
+
   const handleAddIncomingBatch = (newBatch: Omit<IncomingIngredientBatch, 'id'>) => {
     const created: IncomingIngredientBatch = {
       ...newBatch,
@@ -1095,11 +1128,14 @@ export default function CogsDailySalesPage({
                     const localMs = existing.menuSales?.find((lMs: any) => 
                       lMs.menuId === cMs.menuId || (lMs.nama && cMs.nama && lMs.nama.trim().toLowerCase() === cMs.nama.trim().toLowerCase())
                     );
-                    const finalJatah = hasLocalUpdate && localMs !== undefined
-                      ? (localMs.jatah ?? cMs.jatah ?? 0)
-                      : (typeof cMs.jatah === 'number' && cMs.jatah > 0) 
-                        ? cMs.jatah 
-                        : (localMs?.jatah ?? cMs.jatah ?? 0);
+                    const isFromJatahSheet = Boolean(cMs.fromJatahSheet);
+                    const finalJatah = isFromJatahSheet && typeof cMs.jatah === 'number'
+                      ? cMs.jatah
+                      : hasLocalUpdate && localMs !== undefined
+                        ? (localMs.jatah ?? cMs.jatah ?? 0)
+                        : (typeof cMs.jatah === 'number' && cMs.jatah > 0) 
+                          ? cMs.jatah 
+                          : (localMs?.jatah ?? cMs.jatah ?? 0);
                     const finalTerjual = hasLocalUpdate && localMs !== undefined
                       ? (localMs.terjual ?? cMs.terjual ?? 0)
                       : (typeof cMs.terjual === 'number' && cMs.terjual > 0)
@@ -3873,7 +3909,7 @@ export default function CogsDailySalesPage({
           className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-6 space-y-4 sm:space-y-5"
         >
           {/* Minimalist Form Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 flex-wrap gap-2">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl shrink-0">
                 <CheckSquare className="h-5 w-5" />
@@ -3887,6 +3923,19 @@ export default function CogsDailySalesPage({
                 </p>
               </div>
             </div>
+
+            {spreadsheetId && (
+              <button
+                type="button"
+                onClick={() => handleRefreshJatahFromSheet(true)}
+                disabled={isSyncingSheet}
+                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-lg transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                title="Tarik data jatah barista dari sheet JATAH HARIAN di Google Sheets"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+                <span>Tarik Jatah Sheet</span>
+              </button>
+            )}
           </div>
 
           {/* Date Picker & Live Summary Counters (Mobile Responsive Grid) */}
@@ -5133,7 +5182,7 @@ export default function CogsDailySalesPage({
                         <th className="py-2.5 px-3 text-center w-32 bg-indigo-50/50 text-indigo-950 border-r border-indigo-100">
                           <div>Jatah Barista (Porsi)</div>
                           <span className="text-[8.5px] font-medium text-indigo-700 normal-case block font-sans">
-                            Input Manual & Sync ke Sheet
+                            Sync Sheet: JATAH HARIAN
                           </span>
                         </th>
                         <th className="py-2.5 px-3 text-right">Omset Harian</th>
