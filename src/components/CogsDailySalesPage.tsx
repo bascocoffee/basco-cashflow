@@ -2257,8 +2257,9 @@ export default function CogsDailySalesPage({
       totalCups += input.terjual;
       totalJatah += input.jatah;
       totalOmset += input.terjual * item.hargaJual;
+      const itemHpp = (item.recipe && item.recipe.length > 0) ? (calculateMenuItemHppFromRecipe(item, ingredients) || item.hpp) : item.hpp;
       // HPP Harian adalah total jumlah dari jatah barista dan penjualan
-      totalHpp += (input.terjual + input.jatah) * item.hpp;
+      totalHpp += (input.terjual + input.jatah) * itemHpp;
     });
 
     const grossProfit = totalOmset - totalHpp;
@@ -2272,7 +2273,7 @@ export default function CogsDailySalesPage({
       grossProfit,
       fulfillmentPct
     };
-  }, [menuItems, itemizedInputs]);
+  }, [menuItems, itemizedInputs, ingredients]);
 
   // Active Comparison Data Metrics for Daily Sales vs Total HPP & Gross Margin %
   const activeCompData = useMemo(() => {
@@ -2866,12 +2867,13 @@ export default function CogsDailySalesPage({
 
     const menuSalesList: DailyMenuItemSale[] = menuItems.map(item => {
       const input = itemizedInputs[item.id] || { jatah: item.defaultJatah, terjual: 0 };
+      const itemHpp = (item.recipe && item.recipe.length > 0) ? (calculateMenuItemHppFromRecipe(item, ingredients) || item.hpp) : item.hpp;
       return {
         menuId: item.id,
         nama: item.nama,
         kategori: item.kategori,
         hargaJual: item.hargaJual,
-        hpp: item.hpp,
+        hpp: Math.round(itemHpp),
         jatah: Number(input.jatah) || 0,
         terjual: Number(input.terjual) || 0
       };
@@ -3075,12 +3077,14 @@ export default function CogsDailySalesPage({
 
       // Auto calculate new HPP
       const calcHpp = updated.reduce((sum, r) => {
-        const ing = ingredients.find(i => i.id === r.ingredientId);
+        const ing = findIngredientHelper(ingredients, r.ingredientId);
         if (!ing) return sum;
         return sum + calculateRecipeItemCost(ing, r.takaran);
       }, 0);
 
-      setNewMenuHpp(Math.round(calcHpp).toString());
+      if (calcHpp > 0) {
+        setNewMenuHpp(Math.round(calcHpp).toString());
+      }
       return updated;
     });
 
@@ -3214,9 +3218,12 @@ export default function CogsDailySalesPage({
       new Set([...prevAliases, existing.nama.trim()].filter(a => a && a.toLowerCase() !== trimmed.toLowerCase()))
     );
 
+    const calculatedHpp = calculateMenuItemHppFromRecipe(existing, ingredients);
+    const finalHpp = calculatedHpp > 0 ? Math.round(calculatedHpp) : existing.hpp;
+
     const updatedList = menuItems.map(m =>
       m.id === menuId
-        ? { ...m, nama: trimmed, aliases: nextAliases }
+        ? { ...m, nama: trimmed, aliases: nextAliases, hpp: finalHpp }
         : m
     );
 
@@ -3226,7 +3233,7 @@ export default function CogsDailySalesPage({
       newName: trimmed,
       kategori: existing.kategori,
       hargaJual: existing.hargaJual,
-      hpp: existing.hpp,
+      hpp: finalHpp,
     });
 
     if (editingMenuItemId === menuId) {
@@ -3249,6 +3256,23 @@ export default function CogsDailySalesPage({
 
     const latestCatalog = menuItemsRef.current;
 
+    let finalHpp = hppVal;
+    if (newMenuRecipe && newMenuRecipe.length > 0) {
+      const recipeCost = newMenuRecipe.reduce((sum, r) => {
+        const ing = findIngredientHelper(ingredients, r.ingredientId);
+        if (!ing) return sum;
+        return sum + calculateRecipeItemCost(ing, r.takaran);
+      }, 0);
+      if (recipeCost > 0) {
+        finalHpp = Math.round(recipeCost);
+      } else if (finalHpp === 0 && editingMenuItemId) {
+        const existing = latestCatalog.find(m => m.id === editingMenuItemId);
+        if (existing && existing.hpp > 0) {
+          finalHpp = existing.hpp;
+        }
+      }
+    }
+
     if (editingMenuItemId) {
       const existing = latestCatalog.find(m => m.id === editingMenuItemId);
       const prevAliases = existing && Array.isArray(existing.aliases) ? existing.aliases : [];
@@ -3262,7 +3286,7 @@ export default function CogsDailySalesPage({
         aliases: nextAliases,
         kategori: newMenuKategori,
         hargaJual: harga,
-        hpp: hppVal,
+        hpp: finalHpp,
         defaultJatah: jatah,
         recipe: newMenuRecipe
       } : m);
@@ -3277,7 +3301,7 @@ export default function CogsDailySalesPage({
               newName: trimmedName,
               kategori: newMenuKategori,
               hargaJual: harga,
-              hpp: hppVal,
+              hpp: finalHpp,
             }
           : undefined
       );
@@ -3286,7 +3310,7 @@ export default function CogsDailySalesPage({
         actorName: user?.displayName || user?.email || undefined,
         actionType: 'update',
         module: 'Data Menu & HPP',
-        description: `Mengubah menu "${existing?.nama || trimmedName}" -> "${trimmedName}" (Harga ${formatRupiah(harga)}, HPP ${formatRupiah(hppVal)})`,
+        description: `Mengubah menu "${existing?.nama || trimmedName}" -> "${trimmedName}" (Harga ${formatRupiah(harga)}, HPP ${formatRupiah(finalHpp)})`,
       });
     } else {
       const newMenu: MenuItem = {
@@ -3294,7 +3318,7 @@ export default function CogsDailySalesPage({
         nama: trimmedName,
         kategori: newMenuKategori,
         hargaJual: harga,
-        hpp: hppVal,
+        hpp: finalHpp,
         defaultJatah: jatah,
         recipe: newMenuRecipe
       };
@@ -3305,7 +3329,7 @@ export default function CogsDailySalesPage({
         actorName: user?.displayName || user?.email || undefined,
         actionType: 'create',
         module: 'Data Menu & HPP',
-        description: `Menambahkan menu baru "${trimmedName}" (${newMenuKategori}, Harga ${formatRupiah(harga)})`,
+        description: `Menambahkan menu baru "${trimmedName}" (${newMenuKategori}, Harga ${formatRupiah(harga)}, HPP ${formatRupiah(finalHpp)})`,
       });
     }
 
@@ -3464,33 +3488,32 @@ export default function CogsDailySalesPage({
     });
 
     // Also remove deleted ingredient from any menu recipes and sync
-    setMenuItems(prev => {
-      const updatedList = prev.map(m => {
-        if (!m.recipe || m.recipe.length === 0) return m;
-        const newRecipe = m.recipe.filter(r => r.ingredientId !== id);
-        if (newRecipe.length === m.recipe.length) return m;
+    const latestCatalog = menuItemsRef.current;
+    let catalogModified = false;
+    const updatedList = latestCatalog.map(m => {
+      if (!m.recipe || m.recipe.length === 0) return m;
+      const newRecipe = m.recipe.filter(r => r.ingredientId !== id);
+      if (newRecipe.length === m.recipe.length) return m;
+      catalogModified = true;
 
-        const newCalculatedHpp = newRecipe.length > 0
-          ? newRecipe.reduce((sum, r) => {
-              const ing = findIngredientHelper(nextIngredients, r.ingredientId);
-              if (!ing) return sum;
-              return sum + calculateRecipeItemCost(ing, r.takaran);
-            }, 0)
-          : m.hpp;
+      const newCalculatedHpp = newRecipe.length > 0
+        ? newRecipe.reduce((sum, r) => {
+            const ing = findIngredientHelper(nextIngredients, r.ingredientId);
+            if (!ing) return sum;
+            return sum + calculateRecipeItemCost(ing, r.takaran);
+          }, 0)
+        : m.hpp;
 
-        return {
-          ...m,
-          recipe: newRecipe,
-          hpp: Math.round(newCalculatedHpp)
-        };
-      });
-
-      localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updatedList));
-      if (spreadsheetId && token) {
-        saveMenuCatalogToSheet(spreadsheetId, updatedList, token).catch(e => console.error("Cloud sync error:", e));
-      }
-      return updatedList;
+      return {
+        ...m,
+        recipe: newRecipe,
+        hpp: Math.round(newCalculatedHpp)
+      };
     });
+
+    if (catalogModified) {
+      commitRenamedCatalogAndSales(updatedList);
+    }
 
     if (editingIngId === id) {
       handleCancelEditIngredient();
@@ -3500,108 +3523,164 @@ export default function CogsDailySalesPage({
   // Menu Recipe Handlers
   const handleAddIngredientToRecipe = (menuId: string, ingId: string, takaranVal: number) => {
     if (!menuId || !ingId || takaranVal <= 0) return;
-    setMenuItems(prev => {
-      const updatedList = prev.map(m => {
-        if (m.id === menuId) {
-          const currentRecipe = m.recipe || [];
-          const idx = currentRecipe.findIndex(r => r.ingredientId === ingId);
-          let newRecipe: MenuRecipeIngredient[];
-          if (idx >= 0) {
-            newRecipe = [...currentRecipe];
-            newRecipe[idx] = { ingredientId: ingId, takaran: takaranVal };
-          } else {
-            newRecipe = [...currentRecipe, { ingredientId: ingId, takaran: takaranVal }];
-          }
-          
-          const newCalculatedHpp = newRecipe.reduce((sum, r) => {
-            const ing = findIngredientHelper(ingredients, r.ingredientId);
-            if (!ing) return sum;
-            return sum + calculateRecipeItemCost(ing, r.takaran);
-          }, 0);
-
-          return {
-            ...m,
-            recipe: newRecipe,
-            hpp: Math.round(newCalculatedHpp)
-          };
+    const latestCatalog = menuItemsRef.current;
+    let targetMenuExisting: MenuItem | undefined;
+    const updatedList = latestCatalog.map(m => {
+      if (m.id === menuId) {
+        targetMenuExisting = m;
+        const currentRecipe = m.recipe || [];
+        const idx = currentRecipe.findIndex(r => r.ingredientId === ingId);
+        let newRecipe: MenuRecipeIngredient[];
+        if (idx >= 0) {
+          newRecipe = [...currentRecipe];
+          newRecipe[idx] = { ingredientId: ingId, takaran: takaranVal };
+        } else {
+          newRecipe = [...currentRecipe, { ingredientId: ingId, takaran: takaranVal }];
         }
-        return m;
-      });
+        
+        const newCalculatedHpp = newRecipe.reduce((sum, r) => {
+          const ing = findIngredientHelper(ingredients, r.ingredientId);
+          if (!ing) return sum;
+          return sum + calculateRecipeItemCost(ing, r.takaran);
+        }, 0);
 
-      localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updatedList));
-      if (spreadsheetId && token) {
-        saveMenuCatalogToSheet(spreadsheetId, updatedList, token).catch(e => console.error("Cloud sync error:", e));
+        const finalHpp = newCalculatedHpp > 0 ? Math.round(newCalculatedHpp) : m.hpp;
+
+        return {
+          ...m,
+          recipe: newRecipe,
+          hpp: finalHpp
+        };
       }
-      return updatedList;
+      return m;
     });
+
+    commitRenamedCatalogAndSales(
+      updatedList,
+      targetMenuExisting
+        ? {
+            id: targetMenuExisting.id,
+            oldName: targetMenuExisting.nama,
+            newName: targetMenuExisting.nama,
+            kategori: targetMenuExisting.kategori,
+            hargaJual: targetMenuExisting.hargaJual,
+            hpp: updatedList.find(m => m.id === menuId)?.hpp || targetMenuExisting.hpp,
+          }
+        : undefined
+    );
   };
 
   const handleRemoveIngredientFromRecipe = (menuId: string, indexOrIngId: number | string) => {
-    setMenuItems(prev => {
-      const updatedList = prev.map(m => {
-        if (m.id === menuId) {
-          const currentRecipe = m.recipe || [];
-          let newRecipe: MenuRecipeIngredient[] = [];
-          if (typeof indexOrIngId === 'number') {
-            newRecipe = currentRecipe.filter((_, idx) => idx !== indexOrIngId);
-          } else {
-            newRecipe = currentRecipe.filter(r => r.ingredientId !== indexOrIngId);
-          }
-          const newCalculatedHpp = newRecipe.length > 0 
-            ? newRecipe.reduce((sum, r) => {
-                const ing = findIngredientHelper(ingredients, r.ingredientId);
-                if (!ing) return sum;
-                return sum + calculateRecipeItemCost(ing, r.takaran);
-              }, 0)
-            : m.hpp;
-
-          return {
-            ...m,
-            recipe: newRecipe,
-            hpp: Math.round(newCalculatedHpp)
-          };
+    const latestCatalog = menuItemsRef.current;
+    let targetMenuExisting: MenuItem | undefined;
+    const updatedList = latestCatalog.map(m => {
+      if (m.id === menuId) {
+        targetMenuExisting = m;
+        const currentRecipe = m.recipe || [];
+        let newRecipe: MenuRecipeIngredient[] = [];
+        if (typeof indexOrIngId === 'number') {
+          newRecipe = currentRecipe.filter((_, idx) => idx !== indexOrIngId);
+        } else {
+          newRecipe = currentRecipe.filter(r => r.ingredientId !== indexOrIngId);
         }
-        return m;
-      });
+        const newCalculatedHpp = newRecipe.length > 0 
+          ? newRecipe.reduce((sum, r) => {
+              const ing = findIngredientHelper(ingredients, r.ingredientId);
+              if (!ing) return sum;
+              return sum + calculateRecipeItemCost(ing, r.takaran);
+            }, 0)
+          : m.hpp;
 
-      localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updatedList));
-      if (spreadsheetId && token) {
-        saveMenuCatalogToSheet(spreadsheetId, updatedList, token).catch(e => console.error("Cloud sync error:", e));
+        const finalHpp = newCalculatedHpp > 0 ? Math.round(newCalculatedHpp) : m.hpp;
+
+        return {
+          ...m,
+          recipe: newRecipe,
+          hpp: finalHpp
+        };
       }
-      return updatedList;
+      return m;
     });
+
+    commitRenamedCatalogAndSales(
+      updatedList,
+      targetMenuExisting
+        ? {
+            id: targetMenuExisting.id,
+            oldName: targetMenuExisting.nama,
+            newName: targetMenuExisting.nama,
+            kategori: targetMenuExisting.kategori,
+            hargaJual: targetMenuExisting.hargaJual,
+            hpp: updatedList.find(m => m.id === menuId)?.hpp || targetMenuExisting.hpp,
+          }
+        : undefined
+    );
   };
 
   const handleCleanInvalidIngredientsFromRecipe = (menuId: string) => {
-    setMenuItems(prev => {
-      const updatedList = prev.map(m => {
-        if (m.id === menuId) {
-          const currentRecipe = m.recipe || [];
-          const newRecipe = currentRecipe.filter(r => findIngredientHelper(ingredients, r.ingredientId) !== undefined);
-          const newCalculatedHpp = newRecipe.length > 0 
-            ? newRecipe.reduce((sum, r) => {
-                const ing = findIngredientHelper(ingredients, r.ingredientId);
-                if (!ing) return sum;
-                return sum + calculateRecipeItemCost(ing, r.takaran);
-              }, 0)
-            : m.hpp;
+    const latestCatalog = menuItemsRef.current;
+    let targetMenuExisting: MenuItem | undefined;
+    const updatedList = latestCatalog.map(m => {
+      if (m.id === menuId) {
+        targetMenuExisting = m;
+        const currentRecipe = m.recipe || [];
+        const newRecipe = currentRecipe.filter(r => findIngredientHelper(ingredients, r.ingredientId) !== undefined);
+        const newCalculatedHpp = newRecipe.length > 0 
+          ? newRecipe.reduce((sum, r) => {
+              const ing = findIngredientHelper(ingredients, r.ingredientId);
+              if (!ing) return sum;
+              return sum + calculateRecipeItemCost(ing, r.takaran);
+            }, 0)
+          : m.hpp;
 
-          return {
-            ...m,
-            recipe: newRecipe,
-            hpp: Math.round(newCalculatedHpp)
-          };
-        }
-        return m;
-      });
+        const finalHpp = newCalculatedHpp > 0 ? Math.round(newCalculatedHpp) : m.hpp;
 
-      localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(updatedList));
-      if (spreadsheetId && token) {
-        saveMenuCatalogToSheet(spreadsheetId, updatedList, token).catch(e => console.error("Cloud sync error:", e));
+        return {
+          ...m,
+          recipe: newRecipe,
+          hpp: finalHpp
+        };
       }
-      return updatedList;
+      return m;
     });
+
+    commitRenamedCatalogAndSales(
+      updatedList,
+      targetMenuExisting
+        ? {
+            id: targetMenuExisting.id,
+            oldName: targetMenuExisting.nama,
+            newName: targetMenuExisting.nama,
+            kategori: targetMenuExisting.kategori,
+            hargaJual: targetMenuExisting.hargaJual,
+            hpp: updatedList.find(m => m.id === menuId)?.hpp || targetMenuExisting.hpp,
+          }
+        : undefined
+    );
   };
+
+  // Auto-heal menu items whose recipes exist but hpp is 0 or uncalculated
+  useEffect(() => {
+    if (!ingredients || ingredients.length === 0 || !menuItems || menuItems.length === 0) return;
+    const itemsToHeal = menuItems.filter(m => m.recipe && m.recipe.length > 0 && (!m.hpp || m.hpp <= 0));
+    if (itemsToHeal.length === 0) return;
+
+    let changed = false;
+    const updated = menuItems.map(m => {
+      if (m.recipe && m.recipe.length > 0 && (!m.hpp || m.hpp <= 0)) {
+        const calc = calculateMenuItemHppFromRecipe(m, ingredients);
+        if (calc > 0 && calc !== m.hpp) {
+          changed = true;
+          return { ...m, hpp: Math.round(calc) };
+        }
+      }
+      return m;
+    });
+
+    if (changed) {
+      commitRenamedCatalogAndSales(updated);
+    }
+  }, [ingredients, menuItems]);
 
   const handleDeleteDaily = (id: string) => {
     if (window.confirm('Hapus catatan penjualan harian ini?')) {
@@ -5068,8 +5147,9 @@ export default function CogsDailySalesPage({
                       {sortedMenuItems.map(m => {
                         const currentInput = itemizedInputs[m.id] || { jatah: m.defaultJatah, terjual: 0 };
                         const omsetRow = currentInput.terjual * m.hargaJual;
+                        const rowHpp = (m.recipe && m.recipe.length > 0) ? (calculateMenuItemHppFromRecipe(m, ingredients) || m.hpp) : m.hpp;
                         // HPP Harian adalah total jumlah dari jatah barista + penjualan
-                        const hppRow = (currentInput.terjual + currentInput.jatah) * m.hpp;
+                        const hppRow = (currentInput.terjual + currentInput.jatah) * rowHpp;
                         const pctRow = currentInput.jatah > 0 ? (currentInput.terjual / currentInput.jatah) * 100 : 0;
                         const isFilledSales = currentInput.terjual > 0;
                         const isFilledJatah = currentInput.jatah > 0;
@@ -5097,7 +5177,7 @@ export default function CogsDailySalesPage({
                               Rp {m.hargaJual.toLocaleString('id-ID')}
                             </td>
                             <td className={`py-2.5 px-3 text-right font-mono ${isRowFilled ? 'text-slate-600' : 'text-slate-400'}`}>
-                              Rp {m.hpp.toLocaleString('id-ID')}
+                              Rp {rowHpp.toLocaleString('id-ID')}
                             </td>
                             <td className="py-2.5 px-3 text-center bg-amber-50/30 border-x border-amber-100/60">
                               <input
@@ -6798,11 +6878,12 @@ export default function CogsDailySalesPage({
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-800">
                   {catalogFilteredMenuItems.map(m => {
-                    const margin = m.hargaJual - m.hpp;
-                    const marginPct = m.hargaJual > 0 ? (margin / m.hargaJual) * 100 : 0;
                     const isRecipeExpanded = expandedRecipeMenuId === m.id;
                     const recipeIngredientCount = m.recipe ? m.recipe.length : 0;
                     const calculatedRecipeHpp = calculateMenuItemHppFromRecipe(m, ingredients);
+                    const effectiveHpp = (calculatedRecipeHpp > 0 ? calculatedRecipeHpp : (m.hpp || 0));
+                    const margin = m.hargaJual - effectiveHpp;
+                    const marginPct = m.hargaJual > 0 ? (margin / m.hargaJual) * 100 : 0;
                     const isEditingThisMenu = editingMenuItemId === m.id;
 
                     return (
@@ -7108,7 +7189,7 @@ export default function CogsDailySalesPage({
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono">
                             <div className="flex flex-col items-end">
-                              <span className="font-bold text-amber-800">{formatRupiah(m.hpp)}</span>
+                              <span className="font-bold text-amber-800">{formatRupiah(effectiveHpp)}</span>
                               <button
                                 type="button"
                                 onClick={() => setExpandedRecipeMenuId(isRecipeExpanded ? null : m.id)}
