@@ -2381,6 +2381,7 @@ export default function App() {
               spreadsheetUrl={spreadsheetUrl}
               token={token}
               userRole={userRole}
+              onLoginGoogle={handleLogin}
             />
           ) : activeTab === "debt_tracker" ? (
             <DebtTrackerPage

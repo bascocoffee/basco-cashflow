@@ -4218,28 +4218,19 @@ export async function saveGlobalPerformanceToSheet(
       localStorage.setItem('aruskas_global_performance_records', JSON.stringify(updatedItems));
     } catch {}
 
-    if (!spreadsheetId || !accessToken || accessToken.endsWith('-local-token')) {
-      return {
-        success: true,
-        message: 'Snapshot evaluasi berhasil disimpan ke penyimpanan lokal & cloud perangkat.'
-      };
+    // Resolve effective token
+    let effectiveToken = accessToken;
+    if (!effectiveToken || effectiveToken.endsWith('-local-token')) {
+      const shared = await getValidSharedAuthToken();
+      if (shared) effectiveToken = shared;
     }
 
-    // 3. Ensure sheet tab exists
-    await createCustomSheetTab(spreadsheetId, tabName, accessToken);
-
-    // 4. Check if header row exists
-    const checkUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tabName)}'!A1:O1`;
-    let hasHeaders = false;
-    try {
-      const checkRes = await fetch(checkUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (checkRes.ok) {
-        const checkData = await checkRes.json();
-        hasHeaders = Array.isArray(checkData.values) && checkData.values.length > 0;
-      }
-    } catch {}
+    if (!spreadsheetId || !effectiveToken || effectiveToken.endsWith('-local-token')) {
+      return {
+        success: true,
+        message: 'Snapshot evaluasi berhasil disimpan ke sistem & Cloud! Untuk menyinkronkan langsung ke Google Sheets, silakan login akun Google Anda di menu atas.'
+      };
+    }
 
     const headers = [
       "Waktu Simpan",
@@ -4277,20 +4268,69 @@ export async function saveGlobalPerformanceToSheet(
       (snapshot.aiSummary || '').replace(/\n+/g, ' ').slice(0, 500)
     ];
 
-    const rowsToAppend = hasHeaders ? [dataRow] : [headers, dataRow];
-    const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tabName)}'!A:O:append?valueInputOption=USER_ENTERED`;
-    const res = await fetch(appendUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ values: rowsToAppend })
-    });
+    // Attempt append with given token
+    const attemptAppend = async (tok: string): Promise<{ ok: boolean; status: number; errorText?: string }> => {
+      try {
+        await createCustomSheetTab(spreadsheetId, tabName, tok);
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Google Sheets API error: ${err}`);
+        const checkUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tabName)}'!A1:O1`;
+        let hasHeaders = false;
+        try {
+          const checkRes = await fetch(checkUrl, {
+            headers: { Authorization: `Bearer ${tok}` }
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            hasHeaders = Array.isArray(checkData.values) && checkData.values.length > 0;
+          } else if (checkRes.status === 401 || checkRes.status === 403) {
+            return { ok: false, status: checkRes.status, errorText: 'Unauthorized' };
+          }
+        } catch {}
+
+        const rowsToAppend = hasHeaders ? [dataRow] : [headers, dataRow];
+        const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(tabName)}'!A:O:append?valueInputOption=USER_ENTERED`;
+        const res = await fetch(appendUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${tok}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ values: rowsToAppend })
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          return { ok: false, status: res.status, errorText: err };
+        }
+        return { ok: true, status: 200 };
+      } catch (e: any) {
+        return { ok: false, status: 500, errorText: e?.message || 'Network error' };
+      }
+    };
+
+    let result = await attemptAppend(effectiveToken);
+
+    // If 401 / 403, attempt to resolve a refreshed token from shared server
+    if (!result.ok && (result.status === 401 || result.status === 403)) {
+      try {
+        const freshTok = await getValidSharedAuthToken();
+        if (freshTok && freshTok !== effectiveToken && !freshTok.endsWith('-local-token')) {
+          result = await attemptAppend(freshTok);
+        }
+      } catch {}
+    }
+
+    if (!result.ok) {
+      if (result.status === 401 || result.status === 403) {
+        return {
+          success: true,
+          message: 'Snapshot evaluasi berhasil disimpan ke sistem & Cloud! Namun sesi login Google OAuth Anda telah kedaluwarsa (401). Silakan login ulang akun Google di menu atas untuk memperbarui sinkronisasi spreadsheet.'
+        };
+      }
+      return {
+        success: false,
+        message: `Gagal menulis ke Google Sheets: ${result.errorText || 'Error API'}`
+      };
     }
 
     return {

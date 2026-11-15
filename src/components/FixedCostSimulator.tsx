@@ -80,6 +80,7 @@ interface FixedCostSimulatorProps {
   spreadsheetUrl?: string | null;
   token?: string | null;
   userRole?: AppRole;
+  onLoginGoogle?: () => void;
 }
 
 type TimeframeMode = 'harian' | 'bulanan' | 'tahunan';
@@ -98,7 +99,8 @@ export default function FixedCostSimulator({
   spreadsheetName,
   spreadsheetUrl,
   token,
-  userRole = 'owner'
+  userRole = 'owner',
+  onLoginGoogle
 }: FixedCostSimulatorProps) {
   // 1. Timeframe selection
   const [timeframeMode, setTimeframeMode] = useState<TimeframeMode>('bulanan');
@@ -155,7 +157,11 @@ export default function FixedCostSimulator({
   // 4. Saved Snapshots history
   const [savedSnapshots, setSavedSnapshots] = useState<GlobalPerformanceSnapshot[]>([]);
   const [isSavingToSheet, setIsSavingToSheet] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [saveMessage, setSaveMessage] = useState<{
+    type: 'success' | 'warning' | 'error';
+    text: string;
+    needsAuth?: boolean;
+  } | null>(null);
 
   // 5. AI Analysis state
   const [aiAnalysis, setAiAnalysis] = useState<string>(() => {
@@ -540,7 +546,12 @@ export default function FixedCostSimulator({
     try {
       const result = await saveGlobalPerformanceToSheet(spreadsheetId, snapshot, token);
       if (result.success) {
-        setSaveMessage({ type: 'success', text: result.message });
+        const isAuthWarning = result.message.includes('401') || result.message.includes('Google OAuth') || result.message.includes('login akun Google');
+        setSaveMessage({
+          type: isAuthWarning ? 'warning' : 'success',
+          text: result.message,
+          needsAuth: isAuthWarning
+        });
         setSavedSnapshots(prev => [snapshot, ...prev.filter(s => s.id !== snapshot.id)].slice(0, 60));
         logAppActivity({
           role: userRole,
@@ -746,26 +757,41 @@ export default function FixedCostSimulator({
         {/* Save feedback banner */}
         {saveMessage && (
           <div
-            className={`mt-4 p-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 ${
+            className={`mt-4 p-3 rounded-xl text-xs font-bold flex flex-wrap items-center justify-between gap-2 ${
               saveMessage.type === 'success'
                 ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                : saveMessage.type === 'warning'
+                ? 'bg-amber-50 text-amber-950 border border-amber-300'
                 : 'bg-rose-50 text-rose-900 border border-rose-200'
             }`}
           >
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 min-w-0 flex-1">
               {saveMessage.type === 'success' ? (
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+              ) : saveMessage.type === 'warning' ? (
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
               ) : (
                 <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
               )}
-              <span>{saveMessage.text}</span>
+              <span className="leading-relaxed">{saveMessage.text}</span>
             </div>
-            <button
-              onClick={() => setSaveMessage(null)}
-              className="text-slate-400 hover:text-slate-600 font-black text-sm px-1.5"
-            >
-              ×
-            </button>
+            <div className="flex items-center space-x-2 shrink-0">
+              {saveMessage.needsAuth && onLoginGoogle && (
+                <button
+                  type="button"
+                  onClick={onLoginGoogle}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-black shadow-xs transition"
+                >
+                  Login Akun Google
+                </button>
+              )}
+              <button
+                onClick={() => setSaveMessage(null)}
+                className="text-slate-400 hover:text-slate-600 font-black text-sm px-1.5"
+              >
+                ×
+              </button>
+            </div>
           </div>
         )}
 
