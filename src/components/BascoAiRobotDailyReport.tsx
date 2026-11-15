@@ -393,6 +393,11 @@ Sajikan dengan format ringkas & menarik:
     sessionStorage.removeItem('basco_robot_daily_closed');
   };
 
+  // Robot AI Basco hanya aktif dan muncul untuk role owner
+  if (userRole !== 'owner') {
+    return null;
+  }
+
   // If closed completely, render floating trigger avatar docked at bottom-right
   if (!isOpen) {
     return (

@@ -2444,13 +2444,15 @@ export default function App() {
           categories={categories}
         />
 
-        {/* Robot AI Basco Daily Intelligence Report - Floating, Draggable & Closable */}
-        <BascoAiRobotDailyReport
-          userRole={userRole}
-          transactions={transactions}
-          spreadsheetUrl={spreadsheetUrl}
-          onNavigateToTab={(tab) => setActiveTab(tab as TabType)}
-        />
+        {/* Robot AI Basco Daily Intelligence Report - Floating, Draggable & Closable (Khusus Role Owner) */}
+        {userRole === "owner" && (
+          <BascoAiRobotDailyReport
+            userRole={userRole}
+            transactions={transactions}
+            spreadsheetUrl={spreadsheetUrl}
+            onNavigateToTab={(tab) => setActiveTab(tab as TabType)}
+          />
+        )}
 
         {/* Modern Compact Footer */}
         <footer className="bg-white border-t border-slate-200/80 py-4 text-center text-[11px] font-semibold text-slate-500 mt-auto">
