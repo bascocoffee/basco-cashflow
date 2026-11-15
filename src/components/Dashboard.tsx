@@ -59,7 +59,8 @@ import WeeklyFinancialReportCard from './WeeklyFinancialReportCard';
 import CafeRatioSettingsModal from './CafeRatioSettingsModal';
 import { 
   computeCafeMetricsWithConfig, 
-  DEFAULT_CAFE_RATIO_CONFIG 
+  DEFAULT_CAFE_RATIO_CONFIG,
+  detectCategoryGroup
 } from '../utils/cafeKpiUtils';
 import { loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
 import { 
@@ -1221,6 +1222,83 @@ export default function Dashboard({
   const cafeMetrics = useMemo(() => {
     return computeCafeMetricsWithConfig(filteredTransactions, ratioConfig);
   }, [filteredTransactions, ratioConfig]);
+
+  // Sub-breakdown of expenses into HPP, Wages, and Operasional for PDF Report Table
+  const pdfRatioBreakdown = useMemo(() => {
+    const totalOmset = pdfPrintData.grandTotalPemasukan > 0 
+      ? pdfPrintData.grandTotalPemasukan 
+      : (filteredStats.totalDebit || 0);
+    const totalAllExpenses = pdfPrintData.grandTotalPengeluaran || 0;
+
+    const mapping = ratioConfig?.categoryMapping || {};
+
+    const getGroup = (nama: string) => {
+      if (mapping[nama]) {
+        const m = mapping[nama];
+        if (m === 'wages') return 'wages';
+        if (m.startsWith('cogs_')) return 'hpp';
+        return 'operasional';
+      }
+      const detected = detectCategoryGroup(nama);
+      if (detected === 'wages') return 'wages';
+      if (detected.startsWith('cogs_')) return 'hpp';
+      return 'operasional';
+    };
+
+    const hppList: typeof pdfPrintData.pengeluaranList = [];
+    const wagesList: typeof pdfPrintData.pengeluaranList = [];
+    const operasionalList: typeof pdfPrintData.pengeluaranList = [];
+
+    pdfPrintData.pengeluaranList.forEach(item => {
+      const grp = getGroup(item.nama);
+      if (grp === 'hpp') {
+        hppList.push(item);
+      } else if (grp === 'wages') {
+        wagesList.push(item);
+      } else {
+        operasionalList.push(item);
+      }
+    });
+
+    const totalHpp = hppList.reduce((s, i) => s + i.total, 0);
+    const totalWages = wagesList.reduce((s, i) => s + i.total, 0);
+    const totalOperasional = operasionalList.reduce((s, i) => s + i.total, 0);
+
+    const freqHpp = hppList.reduce((s, i) => s + i.frekuensi, 0);
+    const freqWages = wagesList.reduce((s, i) => s + i.frekuensi, 0);
+    const freqOperasional = operasionalList.reduce((s, i) => s + i.frekuensi, 0);
+
+    const hppRatio = totalOmset > 0 ? (totalHpp / totalOmset) * 100 : 0;
+    const wagesRatio = totalOmset > 0 ? (totalWages / totalOmset) * 100 : 0;
+    const operasionalRatio = totalOmset > 0 ? (totalOperasional / totalOmset) * 100 : 0;
+
+    const grossProfit = totalOmset - totalHpp;
+    const grossProfitMargin = totalOmset > 0 ? (grossProfit / totalOmset) * 100 : 0;
+
+    const netProfit = totalOmset - totalAllExpenses;
+    const netProfitMargin = totalOmset > 0 ? (netProfit / totalOmset) * 100 : 0;
+
+    return {
+      totalOmset,
+      totalAllExpenses,
+      hppList,
+      totalHpp,
+      freqHpp,
+      hppRatio: parseFloat(hppRatio.toFixed(1)),
+      wagesList,
+      totalWages,
+      freqWages,
+      wagesRatio: parseFloat(wagesRatio.toFixed(1)),
+      operasionalList,
+      totalOperasional,
+      freqOperasional,
+      operasionalRatio: parseFloat(operasionalRatio.toFixed(1)),
+      grossProfit,
+      grossProfitMargin: parseFloat(grossProfitMargin.toFixed(1)),
+      netProfit,
+      netProfitMargin: parseFloat(netProfitMargin.toFixed(1)),
+    };
+  }, [pdfPrintData, filteredStats.totalDebit, ratioConfig]);
 
   // Dynamic AI Financial Condition Analysis for PDF & Dashboard
   const dynamicAiAnalysis = useMemo(() => {
@@ -3871,7 +3949,7 @@ export default function Dashboard({
                   Pratinjau Laporan Keuangan PDF
                 </h3>
                 <p className="text-[11px] text-slate-400 font-medium">
-                  Periode: <strong className="text-amber-400">{getFilterPeriodLabel()}</strong> • {pdfPrintData.pengeluaranList.length} Pengeluaran Terbayar • {pdfPrintData.unpaidList.length} Belum Terbayar
+                  Periode: <strong className="text-amber-400">{getFilterPeriodLabel()}</strong> • {pdfPrintData.pengeluaranList.length} Pengeluaran • Rasio HPP: <strong className="text-amber-300">{pdfRatioBreakdown.hppRatio}%</strong> • Gaji: <strong className="text-indigo-300">{pdfRatioBreakdown.wagesRatio}%</strong> • Operasional: <strong className="text-rose-300">{pdfRatioBreakdown.operasionalRatio}%</strong> • Nett Profit: <strong className={pdfRatioBreakdown.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{pdfRatioBreakdown.netProfitMargin}%</strong>
                 </p>
               </div>
             </div>
@@ -4243,13 +4321,388 @@ export default function Dashboard({
           </table>
         </div>
 
+        {/* TABEL 3: RINCIAN ALOKASI BEBAN BERDASARKAN RASIO BISNIS KAFE & REKAPITULASI NETT PROFIT */}
+        <div className="mb-8 page-break-inside-avoid">
+          <div className="flex justify-between items-baseline border-b-2 border-slate-900 pb-1.5 mb-3">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                <span>3. Tabel Rincian Beban Berdasarkan Rasio Bisnis & Nett Profit</span>
+                <span className="text-[10px] font-bold text-slate-500 normal-case">(Sub HPP, Gaji & Staff, Operasional, serta Nett Profit)</span>
+              </h3>
+              <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                Pengelompokan analitis seluruh biaya terbayar ke dalam 3 pilar beban operasional kafe beserta kalkulasi laba bersih final
+              </p>
+            </div>
+            <div className="text-right">
+              <span className={`text-[11px] font-mono font-black px-2.5 py-0.5 rounded border ${
+                pdfRatioBreakdown.netProfit >= 0
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}>
+                Nett Profit: {formatRupiah(pdfRatioBreakdown.netProfit)} ({pdfRatioBreakdown.netProfitMargin}%)
+              </span>
+            </div>
+          </div>
+
+          <table className="w-full text-xs text-left border-collapse border border-slate-300">
+            <thead>
+              <tr className="bg-slate-100 text-slate-800 font-bold uppercase tracking-wider border-b border-slate-300 text-[10px]">
+                <th className="p-2 border border-slate-300 text-center w-[40px]">No</th>
+                <th className="p-2 border border-slate-300">Rincian Pengeluaran 1</th>
+                <th className="p-2 border border-slate-300 text-center w-[100px]">FREKUENSI</th>
+                <th className="p-2 border border-slate-300 text-right w-[150px]">TOTAL PENGELUARAN</th>
+                <th className="p-2 border border-slate-300 text-right w-[120px]">RASIO THD OMSET</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {/* SUB A: HPP / BIAYA BAHAN BAKU (COGS) */}
+              <tr className="bg-amber-500/15 border-y-2 border-amber-600/40 text-amber-950 font-black">
+                <td colSpan={5} className="p-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-1.5 py-0.5 bg-amber-600 text-white rounded text-[10px] font-black">A</span>
+                      <span className="text-xs uppercase tracking-wider font-black text-amber-950">
+                        SUB HPP (HARGA POKOK PENJUALAN / BAHAN BAKU COGS)
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-[10px] font-bold">
+                      <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded border border-amber-300">
+                        Target Standar F&B: 30% - 35%
+                      </span>
+                      <span className="font-mono text-slate-700">
+                        Realisasi: <strong className="text-amber-900">{pdfRatioBreakdown.hppRatio}%</strong>
+                      </span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {pdfRatioBreakdown.hppList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-3 text-center text-slate-400 italic">
+                    Tidak ada transaksi kategori HPP pada periode ini.
+                  </td>
+                </tr>
+              ) : (
+                pdfRatioBreakdown.hppList.map((item, idx) => {
+                  const itemRatio = pdfRatioBreakdown.totalOmset > 0 
+                    ? ((item.total / pdfRatioBreakdown.totalOmset) * 100).toFixed(1)
+                    : '0.0';
+                  return (
+                    <tr key={`hpp-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/20'}>
+                      <td className="p-2 border border-slate-300 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                      <td className="p-2 border border-slate-300">
+                        <div className="font-bold text-slate-900 uppercase">
+                          {item.nama}
+                        </div>
+                        {renderPdfDateAndNotes(item, false)}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-center font-mono text-slate-700 font-semibold">
+                        {item.frekuensi}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-right font-mono font-bold text-amber-900">
+                        {formatRupiah(item.total)}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-right font-mono font-bold text-slate-700">
+                        {itemRatio}%
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+              {/* SUBTOTAL HPP */}
+              <tr className="bg-amber-100/70 font-black border-t-2 border-amber-400 text-amber-950">
+                <td colSpan={2} className="p-2 border border-slate-300 uppercase tracking-wider text-right font-black">
+                  Subtotal HPP (Bahan Baku):
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono font-black">
+                  {pdfRatioBreakdown.freqHpp}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono text-amber-900 font-black text-xs">
+                  {formatRupiah(pdfRatioBreakdown.totalHpp)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-black text-amber-900 text-xs">
+                  {pdfRatioBreakdown.hppRatio}%
+                </td>
+              </tr>
+
+              {/* SUB B: BEBAN GAJI & STAFF (LABOR COST) */}
+              <tr className="bg-indigo-500/15 border-y-2 border-indigo-600/40 text-indigo-950 font-black">
+                <td colSpan={5} className="p-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[10px] font-black">B</span>
+                      <span className="text-xs uppercase tracking-wider font-black text-indigo-950">
+                        SUB RASIO GAJI DAN STAFF (LABOR COST & BARISTA)
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-[10px] font-bold">
+                      <span className="bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded border border-indigo-300">
+                        Target Standar F&B: 15% - 25%
+                      </span>
+                      <span className="font-mono text-slate-700">
+                        Realisasi: <strong className="text-indigo-900">{pdfRatioBreakdown.wagesRatio}%</strong>
+                      </span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {pdfRatioBreakdown.wagesList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-3 text-center text-slate-400 italic">
+                    Tidak ada transaksi kategori Gaji & Staff pada periode ini.
+                  </td>
+                </tr>
+              ) : (
+                pdfRatioBreakdown.wagesList.map((item, idx) => {
+                  const itemRatio = pdfRatioBreakdown.totalOmset > 0 
+                    ? ((item.total / pdfRatioBreakdown.totalOmset) * 100).toFixed(1)
+                    : '0.0';
+                  return (
+                    <tr key={`wages-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-indigo-50/20'}>
+                      <td className="p-2 border border-slate-300 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                      <td className="p-2 border border-slate-300">
+                        <div className="font-bold text-slate-900 uppercase">
+                          {item.nama}
+                        </div>
+                        {renderPdfDateAndNotes(item, false)}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-center font-mono text-slate-700 font-semibold">
+                        {item.frekuensi}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-right font-mono font-bold text-indigo-900">
+                        {formatRupiah(item.total)}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-right font-mono font-bold text-slate-700">
+                        {itemRatio}%
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+              {/* SUBTOTAL GAJI & STAFF */}
+              <tr className="bg-indigo-100/70 font-black border-t-2 border-indigo-400 text-indigo-950">
+                <td colSpan={2} className="p-2 border border-slate-300 uppercase tracking-wider text-right font-black">
+                  Subtotal Beban Gaji & Staff:
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono font-black">
+                  {pdfRatioBreakdown.freqWages}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono text-indigo-900 font-black text-xs">
+                  {formatRupiah(pdfRatioBreakdown.totalWages)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-black text-indigo-900 text-xs">
+                  {pdfRatioBreakdown.wagesRatio}%
+                </td>
+              </tr>
+
+              {/* SUB C: BIAYA OPERASIONAL (OPEX) */}
+              <tr className="bg-rose-500/15 border-y-2 border-rose-600/40 text-rose-950 font-black">
+                <td colSpan={5} className="p-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-1.5 py-0.5 bg-rose-600 text-white rounded text-[10px] font-black">C</span>
+                      <span className="text-xs uppercase tracking-wider font-black text-rose-950">
+                        SUB BIAYA OPERASIONAL, SEWA & UTILITAS (OPEX)
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-[10px] font-bold">
+                      <span className="bg-rose-100 text-rose-900 px-2 py-0.5 rounded border border-rose-300">
+                        Target Standar F&B: &lt; 20%
+                      </span>
+                      <span className="font-mono text-slate-700">
+                        Realisasi: <strong className="text-rose-900">{pdfRatioBreakdown.operasionalRatio}%</strong>
+                      </span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {pdfRatioBreakdown.operasionalList.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-3 text-center text-slate-400 italic">
+                    Tidak ada transaksi kategori Operasional pada periode ini.
+                  </td>
+                </tr>
+              ) : (
+                pdfRatioBreakdown.operasionalList.map((item, idx) => {
+                  const itemRatio = pdfRatioBreakdown.totalOmset > 0 
+                    ? ((item.total / pdfRatioBreakdown.totalOmset) * 100).toFixed(1)
+                    : '0.0';
+                  return (
+                    <tr key={`opex-${idx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-rose-50/20'}>
+                      <td className="p-2 border border-slate-300 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                      <td className="p-2 border border-slate-300">
+                        <div className="font-bold text-slate-900 uppercase">
+                          {item.nama}
+                        </div>
+                        {renderPdfDateAndNotes(item, false)}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-center font-mono text-slate-700 font-semibold">
+                        {item.frekuensi}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-right font-mono font-bold text-rose-800">
+                        {formatRupiah(item.total)}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-right font-mono font-bold text-slate-700">
+                        {itemRatio}%
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+              {/* SUBTOTAL OPERASIONAL */}
+              <tr className="bg-rose-100/70 font-black border-t-2 border-rose-400 text-rose-950">
+                <td colSpan={2} className="p-2 border border-slate-300 uppercase tracking-wider text-right font-black">
+                  Subtotal Biaya Operasional:
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono font-black">
+                  {pdfRatioBreakdown.freqOperasional}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono text-rose-900 font-black text-xs">
+                  {formatRupiah(pdfRatioBreakdown.totalOperasional)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-black text-rose-900 text-xs">
+                  {pdfRatioBreakdown.operasionalRatio}%
+                </td>
+              </tr>
+
+              {/* SUB D: REKAPITULASI NETT PROFIT */}
+              <tr className="bg-emerald-500/20 border-y-2 border-emerald-600/50 text-emerald-950 font-black">
+                <td colSpan={5} className="p-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-1.5 py-0.5 bg-emerald-700 text-white rounded text-[10px] font-black">D</span>
+                      <span className="text-xs uppercase tracking-wider font-black text-emerald-950">
+                        SUB REKAPITULASI NETT PROFIT (LABA BERSIH & MARGIN AKHIR)
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-[10px] font-bold">
+                      <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded border border-emerald-300">
+                        Target Standar F&B: 15% - 25%
+                      </span>
+                      <span className="font-mono text-slate-700">
+                        Realisasi: <strong className="text-emerald-900">{pdfRatioBreakdown.netProfitMargin}%</strong>
+                      </span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {/* 1. Omset */}
+              <tr className="bg-slate-50/60 font-semibold">
+                <td className="p-2 border border-slate-300 text-center text-slate-500 font-bold">1</td>
+                <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                  Total Pemasukan / Omset Cafe (IN)
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono">
+                  {pdfPrintData.totalFrekuensiPemasukan}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-emerald-700">
+                  {formatRupiah(pdfRatioBreakdown.totalOmset)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-emerald-700">
+                  100.0%
+                </td>
+              </tr>
+              {/* 2. Dikurangi HPP */}
+              <tr className="bg-white font-medium text-slate-700">
+                <td className="p-2 border border-slate-300 text-center text-slate-400">2</td>
+                <td className="p-2 border border-slate-300 text-amber-900 font-semibold">
+                  (-) Beban HPP (Bahan Baku / COGS)
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono">
+                  {pdfRatioBreakdown.freqHpp}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-amber-900">
+                  - {formatRupiah(pdfRatioBreakdown.totalHpp)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-amber-900">
+                  - {pdfRatioBreakdown.hppRatio}%
+                </td>
+              </tr>
+              {/* 3. Laba Kotor */}
+              <tr className="bg-indigo-50/40 font-bold text-indigo-950">
+                <td className="p-2 border border-slate-300 text-center text-indigo-700 font-black">=</td>
+                <td className="p-2 border border-slate-300 uppercase tracking-wide">
+                  (=) Laba Kotor (Gross Profit / Margin Kontribusi)
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono">-</td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-black text-indigo-900">
+                  {formatRupiah(pdfRatioBreakdown.grossProfit)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-black text-indigo-900">
+                  {pdfRatioBreakdown.grossProfitMargin}%
+                </td>
+              </tr>
+              {/* 4. Dikurangi Gaji */}
+              <tr className="bg-white font-medium text-slate-700">
+                <td className="p-2 border border-slate-300 text-center text-slate-400">3</td>
+                <td className="p-2 border border-slate-300 text-indigo-900 font-semibold">
+                  (-) Beban Gaji & Staff (Labor Cost)
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono">
+                  {pdfRatioBreakdown.freqWages}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-indigo-900">
+                  - {formatRupiah(pdfRatioBreakdown.totalWages)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-indigo-900">
+                  - {pdfRatioBreakdown.wagesRatio}%
+                </td>
+              </tr>
+              {/* 5. Dikurangi Operasional */}
+              <tr className="bg-white font-medium text-slate-700">
+                <td className="p-2 border border-slate-300 text-center text-slate-400">4</td>
+                <td className="p-2 border border-slate-300 text-rose-900 font-semibold">
+                  (-) Biaya Operasional, Sewa & Utilitas (Opex)
+                </td>
+                <td className="p-2 border border-slate-300 text-center font-mono">
+                  {pdfRatioBreakdown.freqOperasional}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-rose-900">
+                  - {formatRupiah(pdfRatioBreakdown.totalOperasional)}
+                </td>
+                <td className="p-2 border border-slate-300 text-right font-mono font-bold text-rose-900">
+                  - {pdfRatioBreakdown.operasionalRatio}%
+                </td>
+              </tr>
+              {/* 6. NETT PROFIT FINAL */}
+              <tr className={`border-t-2 border-b-2 font-black ${
+                pdfRatioBreakdown.netProfit >= 0 
+                  ? 'bg-emerald-100/90 text-emerald-950 border-emerald-500' 
+                  : 'bg-rose-100/90 text-rose-950 border-rose-500'
+              }`}>
+                <td colSpan={2} className="p-3 border border-slate-300 uppercase tracking-wider text-right font-black">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                      pdfRatioBreakdown.netProfit >= 0 
+                        ? 'bg-emerald-700 text-white' 
+                        : 'bg-rose-700 text-white'
+                    }`}>
+                      {pdfRatioBreakdown.netProfit >= 0 ? '✓ SURPLUS (PROFIT)' : '⚠️ DEFISIT (RUGI)'}
+                    </span>
+                    <span className="text-xs sm:text-sm">(=) Estimasi Laba Bersih (NETT PROFIT):</span>
+                  </div>
+                </td>
+                <td className="p-3 border border-slate-300 text-center font-mono font-black text-xs">
+                  {pdfPrintData.totalFrekuensiPengeluaran}
+                </td>
+                <td className="p-3 border border-slate-300 text-right font-mono font-black text-sm sm:text-base">
+                  {formatRupiah(pdfRatioBreakdown.netProfit)}
+                </td>
+                <td className="p-3 border border-slate-300 text-right font-mono font-black text-sm sm:text-base">
+                  {pdfRatioBreakdown.netProfitMargin}%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
         {/* TABEL PENGELUARAN BELUM TERBAYAR (JIKA TOTAL 0) */}
         {pdfPrintData.unpaidList.length > 0 && (
           <div className="mb-8 page-break-inside-avoid">
             <div className="flex justify-between items-baseline border-b-2 border-amber-600 pb-1.5 mb-3">
               <div>
                 <h3 className="text-sm font-black uppercase tracking-wider text-amber-900 flex items-center gap-2">
-                  <span>3. Tabel Pengeluaran Belum Terbayar</span>
+                  <span>4. Tabel Pengeluaran Belum Terbayar</span>
                   <span className="text-[10px] bg-amber-100 text-amber-900 px-2 py-0.5 rounded font-black border border-amber-300 uppercase">
                     Jumlah Total Rp 0 / Pending
                   </span>
@@ -4322,7 +4775,7 @@ export default function Dashboard({
           <div className="border-b border-slate-300 pb-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h4 className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                <span>📋</span> Rekapitulasi Akhir Total Pengeluaran Sesuai Pengeluaran 1
+                <span>📋</span> 5. Rekapitulasi Akhir Total Pengeluaran Sesuai Pengeluaran 1
               </h4>
               <p className="text-[10px] text-slate-600 font-medium mt-0.5">
                 Pengelompokan dan penggabungan menyeluruh seluruh jenis Pengeluaran 1 beserta akumulasi biaya final
@@ -4392,7 +4845,7 @@ export default function Dashboard({
               </div>
               <div>
                 <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
-                  <span>5. Analisis AI Kondisi Keuangan & Rekomendasi Taktis</span>
+                  <span>6. Analisis AI Kondisi Keuangan & Rekomendasi Taktis</span>
                   <span className="text-[8.5px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold border border-indigo-200 uppercase">
                     AI Financial Diagnosis
                   </span>
