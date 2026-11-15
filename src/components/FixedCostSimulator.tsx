@@ -1280,325 +1280,104 @@ export default function FixedCostSimulator({
         </div>
       )}
 
-      {/* 4. Analisis BEP & Stress-Test Simulation Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Side (7 Cols): BEP Progress & Interactive Scenario Simulation */}
-        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 shadow-xs p-5 space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
-              <Percent className="h-4 w-4 text-indigo-600" />
-              <span>Titik Impas (BEP) & Stress-Test Kemampuan Kafe</span>
-            </h3>
-            <span className="text-xs font-bold text-slate-500">
-              Target BEP: <strong className="text-slate-900">{formatRupiah(liveMetrics.bepRevenue)}</strong>
-            </span>
-          </div>
-
-          {/* Progress Bar BEP */}
-          <div>
-            <div className="flex items-center justify-between text-xs font-bold mb-1.5">
-              <span className="text-slate-600">Pencapaian Target BEP Periode Ini:</span>
-              <span
-                className={`font-mono font-black ${
-                  liveMetrics.bepProgressPct >= 100 ? 'text-emerald-700' : 'text-amber-700'
-                }`}
-              >
-                {liveMetrics.bepProgressPct}%
-              </span>
-            </div>
-            <div className="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-200">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  liveMetrics.bepProgressPct >= 100
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
-                    : 'bg-gradient-to-r from-amber-500 to-orange-500'
-                }`}
-                style={{ width: `${Math.min(100, liveMetrics.bepProgressPct)}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
-              {liveMetrics.effectiveOmset >= liveMetrics.bepRevenue ? (
-                <span className="text-emerald-700 font-bold">
-                  ✓ Omset sudah melampaui titik impas sebesar {formatRupiah(liveMetrics.effectiveOmset - liveMetrics.bepRevenue)}!
-                </span>
-              ) : (
-                <span className="text-amber-800 font-bold">
-                  ⚠️ Butuh tambahan omset {formatRupiah(liveMetrics.bepRevenue - liveMetrics.effectiveOmset)} lagi untuk mencapai titik impas sempurna.
-                </span>
-              )}
-            </p>
-          </div>
-
-          {/* Stress-Test Simulation Slider */}
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-black text-slate-900 uppercase">Simulasi Skenario Omset</span>
-                <p className="text-[10px] text-slate-500 font-medium">
-                  Uji daya tahan kafe jika penjualan mengalami kenaikan atau penurunan mendadak.
-                </p>
-              </div>
-              <div className="px-2.5 py-1 rounded-xl bg-slate-900 text-white font-mono font-bold text-xs">
-                {omsetSliderAdjust >= 0 ? `+${omsetSliderAdjust}%` : `${omsetSliderAdjust}%`}
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <span className="text-[10px] font-bold text-rose-600">-30%</span>
-              <input
-                type="range"
-                min="-30"
-                max="30"
-                step="5"
-                value={omsetSliderAdjust}
-                onChange={e => setOmsetSliderAdjust(parseInt(e.target.value, 10))}
-                className="w-full accent-indigo-600 cursor-pointer"
-              />
-              <span className="text-[10px] font-bold text-emerald-600">+30%</span>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-semibold text-slate-600">
-              <button
-                type="button"
-                onClick={() => setOmsetSliderAdjust(-20)}
-                className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"
-              >
-                Skenario Drop -20%
-              </button>
-              <button
-                type="button"
-                onClick={() => setOmsetSliderAdjust(0)}
-                className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"
-              >
-                Reset Normal (0%)
-              </button>
-              <button
-                type="button"
-                onClick={() => setOmsetSliderAdjust(20)}
-                className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"
-              >
-                Skenario Naik +20%
-              </button>
-            </div>
-          </div>
+      {/* 4. Analisis BEP & Stress-Test Simulation (Full Width Card) */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
+            <Percent className="h-4 w-4 text-indigo-600" />
+            <span>Titik Impas (BEP) & Stress-Test Kemampuan Kafe</span>
+          </h3>
+          <span className="text-xs font-bold text-slate-500">
+            Target BEP: <strong className="text-slate-900">{formatRupiah(liveMetrics.bepRevenue)}</strong>
+          </span>
         </div>
 
-        {/* Right Side (5 Cols): AI Strategic Advisor & Chat Panel */}
-        <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between space-y-4">
-          <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2">
-                <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl shadow-xs">
-                  <Bot className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wide">
-                    AI Financial Advisor
-                  </h3>
-                  <span className="text-[10px] font-bold text-indigo-700">
-                    Analisis Mendalam & Chat Realtime
-                  </span>
-                </div>
-              </div>
-
-              {/* Provider selector */}
-              <div className="inline-flex p-0.5 bg-slate-100 rounded-xl text-[10px] font-bold">
-                <button
-                  type="button"
-                  onClick={() => setAiProvider('claude')}
-                  className={`px-2 py-0.5 rounded-lg transition ${
-                    aiProvider === 'claude' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
-                  }`}
-                >
-                  Claude
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAiProvider('gemini')}
-                  className={`px-2 py-0.5 rounded-lg transition ${
-                    aiProvider === 'gemini' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
-                  }`}
-                >
-                  Gemini
-                </button>
-              </div>
-            </div>
-
-            {/* Sub-Tab Navigation inside AI Panel: Laporan vs Chat */}
-            <div className="flex items-center space-x-2 pt-3 pb-2 border-b border-slate-100">
-              <button
-                type="button"
-                onClick={() => setAiSubTab('analysis')}
-                className={`flex-1 py-1 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 ${
-                  aiSubTab === 'analysis'
-                    ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                <span>Laporan Analisis</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAiSubTab('chat')}
-                className={`flex-1 py-1 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 ${
-                  aiSubTab === 'chat'
-                    ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <MessageSquare className="h-3.5 w-3.5 text-indigo-600" />
-                <span>Diskusi & Chat AI</span>
-              </button>
-            </div>
-
-            {/* TAB CONTENT 1: LAPORAN ANALISIS */}
-            {aiSubTab === 'analysis' ? (
-              <div className="mt-3.5 max-h-[330px] overflow-y-auto pr-1">
-                {isLoadingAi ? (
-                  <div className="py-12 flex flex-col items-center justify-center space-y-3 text-slate-400">
-                    <RefreshCw className="h-7 w-7 text-indigo-600 animate-spin" />
-                    <span className="text-xs font-bold text-slate-600">
-                      AI sedang mengalkulasi data omset, cashflow, fixed cost & hutang...
-                    </span>
-                  </div>
-                ) : aiAnalysis ? (
-                  <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 text-xs">
-                    {renderFormattedAiText(aiAnalysis)}
-                  </div>
-                ) : (
-                  <div className="py-10 text-center px-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                    <Sparkles className="h-8 w-8 text-indigo-400 mx-auto mb-2 opacity-80" />
-                    <p className="text-xs font-bold text-slate-700">Belum ada analisis mendalam untuk sesi ini.</p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Klik tombol di bawah untuk meminta audit komprehensif performa kafe secara otomatis.
-                    </p>
-                  </div>
-                )}
-              </div>
+        {/* Progress Bar BEP */}
+        <div>
+          <div className="flex items-center justify-between text-xs font-bold mb-1.5">
+            <span className="text-slate-600">Pencapaian Target BEP Periode Ini:</span>
+            <span
+              className={`font-mono font-black ${
+                liveMetrics.bepProgressPct >= 100 ? 'text-emerald-700' : 'text-amber-700'
+              }`}
+            >
+              {liveMetrics.bepProgressPct}%
+            </span>
+          </div>
+          <div className="w-full bg-slate-100 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-200">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                liveMetrics.bepProgressPct >= 100
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                  : 'bg-gradient-to-r from-amber-500 to-orange-500'
+              }`}
+              style={{ width: `${Math.min(100, liveMetrics.bepProgressPct)}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
+            {liveMetrics.effectiveOmset >= liveMetrics.bepRevenue ? (
+              <span className="text-emerald-700 font-bold">
+                ✓ Omset sudah melampaui titik impas sebesar {formatRupiah(liveMetrics.effectiveOmset - liveMetrics.bepRevenue)}!
+              </span>
             ) : (
-              /* TAB CONTENT 2: CHAT & TANYA JAWAB AI */
-              <div className="mt-3 flex flex-col h-[330px]">
-                {/* Chat message stream */}
-                <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-                  {chatMessages.map((msg, i) => (
-                    <div
-                      key={i}
-                      className={`flex items-start space-x-2 ${
-                        msg.role === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      {msg.role === 'model' && (
-                        <div className="p-1 bg-indigo-950 text-emerald-400 rounded-lg shrink-0 mt-0.5">
-                          <Bot className="h-3.5 w-3.5" />
-                        </div>
-                      )}
-                      <div
-                        className={`max-w-[85%] p-2.5 rounded-2xl text-xs font-medium leading-relaxed ${
-                          msg.role === 'user'
-                            ? 'bg-indigo-600 text-white rounded-br-none shadow-xs'
-                            : 'bg-slate-50 text-slate-800 rounded-bl-none border border-slate-200 shadow-xs'
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-                        <span
-                          className={`text-[9px] block text-right mt-1 ${
-                            msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'
-                          }`}
-                        >
-                          {msg.timestamp}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  {isSendingChat && (
-                    <div className="flex items-center space-x-2 text-slate-400 text-xs italic py-1">
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600" />
-                      <span>AI sedang berpikir & menyusun rekomendasi...</span>
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-
-                {/* Quick Prompts Chips */}
-                <div className="pt-2 pb-1.5 flex items-center space-x-1.5 overflow-x-auto text-[10px] font-bold border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => handleSendPanelChat('Bagaimana cara menurunkan titik impas (BEP) kafe?')}
-                    className="whitespace-nowrap px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 transition"
-                  >
-                    Turunkan BEP?
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSendPanelChat('Apakah beban cicilan hutang saat ini aman?')}
-                    className="whitespace-nowrap px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-                  >
-                    Keamanan Hutang?
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSendPanelChat('Strategi menaikkan omset harian tanpa menambah biaya')}
-                    className="whitespace-nowrap px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-                  >
-                    Dongkrak Omset?
-                  </button>
-                </div>
-
-                {/* Chat Input form */}
-                <form
-                  onSubmit={e => {
-                    e.preventDefault();
-                    handleSendPanelChat();
-                  }}
-                  className="pt-2 border-t border-slate-100 flex items-center space-x-2"
-                >
-                  <input
-                    type="text"
-                    placeholder="Tanyakan analisis keuangan kafe..."
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!chatInput.trim() || isSendingChat}
-                    className="p-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl disabled:opacity-50 transition shadow-xs shrink-0"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </button>
-                </form>
-              </div>
+              <span className="text-amber-800 font-bold">
+                ⚠️ Butuh tambahan omset {formatRupiah(liveMetrics.bepRevenue - liveMetrics.effectiveOmset)} lagi untuk mencapai titik impas sempurna.
+              </span>
             )}
+          </p>
+        </div>
+
+        {/* Stress-Test Simulation Slider */}
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xs font-black text-slate-900 uppercase">Simulasi Skenario Omset</span>
+              <p className="text-[10px] text-slate-500 font-medium">
+                Uji daya tahan kafe jika penjualan mengalami kenaikan atau penurunan mendadak.
+              </p>
+            </div>
+            <div className="px-2.5 py-1 rounded-xl bg-slate-900 text-white font-mono font-bold text-xs">
+              {omsetSliderAdjust >= 0 ? `+${omsetSliderAdjust}%` : `${omsetSliderAdjust}%`}
+            </div>
           </div>
 
-          {/* Action buttons bottom (only on analysis sub-tab) */}
-          {aiSubTab === 'analysis' && (
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-              {aiAnalysis ? (
-                <button
-                  type="button"
-                  onClick={handleCopyAi}
-                  className="inline-flex items-center space-x-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 transition"
-                >
-                  {isCopiedAi ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                  <span>{isCopiedAi ? 'Tersalin' : 'Salin Laporan'}</span>
-                </button>
-              ) : (
-                <div />
-              )}
+          <div className="flex items-center space-x-3">
+            <span className="text-[10px] font-bold text-rose-600">-30%</span>
+            <input
+              type="range"
+              min="-30"
+              max="30"
+              step="5"
+              value={omsetSliderAdjust}
+              onChange={e => setOmsetSliderAdjust(parseInt(e.target.value, 10))}
+              className="w-full accent-indigo-600 cursor-pointer"
+            />
+            <span className="text-[10px] font-bold text-emerald-600">+30%</span>
+          </div>
 
-              <button
-                type="button"
-                onClick={handleRequestAiAnalysis}
-                disabled={isLoadingAi}
-                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition active:scale-95 disabled:opacity-50"
-              >
-                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-                <span>{isLoadingAi ? 'Menganalisis...' : 'Minta Analisis AI'}</span>
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-semibold text-slate-600">
+            <button
+              type="button"
+              onClick={() => setOmsetSliderAdjust(-20)}
+              className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"
+            >
+              Skenario Drop -20%
+            </button>
+            <button
+              type="button"
+              onClick={() => setOmsetSliderAdjust(0)}
+              className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"
+            >
+              Reset Normal (0%)
+            </button>
+            <button
+              type="button"
+              onClick={() => setOmsetSliderAdjust(20)}
+              className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100"
+            >
+              Skenario Naik +20%
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1701,6 +1480,254 @@ export default function FixedCostSimulator({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* 6. AI FINANCIAL ADVISOR - Di Halaman Paling Bawah (Full Width & Nyaman Dibaca) */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-7 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-600 text-white rounded-2xl shadow-sm">
+              <Bot className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-wide">
+                  AI Financial Advisor
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-black uppercase">
+                  Analisis Mendalam 360° & Chat Realtime
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Konsultasi strategi titik impas (BEP), audit rasio beban tetap, mitigasi hutang & proyeksi profitabilitas kafe.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {/* Provider selector */}
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setAiProvider('claude')}
+                className={`px-3 py-1.5 rounded-lg transition ${
+                  aiProvider === 'claude' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Claude
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiProvider('gemini')}
+                className={`px-3 py-1.5 rounded-lg transition ${
+                  aiProvider === 'gemini' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Gemini
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRequestAiAnalysis}
+              disabled={isLoadingAi}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition active:scale-95 disabled:opacity-50"
+            >
+              <Sparkles className="h-4 w-4 text-amber-300" />
+              <span>{isLoadingAi ? 'Menganalisis...' : 'Minta Analisis AI'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Sub-Tab Navigation inside AI Panel: Laporan vs Chat */}
+        <div className="flex items-center space-x-2 border-b border-slate-100 pb-2">
+          <button
+            type="button"
+            onClick={() => setAiSubTab('analysis')}
+            className={`py-2 px-4 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+              aiSubTab === 'analysis'
+                ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 bg-slate-50'
+            }`}
+          >
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            <span>Laporan Analisis Mendalam</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAiSubTab('chat')}
+            className={`py-2 px-4 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+              aiSubTab === 'chat'
+                ? 'bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 bg-slate-50'
+            }`}
+          >
+            <MessageSquare className="h-4 w-4 text-indigo-600" />
+            <span>Diskusi & Chat Interaktif AI</span>
+          </button>
+        </div>
+
+        {/* TAB CONTENT 1: LAPORAN ANALISIS (LUAS, NYAMAN DIBACA) */}
+        {aiSubTab === 'analysis' ? (
+          <div className="space-y-4">
+            {isLoadingAi ? (
+              <div className="py-16 flex flex-col items-center justify-center space-y-3 text-slate-400">
+                <RefreshCw className="h-8 w-8 text-indigo-600 animate-spin" />
+                <span className="text-sm font-bold text-slate-600">
+                  AI sedang mengalkulasi data omset, cashflow, fixed cost & hutang kafe...
+                </span>
+                <p className="text-xs text-slate-400">Menyusun skor kesehatan finansial dan 3-tier action plan</p>
+              </div>
+            ) : aiAnalysis ? (
+              <div className="bg-slate-50/70 p-6 sm:p-7 rounded-2xl border border-slate-200/80 text-xs sm:text-sm max-h-[750px] overflow-y-auto leading-relaxed shadow-inner">
+                {renderFormattedAiText(aiAnalysis)}
+              </div>
+            ) : (
+              <div className="py-14 text-center px-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                <Sparkles className="h-10 w-10 text-indigo-400 mx-auto mb-2 opacity-80" />
+                <p className="text-sm font-bold text-slate-700">Belum ada analisis mendalam untuk periode ini.</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                  Klik tombol <strong>"Minta Analisis AI"</strong> di atas atau di bawah untuk melakukan audit komprehensif performa kafe secara otomatis.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRequestAiAnalysis}
+                  className="mt-4 inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition active:scale-95"
+                >
+                  <Sparkles className="h-4 w-4 text-amber-300" />
+                  <span>Minta Analisis AI Sekarang</span>
+                </button>
+              </div>
+            )}
+
+            {/* Action buttons bottom (only on analysis sub-tab) */}
+            <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+              {aiAnalysis ? (
+                <button
+                  type="button"
+                  onClick={handleCopyAi}
+                  className="inline-flex items-center space-x-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 transition"
+                >
+                  {isCopiedAi ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4 text-slate-500" />}
+                  <span>{isCopiedAi ? 'Tersalin ke Clipboard' : 'Salin Laporan Lengkap'}</span>
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <button
+                type="button"
+                onClick={handleRequestAiAnalysis}
+                disabled={isLoadingAi}
+                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-black text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition active:scale-95 disabled:opacity-50"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
+                <span>{isLoadingAi ? 'Menganalisis...' : 'Refresh Analisis AI'}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* TAB CONTENT 2: CHAT & TANYA JAWAB AI (LEGA & INTERAKTIF) */
+          <div className="flex flex-col h-[520px] bg-slate-50/50 rounded-2xl border border-slate-200/80 p-4">
+            {/* Chat message stream */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+              {chatMessages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex items-start space-x-2.5 ${
+                    msg.role === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
+                >
+                  {msg.role === 'model' && (
+                    <div className="p-1.5 bg-indigo-950 text-emerald-400 rounded-xl shrink-0 mt-0.5 shadow-xs">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[80%] sm:max-w-[70%] p-3.5 rounded-2xl text-xs sm:text-sm font-medium leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-indigo-600 text-white rounded-br-none shadow-xs'
+                        : 'bg-white text-slate-800 rounded-bl-none border border-slate-200/80 shadow-xs'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <span
+                      className={`text-[10px] block text-right mt-1.5 ${
+                        msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'
+                      }`}
+                    >
+                      {msg.timestamp}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {isSendingChat && (
+                <div className="flex items-center space-x-2 text-slate-500 text-xs italic py-2 px-3 bg-white/80 rounded-xl border border-slate-200/60 w-fit">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600" />
+                  <span>AI sedang berpikir & menyusun rekomendasi finansial...</span>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Quick Prompts Chips */}
+            <div className="pt-3 pb-2 flex items-center space-x-2 overflow-x-auto text-[11px] font-bold border-t border-slate-200/80 bg-white -mx-4 -mb-4 px-4 rounded-b-2xl">
+              <span className="text-[10px] text-slate-400 uppercase font-black shrink-0">Tanya Cepat:</span>
+              <button
+                type="button"
+                onClick={() => handleSendPanelChat('Bagaimana cara menurunkan titik impas (BEP) kafe?')}
+                className="whitespace-nowrap px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 transition"
+              >
+                Turunkan BEP?
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendPanelChat('Apakah beban cicilan hutang saat ini aman?')}
+                className="whitespace-nowrap px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Keamanan Hutang?
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendPanelChat('Strategi menaikkan omset harian tanpa menambah biaya')}
+                className="whitespace-nowrap px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Dongkrak Omset?
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendPanelChat('Bagaimana cara menekan food cost & pemborosan bahan baku?')}
+                className="whitespace-nowrap px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Tekan Food Cost?
+              </button>
+            </div>
+
+            {/* Chat Input form */}
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                handleSendPanelChat();
+              }}
+              className="pt-3 border-t border-slate-200 flex items-center space-x-2"
+            >
+              <input
+                type="text"
+                placeholder="Tanyakan analisis keuangan, strategi margin, cicilan hutang kafe..."
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-2 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="submit"
+                disabled={!chatInput.trim() || isSendingChat}
+                className="p-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl disabled:opacity-50 transition shadow-xs shrink-0"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </form>
           </div>
         )}
       </div>
