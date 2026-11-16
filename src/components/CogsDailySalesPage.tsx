@@ -732,6 +732,31 @@ export default function CogsDailySalesPage({
   const [comparisonDailySortMode, setComparisonDailySortMode] = useState<'date_desc' | 'sales_desc' | 'hpp_desc' | 'profit_desc' | 'margin_desc'>('date_desc');
   const [isMinComparisonSection, setIsMinComparisonSection] = useState<boolean>(false);
 
+  // Helper to resolve valid OAuth access token across Barista, Manager, and Owner roles
+  const getEffectiveOAuthToken = async (currentToken?: string | null): Promise<string> => {
+    if (currentToken && !currentToken.endsWith('-local-token')) return currentToken;
+    const local = typeof window !== 'undefined' ? localStorage.getItem('aruskas_google_access_token') : null;
+    if (local && !local.endsWith('-local-token')) return local;
+    try {
+      const resp = await fetch('/api/auth/shared-token');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data?.accessToken && !data.accessToken.endsWith('-local-token')) {
+          localStorage.setItem('aruskas_google_access_token', data.accessToken);
+          return data.accessToken;
+        }
+      }
+    } catch {}
+    try {
+      const cloudAuth = await loadCloudSlot<any>('auth_token');
+      if (cloudAuth?.accessToken && !cloudAuth.accessToken.endsWith('-local-token')) {
+        localStorage.setItem('aruskas_google_access_token', cloudAuth.accessToken);
+        return cloudAuth.accessToken;
+      }
+    } catch {}
+    return currentToken || 'local-token';
+  };
+
   // Function to sync with Google Sheets Cloud & Shared Server Cache (Realtime all data across roles & devices)
   const syncDataToCloud = async (
     currentMenu = menuItems, 
@@ -774,34 +799,7 @@ export default function CogsDailySalesPage({
     }
 
     // Resolve valid OAuth token (fallback to shared Google OAuth token if logged in via role password)
-    let activeOAuthToken = token && !token.endsWith('-local-token') ? token : (localStorage.getItem('aruskas_google_access_token') || '');
-    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) {
-      try {
-        const resp = await fetch('/api/auth/shared-token');
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data?.accessToken && !data.accessToken.endsWith('-local-token')) {
-            activeOAuthToken = data.accessToken;
-            localStorage.setItem('aruskas_google_access_token', data.accessToken);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) {
-      try {
-        const cloudAuth = await loadCloudSlot<any>('auth_token');
-        if (cloudAuth?.accessToken && !cloudAuth.accessToken.endsWith('-local-token')) {
-          activeOAuthToken = cloudAuth.accessToken;
-          localStorage.setItem('aruskas_google_access_token', cloudAuth.accessToken);
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    const effectiveToken = activeOAuthToken || token || 'local-token';
+    const effectiveToken = await getEffectiveOAuthToken(token);
 
     setIsSyncingSheet(true);
     try {
@@ -908,15 +906,39 @@ export default function CogsDailySalesPage({
       if (showSuccessAlert) alert('Spreadsheet ID belum terhubung.');
       return;
     }
-    const effToken = token || 'local-token';
     setIsSyncingSheet(true);
     try {
+      const effToken = await getEffectiveOAuthToken(token);
       const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, effToken, menuItemsRef.current);
       if (cloudSales && cloudSales.length > 0) {
         isApplyingRemoteRef.current = true;
         setDailySales(cloudSales);
         localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(cloudSales));
         setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+
+        // Immediately update active itemizedInputs form for selectedDate
+        const normSelected = normalizeDateString(selectedDate);
+        const matchForDate = cloudSales.find(d => normalizeDateString(d.tanggal) === normSelected);
+        if (matchForDate && matchForDate.menuSales && matchForDate.menuSales.length > 0) {
+          setItemizedInputs(prev => {
+            const next = { ...prev };
+            matchForDate.menuSales!.forEach(ms => {
+              const matchedItem = menuItemsRef.current.find(m => 
+                m.id === ms.menuId || 
+                (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase() ||
+                (m.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+              );
+              if (matchedItem) {
+                next[matchedItem.id] = {
+                  jatah: typeof ms.jatah === 'number' ? ms.jatah : (next[matchedItem.id]?.jatah ?? matchedItem.defaultJatah),
+                  terjual: next[matchedItem.id]?.terjual ?? ms.terjual ?? 0
+                };
+              }
+            });
+            return next;
+          });
+        }
+
         setTimeout(() => {
           isApplyingRemoteRef.current = false;
         }, 300);
@@ -1009,15 +1031,17 @@ export default function CogsDailySalesPage({
         setIsSyncingSheet(true);
         isApplyingRemoteRef.current = true;
         try {
+          const effToken = await getEffectiveOAuthToken(token);
+
           // 1. Fetch Remote Ingredients
-          const cloudIngs = await fetchIngredientsFromSheet(spreadsheetId, token);
+          const cloudIngs = await fetchIngredientsFromSheet(spreadsheetId, effToken);
           if (cloudIngs && cloudIngs.length > 0) {
             setIngredients(cloudIngs);
             localStorage.setItem('aruskas_cogs_ingredients', JSON.stringify(cloudIngs));
           }
 
           // 2. Fetch Remote Biaya List
-          const cloudBiaya = await fetchBiayaListFromSheet(spreadsheetId, token);
+          const cloudBiaya = await fetchBiayaListFromSheet(spreadsheetId, effToken);
           if (cloudBiaya && cloudBiaya.length > 0) {
             setBiayaList(cloudBiaya);
             localStorage.setItem('aruskas_cogs_page_biaya', JSON.stringify(cloudBiaya));
@@ -1025,7 +1049,7 @@ export default function CogsDailySalesPage({
 
           // 3. Fetch Remote Menu Catalog & sync deletion tombstones
           const [cloudMenu, remoteMenuSlot] = await Promise.all([
-            fetchMenuCatalogFromSheet(spreadsheetId, token),
+            fetchMenuCatalogFromSheet(spreadsheetId, effToken),
             loadCloudSlot<{ items?: MenuItem[]; deletedIds?: string[]; deletedNames?: string[]; updatedAt?: number }>('menu_catalog').catch(() => null),
           ]);
           const localTombs = readDeletedMenuTombstones();
@@ -1064,7 +1088,7 @@ export default function CogsDailySalesPage({
               saveMenuCatalogToSheet(
                 spreadsheetId,
                 cleanedCloudMenu,
-                token,
+                effToken,
                 Array.from(mergedDeletedIds),
                 Array.from(mergedDeletedNames)
               ).catch(() => {});
@@ -1087,7 +1111,7 @@ export default function CogsDailySalesPage({
             // ignore
           }
 
-          const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, token, activeMenu);
+          const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, effToken, activeMenu);
           if ((cloudSales && cloudSales.length > 0) || sharedServerRecords.length > 0) {
             setDailySales(prevSales => {
               const mergedMap = new Map<string, DailySalesRecord>();
@@ -1132,13 +1156,11 @@ export default function CogsDailySalesPage({
                     const isFromJatahSheet = Boolean(cMs.fromJatahSheet);
                     const finalJatah = isFromJatahSheet && typeof cMs.jatah === 'number'
                       ? cMs.jatah
-                      : hasLocalUpdate && localMs !== undefined
-                        ? (localMs.jatah ?? cMs.jatah ?? 0)
-                        : (typeof cMs.jatah === 'number' && cMs.jatah > 0) 
-                          ? cMs.jatah 
-                          : (localMs?.jatah ?? cMs.jatah ?? 0);
-                    const finalTerjual = hasLocalUpdate && localMs !== undefined
-                      ? (localMs.terjual ?? cMs.terjual ?? 0)
+                      : (typeof cMs.jatah === 'number' && cMs.jatah > 0)
+                        ? cMs.jatah
+                        : (localMs?.jatah ?? cMs.jatah ?? 0);
+                    const finalTerjual = (localMs && typeof localMs.terjual === 'number' && localMs.terjual > 0)
+                      ? localMs.terjual
                       : (typeof cMs.terjual === 'number' && cMs.terjual > 0)
                         ? cMs.terjual
                         : (localMs?.terjual ?? cMs.terjual ?? 0);
@@ -1189,6 +1211,31 @@ export default function CogsDailySalesPage({
 
               const mergedList = Array.from(mergedMap.values()).sort((a, b) => a.tanggal.localeCompare(b.tanggal));
               localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(mergedList));
+
+              // Immediately sync active itemizedInputs form for selectedDate
+              const normSelected = normalizeDateString(selectedDate);
+              const matchForDate = mergedList.find(d => normalizeDateString(d.tanggal) === normSelected);
+              if (matchForDate && matchForDate.menuSales && matchForDate.menuSales.length > 0) {
+                setTimeout(() => {
+                  setItemizedInputs(prev => {
+                    const next = { ...prev };
+                    matchForDate.menuSales!.forEach(ms => {
+                      const matchedItem = activeMenu.find(m => 
+                        m.id === ms.menuId || 
+                        (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase() ||
+                        (m.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                      );
+                      if (matchedItem) {
+                        next[matchedItem.id] = {
+                          jatah: typeof ms.jatah === 'number' ? ms.jatah : (next[matchedItem.id]?.jatah ?? matchedItem.defaultJatah),
+                          terjual: next[matchedItem.id]?.terjual ?? ms.terjual ?? 0
+                        };
+                      }
+                    });
+                    return next;
+                  });
+                }, 50);
+              }
 
               return mergedList;
             });
@@ -1362,7 +1409,8 @@ export default function CogsDailySalesPage({
 
         // Realtime poll for "Barang Masuk & Pembelian" from Google Spreadsheet
         if (spreadsheetId) {
-          const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
+          const effPollToken = await getEffectiveOAuthToken(token);
+          const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, effPollToken);
           if (isMounted && remoteIncoming && remoteIncoming.length > 0) {
             setIncomingBatches(prev => {
               const prevSig = prev.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
@@ -2203,7 +2251,8 @@ export default function CogsDailySalesPage({
         );
         const found = existingRecord.menuSales.find(ms => 
           ms.menuId === item.id || 
-          (ms.nama && aliasSet.has(ms.nama.trim().toLowerCase()))
+          (ms.nama && aliasSet.has(ms.nama.trim().toLowerCase())) ||
+          (ms.nama && ms.nama.toLowerCase().replace(/[^a-z0-9]/g, '') === itemNamaLower.replace(/[^a-z0-9]/g, ''))
         );
         if (found) {
           jatahVal = typeof found.jatah === 'number' ? found.jatah : item.defaultJatah;
