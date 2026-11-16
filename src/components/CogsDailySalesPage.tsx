@@ -906,50 +906,130 @@ export default function CogsDailySalesPage({
       if (showSuccessAlert) alert('Spreadsheet ID belum terhubung.');
       return;
     }
+    const normSelected = normalizeDateString(selectedDate) || selectedDate;
     setIsSyncingSheet(true);
     try {
       const effToken = await getEffectiveOAuthToken(token);
       const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, effToken, menuItemsRef.current);
-      if (cloudSales && cloudSales.length > 0) {
-        isApplyingRemoteRef.current = true;
-        setDailySales(cloudSales);
-        localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(cloudSales));
-        setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-
-        // Immediately update active itemizedInputs form for selectedDate
-        const normSelected = normalizeDateString(selectedDate);
-        const matchForDate = cloudSales.find(d => normalizeDateString(d.tanggal) === normSelected);
-        if (matchForDate) {
-          setItemizedInputs(prev => {
-            const next = { ...prev };
-            menuItemsRef.current.forEach(item => {
-              const itemNamaLower = (item.nama || '').trim().toLowerCase();
-              const itemNorm = itemNamaLower.replace(/[^a-z0-9]/g, '');
-              const foundMs = matchForDate.menuSales?.find(ms => 
-                ms.menuId === item.id || 
-                (ms.nama || '').trim().toLowerCase() === itemNamaLower ||
-                (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === itemNorm
-              );
-              const jVal = foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : 0;
-              next[item.id] = {
-                jatah: jVal,
-                terjual: next[item.id]?.terjual ?? foundMs?.terjual ?? 0
-              };
-            });
-            return next;
-          });
-          const totJatah = (matchForDate.menuSales || []).reduce((s: number, ms: any) => s + (ms.jatah || 0), 0);
-          setQuickJatah((totJatah > 0 ? totJatah : (matchForDate.totalJatah || 0)).toString());
-        }
-
-        setTimeout(() => {
-          isApplyingRemoteRef.current = false;
-        }, 300);
+      if (!cloudSales || cloudSales.length === 0) {
         if (showSuccessAlert) {
-          alert(`✅ Berhasil menarik data jatah harian dari sheet JATAH HARIAN Google Sheets (${cloudSales.length} tanggal terupdate)!`);
+          alert('Tidak ditemukan data jatah dari Google Sheets.');
         }
-      } else if (showSuccessAlert) {
-        alert('Tidak ditemukan data jatah baru pada Google Sheets.');
+        return;
+      }
+
+      // Find jatah data ONLY for the currently selected date
+      const matchForDate = cloudSales.find(d => (normalizeDateString(d.tanggal) || d.tanggal) === normSelected);
+      if (!matchForDate) {
+        if (showSuccessAlert) {
+          alert(`ℹ️ Tidak ditemukan catatan jatah untuk tanggal ${formatDateDDMMYYYY(selectedDate)} pada sheet JATAH HARIAN Google Sheets. Data hari lain tidak diubah.`);
+        }
+        return;
+      }
+
+      isApplyingRemoteRef.current = true;
+      setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+
+      // 1. Update ONLY itemizedInputs for selectedDate (without touching other days)
+      const nextItemized: Record<string, { jatah: number; terjual: number }> = {};
+      menuItemsRef.current.forEach(item => {
+        const itemNamaLower = (item.nama || '').trim().toLowerCase();
+        const itemNorm = itemNamaLower.replace(/[^a-z0-9]/g, '');
+        const foundMs = matchForDate.menuSales?.find(ms => 
+          ms.menuId === item.id || 
+          (ms.nama || '').trim().toLowerCase() === itemNamaLower ||
+          (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === itemNorm
+        );
+        const jVal = foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : 0;
+        nextItemized[item.id] = {
+          jatah: jVal,
+          terjual: itemizedInputs[item.id]?.terjual ?? foundMs?.terjual ?? 0
+        };
+      });
+      setItemizedInputs(nextItemized);
+
+      const totJatah = (matchForDate.menuSales || []).reduce((s: number, ms: any) => s + (ms.jatah || 0), 0);
+      setQuickJatah((totJatah > 0 ? totJatah : (matchForDate.totalJatah || 0)).toString());
+
+      // 2. Update ONLY the record for selectedDate in dailySales, keeping all other dates 100% untouched
+      setDailySales(prevSales => {
+        let dateFoundInPrev = false;
+        const nextSales = prevSales.map(rec => {
+          const recDate = normalizeDateString(rec.tanggal) || rec.tanggal;
+          if (recDate !== normSelected) {
+            return rec; // PRESERVE completely untouched!
+          }
+          dateFoundInPrev = true;
+
+          // Merge jatah into this specific date's record while keeping barista sales (terjual), omset, cups, notes intact
+          const mergedMenuSales = (rec.menuSales || []).map(ms => {
+            const foundMs = matchForDate.menuSales?.find(f => 
+              f.menuId === ms.menuId || 
+              (f.nama && ms.nama && f.nama.trim().toLowerCase() === ms.nama.trim().toLowerCase()) ||
+              (f.nama && ms.nama && f.nama.toLowerCase().replace(/[^a-z0-9]/g, '') === ms.nama.toLowerCase().replace(/[^a-z0-9]/g, ''))
+            );
+            return {
+              ...ms,
+              jatah: foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : ms.jatah,
+              fromJatahSheet: true
+            };
+          });
+
+          // Add any menu items from sheet that were not in existing record
+          if (matchForDate.menuSales) {
+            matchForDate.menuSales.forEach(fMs => {
+              const inMerged = mergedMenuSales.some(m => 
+                m.menuId === fMs.menuId || 
+                (m.nama && fMs.nama && m.nama.trim().toLowerCase() === fMs.nama.trim().toLowerCase())
+              );
+              if (!inMerged) {
+                mergedMenuSales.push({
+                  ...fMs,
+                  terjual: 0,
+                  fromJatahSheet: true
+                });
+              }
+            });
+          }
+
+          const calcHpp = mergedMenuSales.reduce((s: number, ms: any) => {
+            const m = menuItemsRef.current.find(item => item.id === ms.menuId || (item.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase());
+            const hppUnit = Number(ms.hpp) || m?.hpp || 0;
+            return s + (((Number(ms.terjual) || 0) + (Number(ms.jatah) || 0)) * hppUnit);
+          }, 0);
+
+          return {
+            ...rec,
+            totalJatah: matchForDate.totalJatah ?? (totJatah > 0 ? totJatah : rec.totalJatah),
+            hppTotal: calcHpp > 0 ? calcHpp : rec.hppTotal,
+            menuSales: mergedMenuSales,
+            updatedAt: Date.now()
+          };
+        });
+
+        if (!dateFoundInPrev) {
+          nextSales.push({
+            ...matchForDate,
+            id: matchForDate.id || `ds-${normSelected}`,
+            tanggal: normSelected,
+            updatedAt: Date.now()
+          });
+        }
+
+        const sorted = nextSales.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+        localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(sorted));
+        return sorted;
+      });
+
+      // 3. Persist live inputs for selectedDate to cross-device shared cloud
+      commitItemizedInputsLive(nextItemized, normSelected, dailyNotes);
+
+      setTimeout(() => {
+        isApplyingRemoteRef.current = false;
+      }, 300);
+
+      if (showSuccessAlert) {
+        alert(`✅ Berhasil menarik jatah barista tanggal ${formatDateDDMMYYYY(selectedDate)} (${totJatah} Porsi Jatah terupdate). Data hari lain tidak diubah.`);
       }
     } catch (err) {
       console.error('Error refreshing jatah from sheet:', err);
