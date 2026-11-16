@@ -919,24 +919,27 @@ export default function CogsDailySalesPage({
         // Immediately update active itemizedInputs form for selectedDate
         const normSelected = normalizeDateString(selectedDate);
         const matchForDate = cloudSales.find(d => normalizeDateString(d.tanggal) === normSelected);
-        if (matchForDate && matchForDate.menuSales && matchForDate.menuSales.length > 0) {
+        if (matchForDate) {
           setItemizedInputs(prev => {
             const next = { ...prev };
-            matchForDate.menuSales!.forEach(ms => {
-              const matchedItem = menuItemsRef.current.find(m => 
-                m.id === ms.menuId || 
-                (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase() ||
-                (m.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+            menuItemsRef.current.forEach(item => {
+              const itemNamaLower = (item.nama || '').trim().toLowerCase();
+              const itemNorm = itemNamaLower.replace(/[^a-z0-9]/g, '');
+              const foundMs = matchForDate.menuSales?.find(ms => 
+                ms.menuId === item.id || 
+                (ms.nama || '').trim().toLowerCase() === itemNamaLower ||
+                (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === itemNorm
               );
-              if (matchedItem) {
-                next[matchedItem.id] = {
-                  jatah: typeof ms.jatah === 'number' ? ms.jatah : (next[matchedItem.id]?.jatah ?? matchedItem.defaultJatah),
-                  terjual: next[matchedItem.id]?.terjual ?? ms.terjual ?? 0
-                };
-              }
+              const jVal = foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : 0;
+              next[item.id] = {
+                jatah: jVal,
+                terjual: next[item.id]?.terjual ?? foundMs?.terjual ?? 0
+              };
             });
             return next;
           });
+          const totJatah = (matchForDate.menuSales || []).reduce((s: number, ms: any) => s + (ms.jatah || 0), 0);
+          setQuickJatah((totJatah > 0 ? totJatah : (matchForDate.totalJatah || 0)).toString());
         }
 
         setTimeout(() => {
@@ -1215,25 +1218,28 @@ export default function CogsDailySalesPage({
               // Immediately sync active itemizedInputs form for selectedDate
               const normSelected = normalizeDateString(selectedDate);
               const matchForDate = mergedList.find(d => normalizeDateString(d.tanggal) === normSelected);
-              if (matchForDate && matchForDate.menuSales && matchForDate.menuSales.length > 0) {
+              if (matchForDate) {
                 setTimeout(() => {
                   setItemizedInputs(prev => {
                     const next = { ...prev };
-                    matchForDate.menuSales!.forEach(ms => {
-                      const matchedItem = activeMenu.find(m => 
-                        m.id === ms.menuId || 
-                        (m.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase() ||
-                        (m.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                    activeMenu.forEach(item => {
+                      const itemNamaLower = (item.nama || '').trim().toLowerCase();
+                      const itemNorm = itemNamaLower.replace(/[^a-z0-9]/g, '');
+                      const foundMs = matchForDate.menuSales?.find(ms => 
+                        ms.menuId === item.id || 
+                        (ms.nama || '').trim().toLowerCase() === itemNamaLower ||
+                        (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === itemNorm
                       );
-                      if (matchedItem) {
-                        next[matchedItem.id] = {
-                          jatah: typeof ms.jatah === 'number' ? ms.jatah : (next[matchedItem.id]?.jatah ?? matchedItem.defaultJatah),
-                          terjual: next[matchedItem.id]?.terjual ?? ms.terjual ?? 0
-                        };
-                      }
+                      const jVal = foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : 0;
+                      next[item.id] = {
+                        jatah: jVal,
+                        terjual: next[item.id]?.terjual ?? foundMs?.terjual ?? 0
+                      };
                     });
                     return next;
                   });
+                  const totJatah = (matchForDate.menuSales || []).reduce((s: number, ms: any) => s + (ms.jatah || 0), 0);
+                  setQuickJatah((totJatah > 0 ? totJatah : (matchForDate.totalJatah || 0)).toString());
                 }, 50);
               }
 
