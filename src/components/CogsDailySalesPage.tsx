@@ -303,7 +303,6 @@ export interface DailySalesRecord {
   hppTotal: number;
   notes?: string;
   menuSales?: DailyMenuItemSale[];
-  totalJatah?: number;
 }
 
 export interface BiayaOperasionalItem {
@@ -732,31 +731,6 @@ export default function CogsDailySalesPage({
   const [comparisonDailySortMode, setComparisonDailySortMode] = useState<'date_desc' | 'sales_desc' | 'hpp_desc' | 'profit_desc' | 'margin_desc'>('date_desc');
   const [isMinComparisonSection, setIsMinComparisonSection] = useState<boolean>(false);
 
-  // Helper to resolve valid OAuth access token across Barista, Manager, and Owner roles
-  const getEffectiveOAuthToken = async (currentToken?: string | null): Promise<string> => {
-    if (currentToken && !currentToken.endsWith('-local-token')) return currentToken;
-    const local = typeof window !== 'undefined' ? localStorage.getItem('aruskas_google_access_token') : null;
-    if (local && !local.endsWith('-local-token')) return local;
-    try {
-      const resp = await fetch('/api/auth/shared-token');
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data?.accessToken && !data.accessToken.endsWith('-local-token')) {
-          localStorage.setItem('aruskas_google_access_token', data.accessToken);
-          return data.accessToken;
-        }
-      }
-    } catch {}
-    try {
-      const cloudAuth = await loadCloudSlot<any>('auth_token');
-      if (cloudAuth?.accessToken && !cloudAuth.accessToken.endsWith('-local-token')) {
-        localStorage.setItem('aruskas_google_access_token', cloudAuth.accessToken);
-        return cloudAuth.accessToken;
-      }
-    } catch {}
-    return currentToken || 'local-token';
-  };
-
   // Function to sync with Google Sheets Cloud & Shared Server Cache (Realtime all data across roles & devices)
   const syncDataToCloud = async (
     currentMenu = menuItems, 
@@ -799,7 +773,34 @@ export default function CogsDailySalesPage({
     }
 
     // Resolve valid OAuth token (fallback to shared Google OAuth token if logged in via role password)
-    const effectiveToken = await getEffectiveOAuthToken(token);
+    let activeOAuthToken = token && !token.endsWith('-local-token') ? token : (localStorage.getItem('aruskas_google_access_token') || '');
+    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) {
+      try {
+        const resp = await fetch('/api/auth/shared-token');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.accessToken && !data.accessToken.endsWith('-local-token')) {
+            activeOAuthToken = data.accessToken;
+            localStorage.setItem('aruskas_google_access_token', data.accessToken);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!activeOAuthToken || activeOAuthToken.endsWith('-local-token')) {
+      try {
+        const cloudAuth = await loadCloudSlot<any>('auth_token');
+        if (cloudAuth?.accessToken && !cloudAuth.accessToken.endsWith('-local-token')) {
+          activeOAuthToken = cloudAuth.accessToken;
+          localStorage.setItem('aruskas_google_access_token', cloudAuth.accessToken);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const effectiveToken = activeOAuthToken || token || 'local-token';
 
     setIsSyncingSheet(true);
     try {
@@ -901,146 +902,6 @@ export default function CogsDailySalesPage({
     }
   };
 
-  const handleRefreshJatahFromSheet = async (showSuccessAlert = true) => {
-    if (!spreadsheetId) {
-      if (showSuccessAlert) alert('Spreadsheet ID belum terhubung.');
-      return;
-    }
-    const normSelected = normalizeDateString(selectedDate) || selectedDate;
-    setIsSyncingSheet(true);
-    try {
-      const effToken = await getEffectiveOAuthToken(token);
-      const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, effToken, menuItemsRef.current);
-      if (!cloudSales || cloudSales.length === 0) {
-        if (showSuccessAlert) {
-          alert('Tidak ditemukan data jatah dari Google Sheets.');
-        }
-        return;
-      }
-
-      // Find jatah data ONLY for the currently selected date
-      const matchForDate = cloudSales.find(d => (normalizeDateString(d.tanggal) || d.tanggal) === normSelected);
-      if (!matchForDate) {
-        if (showSuccessAlert) {
-          alert(`ℹ️ Tidak ditemukan catatan jatah untuk tanggal ${formatDateDDMMYYYY(selectedDate)} pada sheet JATAH HARIAN Google Sheets. Data hari lain tidak diubah.`);
-        }
-        return;
-      }
-
-      isApplyingRemoteRef.current = true;
-      setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-
-      // 1. Update ONLY itemizedInputs for selectedDate (without touching other days)
-      const nextItemized: Record<string, { jatah: number; terjual: number }> = {};
-      menuItemsRef.current.forEach(item => {
-        const itemNamaLower = (item.nama || '').trim().toLowerCase();
-        const itemNorm = itemNamaLower.replace(/[^a-z0-9]/g, '');
-        const foundMs = matchForDate.menuSales?.find(ms => 
-          ms.menuId === item.id || 
-          (ms.nama || '').trim().toLowerCase() === itemNamaLower ||
-          (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === itemNorm
-        );
-        const jVal = foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : 0;
-        nextItemized[item.id] = {
-          jatah: jVal,
-          terjual: itemizedInputs[item.id]?.terjual ?? foundMs?.terjual ?? 0
-        };
-      });
-      setItemizedInputs(nextItemized);
-
-      const totJatah = (matchForDate.menuSales || []).reduce((s: number, ms: any) => s + (ms.jatah || 0), 0);
-      setQuickJatah((totJatah > 0 ? totJatah : (matchForDate.totalJatah || 0)).toString());
-
-      // 2. Update ONLY the record for selectedDate in dailySales, keeping all other dates 100% untouched
-      setDailySales(prevSales => {
-        let dateFoundInPrev = false;
-        const nextSales = prevSales.map(rec => {
-          const recDate = normalizeDateString(rec.tanggal) || rec.tanggal;
-          if (recDate !== normSelected) {
-            return rec; // PRESERVE completely untouched!
-          }
-          dateFoundInPrev = true;
-
-          // Merge jatah into this specific date's record while keeping barista sales (terjual), omset, cups, notes intact
-          const mergedMenuSales = (rec.menuSales || []).map(ms => {
-            const foundMs = matchForDate.menuSales?.find(f => 
-              f.menuId === ms.menuId || 
-              (f.nama && ms.nama && f.nama.trim().toLowerCase() === ms.nama.trim().toLowerCase()) ||
-              (f.nama && ms.nama && f.nama.toLowerCase().replace(/[^a-z0-9]/g, '') === ms.nama.toLowerCase().replace(/[^a-z0-9]/g, ''))
-            );
-            return {
-              ...ms,
-              jatah: foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : ms.jatah,
-              fromJatahSheet: true
-            };
-          });
-
-          // Add any menu items from sheet that were not in existing record
-          if (matchForDate.menuSales) {
-            matchForDate.menuSales.forEach(fMs => {
-              const inMerged = mergedMenuSales.some(m => 
-                m.menuId === fMs.menuId || 
-                (m.nama && fMs.nama && m.nama.trim().toLowerCase() === fMs.nama.trim().toLowerCase())
-              );
-              if (!inMerged) {
-                mergedMenuSales.push({
-                  ...fMs,
-                  terjual: 0,
-                  fromJatahSheet: true
-                });
-              }
-            });
-          }
-
-          const calcHpp = mergedMenuSales.reduce((s: number, ms: any) => {
-            const m = menuItemsRef.current.find(item => item.id === ms.menuId || (item.nama || '').trim().toLowerCase() === (ms.nama || '').trim().toLowerCase());
-            const hppUnit = Number(ms.hpp) || m?.hpp || 0;
-            return s + (((Number(ms.terjual) || 0) + (Number(ms.jatah) || 0)) * hppUnit);
-          }, 0);
-
-          return {
-            ...rec,
-            totalJatah: matchForDate.totalJatah ?? (totJatah > 0 ? totJatah : rec.totalJatah),
-            hppTotal: calcHpp > 0 ? calcHpp : rec.hppTotal,
-            menuSales: mergedMenuSales,
-            updatedAt: Date.now()
-          };
-        });
-
-        if (!dateFoundInPrev) {
-          nextSales.push({
-            ...matchForDate,
-            id: matchForDate.id || `ds-${normSelected}`,
-            tanggal: normSelected,
-            updatedAt: Date.now()
-          });
-        }
-
-        const sorted = nextSales.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
-        localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(sorted));
-        return sorted;
-      });
-
-      // 3. Persist live inputs for selectedDate to cross-device shared cloud
-      commitItemizedInputsLive(nextItemized, normSelected, dailyNotes);
-
-      setTimeout(() => {
-        isApplyingRemoteRef.current = false;
-      }, 300);
-
-      if (showSuccessAlert) {
-        alert(`✅ Berhasil menarik jatah barista tanggal ${formatDateDDMMYYYY(selectedDate)} (${totJatah} Porsi Jatah terupdate). Data hari lain tidak diubah.`);
-      }
-    } catch (err) {
-      console.error('Error refreshing jatah from sheet:', err);
-      if (showSuccessAlert) {
-        alert('Gagal menyinkronkan data jatah dari Google Sheets.');
-      }
-    } finally {
-      setIsSyncingSheet(false);
-    }
-  };
-
   const handleAddIncomingBatch = (newBatch: Omit<IncomingIngredientBatch, 'id'>) => {
     const created: IncomingIngredientBatch = {
       ...newBatch,
@@ -1114,17 +975,15 @@ export default function CogsDailySalesPage({
         setIsSyncingSheet(true);
         isApplyingRemoteRef.current = true;
         try {
-          const effToken = await getEffectiveOAuthToken(token);
-
           // 1. Fetch Remote Ingredients
-          const cloudIngs = await fetchIngredientsFromSheet(spreadsheetId, effToken);
+          const cloudIngs = await fetchIngredientsFromSheet(spreadsheetId, token);
           if (cloudIngs && cloudIngs.length > 0) {
             setIngredients(cloudIngs);
             localStorage.setItem('aruskas_cogs_ingredients', JSON.stringify(cloudIngs));
           }
 
           // 2. Fetch Remote Biaya List
-          const cloudBiaya = await fetchBiayaListFromSheet(spreadsheetId, effToken);
+          const cloudBiaya = await fetchBiayaListFromSheet(spreadsheetId, token);
           if (cloudBiaya && cloudBiaya.length > 0) {
             setBiayaList(cloudBiaya);
             localStorage.setItem('aruskas_cogs_page_biaya', JSON.stringify(cloudBiaya));
@@ -1132,7 +991,7 @@ export default function CogsDailySalesPage({
 
           // 3. Fetch Remote Menu Catalog & sync deletion tombstones
           const [cloudMenu, remoteMenuSlot] = await Promise.all([
-            fetchMenuCatalogFromSheet(spreadsheetId, effToken),
+            fetchMenuCatalogFromSheet(spreadsheetId, token),
             loadCloudSlot<{ items?: MenuItem[]; deletedIds?: string[]; deletedNames?: string[]; updatedAt?: number }>('menu_catalog').catch(() => null),
           ]);
           const localTombs = readDeletedMenuTombstones();
@@ -1171,7 +1030,7 @@ export default function CogsDailySalesPage({
               saveMenuCatalogToSheet(
                 spreadsheetId,
                 cleanedCloudMenu,
-                effToken,
+                token,
                 Array.from(mergedDeletedIds),
                 Array.from(mergedDeletedNames)
               ).catch(() => {});
@@ -1194,7 +1053,7 @@ export default function CogsDailySalesPage({
             // ignore
           }
 
-          const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, effToken, activeMenu);
+          const cloudSales = await fetchDailySalesFromSheet(spreadsheetId, token, activeMenu);
           if ((cloudSales && cloudSales.length > 0) || sharedServerRecords.length > 0) {
             setDailySales(prevSales => {
               const mergedMap = new Map<string, DailySalesRecord>();
@@ -1236,14 +1095,13 @@ export default function CogsDailySalesPage({
                     const localMs = existing.menuSales?.find((lMs: any) => 
                       lMs.menuId === cMs.menuId || (lMs.nama && cMs.nama && lMs.nama.trim().toLowerCase() === cMs.nama.trim().toLowerCase())
                     );
-                    const isFromJatahSheet = Boolean(cMs.fromJatahSheet);
-                    const finalJatah = isFromJatahSheet && typeof cMs.jatah === 'number'
-                      ? cMs.jatah
-                      : (typeof cMs.jatah === 'number' && cMs.jatah > 0)
-                        ? cMs.jatah
+                    const finalJatah = hasLocalUpdate && localMs !== undefined
+                      ? (localMs.jatah ?? cMs.jatah ?? 0)
+                      : (typeof cMs.jatah === 'number' && cMs.jatah > 0) 
+                        ? cMs.jatah 
                         : (localMs?.jatah ?? cMs.jatah ?? 0);
-                    const finalTerjual = (localMs && typeof localMs.terjual === 'number' && localMs.terjual > 0)
-                      ? localMs.terjual
+                    const finalTerjual = hasLocalUpdate && localMs !== undefined
+                      ? (localMs.terjual ?? cMs.terjual ?? 0)
                       : (typeof cMs.terjual === 'number' && cMs.terjual > 0)
                         ? cMs.terjual
                         : (localMs?.terjual ?? cMs.terjual ?? 0);
@@ -1294,34 +1152,6 @@ export default function CogsDailySalesPage({
 
               const mergedList = Array.from(mergedMap.values()).sort((a, b) => a.tanggal.localeCompare(b.tanggal));
               localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(mergedList));
-
-              // Immediately sync active itemizedInputs form for selectedDate
-              const normSelected = normalizeDateString(selectedDate);
-              const matchForDate = mergedList.find(d => normalizeDateString(d.tanggal) === normSelected);
-              if (matchForDate) {
-                setTimeout(() => {
-                  setItemizedInputs(prev => {
-                    const next = { ...prev };
-                    activeMenu.forEach(item => {
-                      const itemNamaLower = (item.nama || '').trim().toLowerCase();
-                      const itemNorm = itemNamaLower.replace(/[^a-z0-9]/g, '');
-                      const foundMs = matchForDate.menuSales?.find(ms => 
-                        ms.menuId === item.id || 
-                        (ms.nama || '').trim().toLowerCase() === itemNamaLower ||
-                        (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === itemNorm
-                      );
-                      const jVal = foundMs && typeof foundMs.jatah === 'number' ? foundMs.jatah : 0;
-                      next[item.id] = {
-                        jatah: jVal,
-                        terjual: next[item.id]?.terjual ?? foundMs?.terjual ?? 0
-                      };
-                    });
-                    return next;
-                  });
-                  const totJatah = (matchForDate.menuSales || []).reduce((s: number, ms: any) => s + (ms.jatah || 0), 0);
-                  setQuickJatah((totJatah > 0 ? totJatah : (matchForDate.totalJatah || 0)).toString());
-                }, 50);
-              }
 
               return mergedList;
             });
@@ -1495,8 +1325,7 @@ export default function CogsDailySalesPage({
 
         // Realtime poll for "Barang Masuk & Pembelian" from Google Spreadsheet
         if (spreadsheetId) {
-          const effPollToken = await getEffectiveOAuthToken(token);
-          const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, effPollToken);
+          const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
           if (isMounted && remoteIncoming && remoteIncoming.length > 0) {
             setIncomingBatches(prev => {
               const prevSig = prev.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
@@ -2337,8 +2166,7 @@ export default function CogsDailySalesPage({
         );
         const found = existingRecord.menuSales.find(ms => 
           ms.menuId === item.id || 
-          (ms.nama && aliasSet.has(ms.nama.trim().toLowerCase())) ||
-          (ms.nama && ms.nama.toLowerCase().replace(/[^a-z0-9]/g, '') === itemNamaLower.replace(/[^a-z0-9]/g, ''))
+          (ms.nama && aliasSet.has(ms.nama.trim().toLowerCase()))
         );
         if (found) {
           jatahVal = typeof found.jatah === 'number' ? found.jatah : item.defaultJatah;
@@ -2357,9 +2185,7 @@ export default function CogsDailySalesPage({
       setQuickOmset(existingRecord.omset.toString());
       if (existingRecord.menuSales && existingRecord.menuSales.length > 0) {
         const totJatah = existingRecord.menuSales.reduce((s, ms) => s + (ms.jatah || 0), 0);
-        setQuickJatah(totJatah > 0 ? totJatah.toString() : (existingRecord.totalJatah?.toString() || '0'));
-      } else if (existingRecord.totalJatah) {
-        setQuickJatah(existingRecord.totalJatah.toString());
+        setQuickJatah(totJatah.toString());
       } else {
         setQuickJatah('0');
       }
@@ -2436,20 +2262,18 @@ export default function CogsDailySalesPage({
       totalHpp += (input.terjual + input.jatah) * itemHpp;
     });
 
-    const activeDailyRecord = dailySales.find(d => normalizeDateString(d.tanggal) === normalizeDateString(selectedDate));
-    const effectiveTotalJatah = totalJatah > 0 ? totalJatah : (activeDailyRecord?.totalJatah || 0);
     const grossProfit = totalOmset - totalHpp;
-    const fulfillmentPct = effectiveTotalJatah > 0 ? (totalCups / effectiveTotalJatah) * 100 : 0;
+    const fulfillmentPct = totalJatah > 0 ? (totalCups / totalJatah) * 100 : 0;
 
     return {
       totalCups,
-      totalJatah: effectiveTotalJatah,
+      totalJatah,
       totalOmset,
       totalHpp,
       grossProfit,
       fulfillmentPct
     };
-  }, [menuItems, itemizedInputs, ingredients, dailySales, selectedDate]);
+  }, [menuItems, itemizedInputs, ingredients]);
 
   // Active Comparison Data Metrics for Daily Sales vs Total HPP & Gross Margin %
   const activeCompData = useMemo(() => {
@@ -4049,7 +3873,7 @@ export default function CogsDailySalesPage({
           className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 sm:p-6 space-y-4 sm:space-y-5"
         >
           {/* Minimalist Form Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 flex-wrap gap-2">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl shrink-0">
                 <CheckSquare className="h-5 w-5" />
@@ -4063,19 +3887,6 @@ export default function CogsDailySalesPage({
                 </p>
               </div>
             </div>
-
-            {spreadsheetId && (
-              <button
-                type="button"
-                onClick={() => handleRefreshJatahFromSheet(true)}
-                disabled={isSyncingSheet}
-                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-lg transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
-                title="Tarik data jatah barista dari sheet JATAH HARIAN di Google Sheets"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isSyncingSheet ? 'animate-spin' : ''}`} />
-                <span>Tarik Jatah Sheet</span>
-              </button>
-            )}
           </div>
 
           {/* Date Picker & Live Summary Counters (Mobile Responsive Grid) */}
@@ -5322,7 +5133,7 @@ export default function CogsDailySalesPage({
                         <th className="py-2.5 px-3 text-center w-32 bg-indigo-50/50 text-indigo-950 border-r border-indigo-100">
                           <div>Jatah Barista (Porsi)</div>
                           <span className="text-[8.5px] font-medium text-indigo-700 normal-case block font-sans">
-                            Sync Sheet: JATAH HARIAN
+                            Input Manual & Sync ke Sheet
                           </span>
                         </th>
                         <th className="py-2.5 px-3 text-right">Omset Harian</th>

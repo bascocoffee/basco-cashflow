@@ -260,21 +260,13 @@ export async function fetchSheetRowsWithFallback(
 ): Promise<string[][] | null> {
   if (!spreadsheetId || spreadsheetId.startsWith('local_')) return null;
 
-  let effToken = accessToken && !accessToken.endsWith('-local-token') ? accessToken : '';
-  if (!effToken && typeof window !== 'undefined') {
-    const cached = localStorage.getItem('aruskas_google_access_token');
-    if (cached && !cached.endsWith('-local-token')) {
-      effToken = cached;
-    }
-  }
-
-  const hasValidOAuth = Boolean(effToken);
+  const hasValidOAuth = Boolean(accessToken && !accessToken.endsWith('-local-token'));
 
   if (hasValidOAuth) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${effToken}` }
+        headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (res.ok) {
         const data = await res.json();
@@ -959,414 +951,49 @@ export async function fetchDailySalesFromSheet(
   menuCatalog?: any[]
 ): Promise<any[] | null> {
   try {
-    // 0. Auto-resolve OAuth token if accessToken is a role token (e.g. barista-local-token)
-    let effToken = accessToken && !accessToken.endsWith('-local-token') ? accessToken : '';
-    if (!effToken && typeof window !== 'undefined') {
-      const cached = localStorage.getItem('aruskas_google_access_token');
-      if (cached && !cached.endsWith('-local-token')) {
-        effToken = cached;
-      }
-      if (!effToken) {
-        try {
-          const resp = await fetch('/api/auth/shared-token');
-          if (resp.ok) {
-            const data = await resp.json();
-            if (data?.accessToken && !data.accessToken.endsWith('-local-token')) {
-              effToken = data.accessToken;
-              localStorage.setItem('aruskas_google_access_token', data.accessToken);
-            }
-          }
-        } catch {}
-      }
-      if (!effToken) {
-        try {
-          const cloudAuth = await loadCloudSlot<any>('auth_token');
-          if (cloudAuth?.accessToken && !cloudAuth.accessToken.endsWith('-local-token')) {
-            effToken = cloudAuth.accessToken;
-            localStorage.setItem('aruskas_google_access_token', cloudAuth.accessToken);
-          }
-        } catch {}
-      }
-    }
-    const resolvedAccessToken = effToken || accessToken;
+    // Read saved Jatah Barista & Notes fallback from dedicated 'Jatah Barista', 'Input Jatah Barista', and 'Penjualan Harian' tabs
+    const jatahFallbackMap: Record<string, { menuSales?: any[]; notes?: string }> = {};
 
-    // Read saved Jatah Barista & Notes fallback from dedicated 'JATAH HARIAN', 'Jatah Barista', 'Input Jatah Barista', and other tabs
-    const jatahFallbackMap: Record<string, { menuSales?: any[]; notes?: string; totalJatah?: number }> = {};
-
-    // 1. Discover all sheets in spreadsheet to auto-detect any tab containing 'jatah' (e.g. 'JATAH HARIAN')
-    const candidateSalesTabs = ["Harian Penjualan Menu", "Laporan Harian Penjualan", "Penjualan Harian"];
-    let sheetTitles: string[] = candidateSalesTabs;
-    let detectedJatahTabs: string[] = [];
-
-    if (resolvedAccessToken && !resolvedAccessToken.endsWith('-local-token')) {
-      try {
-        const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
-        const metaRes = await fetch(metaUrl, {
-          headers: { Authorization: `Bearer ${resolvedAccessToken}` }
-        });
-        if (metaRes.ok) {
-          const metaData = await metaRes.json();
-          const titlesFromSheet: string[] = (metaData.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
-          if (titlesFromSheet.length > 0) {
-            sheetTitles = titlesFromSheet;
-            detectedJatahTabs = titlesFromSheet.filter(t => t.toLowerCase().includes('jatah'));
-          }
-        }
-      } catch (e) {
-        console.warn("Could not fetch spreadsheet metadata titles:", e);
-      }
-    }
-
-    // Specifically target sheet 'JATAH HARIAN' with Kolom G as Jatah:
-    // "hanya mengambil data dari sheet JATAH HARIAN dengan mengambil data di Kolom G yaitu Jatah"
-    let jatahTabsToScan: string[] = [];
-    const directMatch = sheetTitles.find(t => {
-      const tl = t.trim().toLowerCase();
-      return tl === 'jatah harian' || tl === 'jatah_harian' || tl === 'jatahharian';
-    });
-    if (directMatch) {
-      jatahTabsToScan = [directMatch];
-    } else {
-      const anyJatahTab = sheetTitles.find(t => t.toLowerCase().includes('jatah'));
-      if (anyJatahTab) {
-        jatahTabsToScan = [anyJatahTab];
-      } else {
-        jatahTabsToScan = ["JATAH HARIAN", "Jatah Harian"];
-      }
-    }
-
-    // Master Menu List: Combine provided menuCatalog with any catalog saved locally
-    const masterMenuList: any[] = [];
-    const seenNames = new Set<string>();
-
-    if (menuCatalog && menuCatalog.length > 0) {
-      menuCatalog.forEach(m => {
-        const nLower = (m.nama || '').trim().toLowerCase();
-        const aliasLowers = Array.isArray(m.aliases)
-          ? m.aliases.map((a: string) => String(a || '').trim().toLowerCase()).filter(Boolean)
-          : [];
-        aliasLowers.forEach((a: string) => seenNames.add(a));
-        if (nLower && !seenNames.has(nLower)) {
-          seenNames.add(nLower);
-          masterMenuList.push({
-            id: m.id,
-            nama: m.nama,
-            aliases: aliasLowers,
-            kategori: m.kategori || 'Minuman',
-            hargaJual: m.hargaJual || 0,
-            hpp: m.hpp || 0,
-            defaultJatah: m.defaultJatah || 0
-          });
-        }
-      });
-    }
-
-    // Also check localStorage menu catalog if masterMenuList is empty
-    if (masterMenuList.length === 0 && typeof window !== 'undefined') {
-      try {
-        const rawLocal = localStorage.getItem('aruskas_cogs_page_menu_catalog');
-        if (rawLocal) {
-          const parsedLocal = JSON.parse(rawLocal);
-          if (Array.isArray(parsedLocal)) {
-            parsedLocal.forEach(m => {
-              const nLower = (m.nama || '').trim().toLowerCase();
-              if (nLower && !seenNames.has(nLower)) {
-                seenNames.add(nLower);
-                masterMenuList.push({
-                  id: m.id,
-                  nama: m.nama,
-                  aliases: Array.isArray(m.aliases) ? m.aliases : [],
-                  kategori: m.kategori || 'Minuman',
-                  hargaJual: m.hargaJual || 0,
-                  hpp: m.hpp || 0,
-                  defaultJatah: m.defaultJatah || 0
-                });
-              }
-            });
-          }
-        }
-      } catch {}
-    }
-
-    // Helper for matching menu names
-    const matchCatalogMenu = (cellText: string): any | null => {
-      if (!cellText) return null;
-      const clean = cellText.trim().toLowerCase();
-      const stripped = clean.replace(/[^a-z0-9]/g, '');
-
-      // 1. Direct or alias match
-      const direct = masterMenuList.find(m => {
-        const mClean = (m.nama || '').trim().toLowerCase();
-        const mStripped = mClean.replace(/[^a-z0-9]/g, '');
-        if (mClean === clean || mStripped === stripped) return true;
-        if (Array.isArray(m.aliases) && m.aliases.some((a: string) => {
-          const aClean = String(a || '').trim().toLowerCase();
-          return aClean === clean || aClean.replace(/[^a-z0-9]/g, '') === stripped;
-        })) return true;
-        return false;
-      });
-      if (direct) return direct;
-
-      // 2. Word bag match (e.g. "Ice Cafe Latte" matches "Cafe Latte Ice")
-      const words = clean.split(/\s+/).filter(Boolean);
-      const wordMatch = masterMenuList.find(m => {
-        const mWords = (m.nama || '').toLowerCase().split(/\s+/).filter(Boolean);
-        return words.length === mWords.length && words.every(w => mWords.includes(w));
-      });
-      if (wordMatch) return wordMatch;
-
-      // 3. Substring match
-      const subMatch = masterMenuList.find(m => {
-        const mStripped = (m.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        return mStripped.includes(stripped) || stripped.includes(mStripped);
-      });
-      if (subMatch) return subMatch;
-
-      return null;
-    };
-
-    // 2. Fetch and parse from sheet 'JATAH HARIAN'
-    for (const jTab of jatahTabsToScan) {
+    // 1. Try reading from dedicated tabs 'Jatah Barista' & 'Input Jatah Barista'
+    const jatahTabs = ["Jatah Barista", "Input Jatah Barista"];
+    for (const jTab of jatahTabs) {
       try {
         const rangeJatah = `'${jTab}'!A1:ZZ1000`;
-        const jRows = await fetchSheetRowsWithFallback(spreadsheetId, jTab, rangeJatah, resolvedAccessToken);
+        const jRows = await fetchSheetRowsWithFallback(spreadsheetId, jTab, rangeJatah, accessToken);
         if (jRows && jRows.length > 1) {
-          let headerRowIdx = -1;
-          for (let r = 0; r < Math.min(jRows.length, 10); r++) {
-            const rowCells = jRows[r] || [];
-            if (rowCells.some(cell => {
-              const cStr = String(cell || '').trim().toLowerCase();
-              return cStr === 'tanggal' || cStr.includes('tanggal') || cStr === 'date' || cStr === 'tgl';
-            })) {
-              headerRowIdx = r;
-              break;
-            }
-          }
-          if (headerRowIdx === -1) headerRowIdx = 0;
-
-          const headerRow = jRows[headerRowIdx] || [];
-          let dateColIdx = -1;
-          let ambilJatahColIdx = -1;
-          let jatahColIdx = -1;
-          let qtyColIdx = -1;
-          let notesColIdx = -1;
+          const headerRow = jRows[0] || [];
+          let dateColIdx = 1;
+          let notesColIdx = 3;
           let jsonColIdx = -1;
-          let menuColIdx = -1;
-          const menuColMap: Record<number, string> = {};
 
           for (let c = 0; c < headerRow.length; c++) {
-            const h = String(headerRow[c] || '').trim();
-            const hLower = h.toLowerCase();
-            if (!h || h.startsWith('#')) continue;
-
-            if (hLower.includes('tanggal') || hLower.includes('date') || hLower === 'tgl') {
-              dateColIdx = c;
-              continue;
-            }
-            if (hLower.includes('ambil jatah')) {
-              ambilJatahColIdx = c;
-              continue;
-            }
-            if (hLower === 'jatah' || hLower.includes('jatah barista') || hLower === 'target') {
-              jatahColIdx = c;
-              continue;
-            }
-            if (hLower.includes('jumlah') || hLower.includes('porsi') || hLower.includes('qty')) {
-              qtyColIdx = c;
-              continue;
-            }
-            if (hLower.includes('catatan') || hLower.includes('note') || hLower.includes('keterangan')) {
-              notesColIdx = c;
-              continue;
-            }
-            if (hLower.includes('json') || hLower.includes('detail')) {
-              jsonColIdx = c;
-              continue;
-            }
-            if (hLower === 'menu' || hLower === 'nama menu' || hLower === 'produk' || hLower === 'item') {
-              menuColIdx = c;
-              continue;
-            }
-
-            if (hLower === 'id' || hLower.includes('timestamp') || hLower.includes('nama') || hLower.includes('shift') || hLower.includes('total') || hLower.includes('waktu') || hLower.includes('sync')) {
-              continue;
-            }
-
-            // Horizontal matrix menu column header (e.g. "Espresso", "Jatah - Espresso")
-            const cleanMenuName = h
-              .replace(/^jatah\s*-\s*/i, '')
-              .replace(/^jatah\s*barista\s*/i, '')
-              .replace(/^jatah\s*/i, '')
-              .trim();
-            if (cleanMenuName) {
-              menuColMap[c] = cleanMenuName.toLowerCase();
-            }
+            const h = (headerRow[c] || '').toLowerCase();
+            if (h.includes('tanggal') || h.includes('date') || h === 'tgl') dateColIdx = c;
+            if (h.includes('catatan') || h.includes('note')) notesColIdx = c;
+            if (h.includes('json') || h.includes('detail')) jsonColIdx = c;
           }
 
-          if (dateColIdx === -1) dateColIdx = 2; // Default to column C (index 2)
-          if (jatahColIdx === -1) jatahColIdx = 6; // Default to column G (index 6)
-          if (qtyColIdx === -1) qtyColIdx = 7; // Default to column H (index 7)
-          if (ambilJatahColIdx === -1) ambilJatahColIdx = 5; // Default to column F (index 5)
-
-          for (let i = headerRowIdx + 1; i < jRows.length; i++) {
+          for (let i = 1; i < jRows.length; i++) {
             const r = jRows[i];
-            if (!r || r.length === 0) continue;
-
-            // 1. Check if "Ambil Jatah?" is FALSE
-            if (ambilJatahColIdx >= 0 && r[ambilJatahColIdx] !== undefined) {
-              const ambilVal = String(r[ambilJatahColIdx]).trim().toUpperCase();
-              if (ambilVal === 'FALSE' || ambilVal === 'TIDAK' || ambilVal === 'NO') {
-                continue;
+            if (r && r[dateColIdx]) {
+              const rawTgl = r[dateColIdx].trim();
+              const normTgl = normalizeDateString(rawTgl) || rawTgl;
+              let ms: any[] = [];
+              
+              const jsonCell = jsonColIdx >= 0 ? r[jsonColIdx] : (r[4] || r[r.length - 2] || r[r.length - 1]);
+              if (jsonCell) {
+                try { ms = JSON.parse(jsonCell); } catch (e) { /* ignore */ }
               }
-            }
 
-            // 2. Identify date
-            let rawTgl = dateColIdx >= 0 ? String(r[dateColIdx] || '').trim() : '';
-            let normTgl = normalizeDateString(rawTgl);
-            if (!normTgl) {
-              for (let c = 0; c < Math.min(r.length, 5); c++) {
-                const testCell = String(r[c] || '').trim();
-                const parsedDate = normalizeDateString(testCell);
-                if (parsedDate) {
-                  rawTgl = testCell;
-                  normTgl = parsedDate;
-                  break;
+              if (!jatahFallbackMap[normTgl] || (ms && ms.length > 0)) {
+                jatahFallbackMap[normTgl] = {
+                  menuSales: ms,
+                  notes: r[notesColIdx] || jatahFallbackMap[normTgl]?.notes || ''
+                };
+                if (rawTgl !== normTgl) {
+                  jatahFallbackMap[rawTgl] = jatahFallbackMap[normTgl];
                 }
               }
-            }
-            if (!normTgl || rawTgl.toLowerCase().includes('tanggal')) continue;
-
-            if (!jatahFallbackMap[normTgl]) {
-              jatahFallbackMap[normTgl] = { menuSales: [], notes: '', totalJatah: 0 };
-            }
-            const currentMapEntry = jatahFallbackMap[normTgl];
-            if (notesColIdx >= 0 && r[notesColIdx]) {
-              currentMapEntry.notes = (currentMapEntry.notes ? currentMapEntry.notes + '; ' : '') + String(r[notesColIdx]).trim();
-            }
-
-            // 3. Extract Jatah column content (Kolom G) & Quantity column (Kolom H)
-            const rawColG = jatahColIdx >= 0 && r[jatahColIdx] !== undefined ? String(r[jatahColIdx]).trim() : '';
-            const rawQty = qtyColIdx >= 0 && r[qtyColIdx] !== undefined ? String(r[qtyColIdx]).trim() : '';
-            const parsedQty = parseSheetNumber(rawQty);
-
-            if (rawColG) {
-              // Check if Kolom G is purely a number (e.g. "5")
-              const numVal = parseSheetNumber(rawColG);
-              const isPureNumber = !isNaN(Number(rawColG)) && rawColG !== '' && !/[a-zA-Z]/.test(rawColG);
-
-              if (isPureNumber && numVal > 0) {
-                // Kolom G is a numeric quantity
-                let itemMenuName = '';
-                if (menuColIdx >= 0 && r[menuColIdx]) {
-                  const m = matchCatalogMenu(String(r[menuColIdx]));
-                  itemMenuName = m ? m.nama : String(r[menuColIdx]).trim();
-                }
-                if (itemMenuName) {
-                  const existingMs = currentMapEntry.menuSales?.find(
-                    ms => (ms.nama || '').trim().toLowerCase() === itemMenuName.toLowerCase()
-                  );
-                  if (existingMs) {
-                    existingMs.jatah = (existingMs.jatah || 0) + numVal;
-                    existingMs.fromJatahSheet = true;
-                  } else {
-                    currentMapEntry.menuSales?.push({
-                      nama: itemMenuName,
-                      jatah: numVal,
-                      terjual: 0,
-                      fromJatahSheet: true
-                    });
-                  }
-                  currentMapEntry.totalJatah = (currentMapEntry.totalJatah || 0) + numVal;
-                } else {
-                  currentMapEntry.totalJatah = (currentMapEntry.totalJatah || 0) + numVal;
-                }
-              } else {
-                // Kolom G is text containing menu item name(s)! e.g. "Peachty" or "Es Susu , Cappucino Hot"
-                const splittedItems = rawColG.split(/,| dan |\+/i).map(s => s.trim()).filter(Boolean);
-                const totalItemQty = parsedQty > 0 ? parsedQty : splittedItems.length || 1;
-                const perItemQty = splittedItems.length > 0 ? Math.max(1, Math.round(totalItemQty / splittedItems.length)) : 1;
-
-                splittedItems.forEach(rawItemName => {
-                  const matched = matchCatalogMenu(rawItemName);
-                  const targetName = matched ? matched.nama : rawItemName;
-                  const targetId = matched ? matched.id : undefined;
-
-                  const existingMs = currentMapEntry.menuSales?.find(
-                    ms => (targetId && ms.menuId === targetId) ||
-                          (ms.nama || '').trim().toLowerCase() === targetName.toLowerCase() ||
-                          (ms.nama || '').toLowerCase().replace(/[^a-z0-9]/g, '') === targetName.toLowerCase().replace(/[^a-z0-9]/g, '')
-                  );
-                  if (existingMs) {
-                    existingMs.jatah = (existingMs.jatah || 0) + perItemQty;
-                    existingMs.fromJatahSheet = true;
-                    if (targetId && !existingMs.menuId) existingMs.menuId = targetId;
-                  } else {
-                    currentMapEntry.menuSales?.push({
-                      menuId: targetId,
-                      nama: targetName,
-                      jatah: perItemQty,
-                      terjual: 0,
-                      fromJatahSheet: true
-                    });
-                  }
-                  currentMapEntry.totalJatah = (currentMapEntry.totalJatah || 0) + perItemQty;
-                });
-              }
-            } else if (Object.keys(menuColMap).length > 0) {
-              // Horizontal matrix layout
-              Object.entries(menuColMap).forEach(([colIdxStr, cleanNameLower]) => {
-                const cIdx = Number(colIdxStr);
-                const cellVal = r[cIdx];
-                if (cellVal !== undefined && cellVal !== null && String(cellVal).trim() !== '') {
-                  const num = parseSheetNumber(cellVal);
-                  if (num > 0) {
-                    const matched = matchCatalogMenu(cleanNameLower);
-                    const targetName = matched ? matched.nama : cleanNameLower;
-                    const existingMs = currentMapEntry.menuSales?.find(
-                      ms => (ms.nama || '').trim().toLowerCase() === targetName.toLowerCase()
-                    );
-                    if (existingMs) {
-                      existingMs.jatah = (existingMs.jatah || 0) + num;
-                      existingMs.fromJatahSheet = true;
-                    } else {
-                      currentMapEntry.menuSales?.push({
-                        nama: targetName,
-                        jatah: num,
-                        terjual: 0,
-                        fromJatahSheet: true
-                      });
-                    }
-                    currentMapEntry.totalJatah = (currentMapEntry.totalJatah || 0) + num;
-                  }
-                }
-              });
-            }
-
-            // Also check JSON column if available
-            const jsonCell = jsonColIdx >= 0 ? r[jsonColIdx] : null;
-            if (jsonCell) {
-              try {
-                const parsedMs = JSON.parse(jsonCell);
-                if (Array.isArray(parsedMs)) {
-                  parsedMs.forEach((pItem: any) => {
-                    const existingMs = currentMapEntry.menuSales?.find(
-                      ms => (pItem.menuId && ms.menuId === pItem.menuId) ||
-                            (pItem.nama && (ms.nama || '').trim().toLowerCase() === (pItem.nama || '').trim().toLowerCase())
-                    );
-                    if (existingMs) {
-                      if (typeof pItem.jatah === 'number') existingMs.jatah = pItem.jatah;
-                      if (typeof pItem.terjual === 'number') existingMs.terjual = pItem.terjual;
-                      existingMs.fromJatahSheet = true;
-                    } else {
-                      currentMapEntry.menuSales?.push({ ...pItem, fromJatahSheet: true });
-                    }
-                  });
-                }
-              } catch {}
-            }
-
-            if (rawTgl !== normTgl) {
-              jatahFallbackMap[rawTgl] = currentMapEntry;
             }
           }
         }
@@ -1375,10 +1002,10 @@ export async function fetchDailySalesFromSheet(
       }
     }
 
-    // 3. Read saved fallback from 'Penjualan Harian' tab as secondary fallback
+    // 2. Read saved fallback from 'Penjualan Harian' tab as secondary fallback
     try {
       const fallbackRange = "'Penjualan Harian'!A1:G1000";
-      const fbRows = await fetchSheetRowsWithFallback(spreadsheetId, "Penjualan Harian", fallbackRange, resolvedAccessToken);
+      const fbRows = await fetchSheetRowsWithFallback(spreadsheetId, "Penjualan Harian", fallbackRange, accessToken);
       if (fbRows && fbRows.length > 1) {
         for (let i = 1; i < fbRows.length; i++) {
           const r = fbRows[i];
@@ -1404,14 +1031,38 @@ export async function fetchDailySalesFromSheet(
     } catch (e) {
       console.warn("Could not fetch jatah fallback from Penjualan Harian:", e);
     }
-    
-    const records: any[] = [];
-    const scannedDates = new Set<string>();
 
+    // 3. Try fetching candidate tabs or auto-detect tabs from spreadsheet metadata
+    const candidateTabs = ["Harian Penjualan Menu", "Laporan Harian Penjualan", "Penjualan Harian"];
+    let sheetTitles: string[] = candidateTabs;
+
+    if (accessToken && !accessToken.endsWith('-local-token')) {
+      try {
+        const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
+        const metaRes = await fetch(metaUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          const titlesFromSheet: string[] = (metaData.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
+          if (titlesFromSheet.length > 0) {
+            const combined = new Set<string>();
+            candidateTabs.forEach(t => {
+              const foundReal = titlesFromSheet.find(real => real.trim().toLowerCase() === t.toLowerCase());
+              if (foundReal) combined.add(foundReal);
+            });
+            titlesFromSheet.forEach(t => combined.add(t));
+            sheetTitles = Array.from(combined);
+          }
+        }
+      } catch (e) {
+        console.warn("Could not fetch spreadsheet metadata titles:", e);
+      }
+    }
+    
     for (const tabName of sheetTitles) {
-      if (tabName.toLowerCase().includes('jatah')) continue; // Skip jatah tab during sales scan
       const range = `'${tabName}'!A1:ZZ1000`;
-      const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabName, range, resolvedAccessToken);
+      const rows = await fetchSheetRowsWithFallback(spreadsheetId, tabName, range, accessToken);
       if (!rows || rows.length <= 1) continue;
 
       // Find header row (row containing 'Tanggal', 'Date', or 'Tgl')
@@ -1428,7 +1079,9 @@ export async function fetchDailySalesFromSheet(
         }
       }
 
-      if (headerRowIdx === -1) headerRowIdx = 0;
+      if (headerRowIdx === -1) {
+        headerRowIdx = 0;
+      }
 
       const headerRow = rows[headerRowIdx] || [];
       let dateColIdx = 0;
@@ -1468,6 +1121,32 @@ export async function fetchDailySalesFromSheet(
         }
       }
 
+      // Master Menu List: Combine provided menuCatalog with any new menu columns found in Sheet
+      const masterMenuList: any[] = [];
+      const seenNames = new Set<string>();
+
+      if (menuCatalog && menuCatalog.length > 0) {
+        menuCatalog.forEach(m => {
+          const nLower = (m.nama || '').trim().toLowerCase();
+          const aliasLowers = Array.isArray(m.aliases)
+            ? m.aliases.map((a: string) => String(a || '').trim().toLowerCase()).filter(Boolean)
+            : [];
+          aliasLowers.forEach((a: string) => seenNames.add(a));
+          if (nLower && !seenNames.has(nLower)) {
+            seenNames.add(nLower);
+            masterMenuList.push({
+              id: m.id,
+              nama: m.nama,
+              aliases: aliasLowers,
+              kategori: m.kategori || 'Minuman',
+              hargaJual: m.hargaJual || 0,
+              hpp: m.hpp || 0,
+              defaultJatah: m.defaultJatah || 0
+            });
+          }
+        });
+      }
+
       Object.values(salesColMap).forEach(hName => {
         const nLower = hName.trim().toLowerCase();
         if (nLower && !seenNames.has(nLower)) {
@@ -1483,6 +1162,8 @@ export async function fetchDailySalesFromSheet(
         }
       });
 
+      const records: any[] = [];
+
       for (let r = headerRowIdx + 1; r < rows.length; r++) {
         const row = rows[r];
         if (!row || !row[dateColIdx]) continue;
@@ -1490,8 +1171,7 @@ export async function fetchDailySalesFromSheet(
         if (!rawTgl || rawTgl.startsWith('#') || rawTgl.toLowerCase().includes('tanggal') || rawTgl.toLowerCase().includes('date')) continue;
 
         const normalizedTgl = normalizeDateString(rawTgl) || rawTgl;
-        if (!normalizedTgl || scannedDates.has(normalizedTgl)) continue;
-        scannedDates.add(normalizedTgl);
+        if (!normalizedTgl) continue;
 
         const fallbackInfo = jatahFallbackMap[normalizedTgl] || jatahFallbackMap[rawTgl];
         const menuSalesList: any[] = [];
@@ -1501,7 +1181,6 @@ export async function fetchDailySalesFromSheet(
           const mAliasSet = new Set<string>([mNameLower, ...(Array.isArray(m.aliases) ? m.aliases : [])]);
           let terjual = 0;
           let jatah = m.defaultJatah || 0;
-          let fromJatahSheet = false;
 
           // Sum sales from matching columns in salesColMap
           Object.entries(salesColMap).forEach(([colIdxStr, colMenuName]) => {
@@ -1511,15 +1190,13 @@ export async function fetchDailySalesFromSheet(
             }
           });
 
-          // Jatah fallback from JATAH HARIAN tab (Kolom G)
+          // Jatah fallback from saved tab
           if (fallbackInfo?.menuSales) {
             const fbItem = fallbackInfo.menuSales.find((s: any) =>
-              s.menuId === m.id || 
-              (s.nama && (mAliasSet.has(s.nama.trim().toLowerCase()) || s.nama.toLowerCase().replace(/[^a-z0-9]/g, '') === mNameLower.replace(/[^a-z0-9]/g, '')))
+              s.menuId === m.id || (s.nama && mAliasSet.has(s.nama.trim().toLowerCase()))
             );
             if (fbItem && typeof fbItem.jatah === 'number') {
               jatah = fbItem.jatah;
-              fromJatahSheet = true;
             }
           }
 
@@ -1530,7 +1207,6 @@ export async function fetchDailySalesFromSheet(
               const rawVal = row[colIdx];
               if (rawVal !== undefined && rawVal !== null && String(rawVal).trim() !== '') {
                 jatah = parseSheetNumber(rawVal);
-                fromJatahSheet = true;
               }
             }
           });
@@ -1542,8 +1218,7 @@ export async function fetchDailySalesFromSheet(
             hargaJual: m.hargaJual || 0,
             hpp: m.hpp || 0,
             terjual,
-            jatah,
-            fromJatahSheet
+            jatah
           });
         });
 
@@ -1569,124 +1244,35 @@ export async function fetchDailySalesFromSheet(
           cups: totCups,
           omset: totOmset,
           hppTotal: totHpp,
-          totalJatah: fallbackInfo?.totalJatah,
           notes,
           menuSales: menuSalesList
         });
       }
-    }
 
-    // 4. Inject ANY dates from JATAH HARIAN that did not exist in sales tabs!
-    Object.entries(jatahFallbackMap).forEach(([tglKey, fbData]) => {
-      const normDate = normalizeDateString(tglKey) || tglKey;
-      if (!normDate || scannedDates.has(normDate)) return;
-      scannedDates.add(normDate);
-
-      const jatahMenuSales: any[] = [];
-      masterMenuList.forEach(m => {
-        const mNameLower = (m.nama || '').trim().toLowerCase();
-        const mAliasSet = new Set<string>([mNameLower, ...(Array.isArray(m.aliases) ? m.aliases.map((a: string) => a.trim().toLowerCase()) : [])]);
-        let jatahVal = m.defaultJatah || 0;
-
-        if (fbData?.menuSales) {
-          const fbItem = fbData.menuSales.find((s: any) =>
-            (s.menuId && s.menuId === m.id) || 
-            (s.nama && (mAliasSet.has((s.nama || '').trim().toLowerCase()) || s.nama.toLowerCase().replace(/[^a-z0-9]/g, '') === mNameLower.replace(/[^a-z0-9]/g, '')))
-          );
-          if (fbItem && typeof fbItem.jatah === 'number') {
-            jatahVal = fbItem.jatah;
-          }
-        }
-
-        jatahMenuSales.push({
-          menuId: m.id,
-          nama: m.nama,
-          kategori: m.kategori || 'Minuman',
-          hargaJual: m.hargaJual || 0,
-          hpp: m.hpp || 0,
-          terjual: 0,
-          jatah: jatahVal,
-          fromJatahSheet: true
-        });
-      });
-
-      const totHpp = jatahMenuSales.reduce((s, ms) => {
-        const m = masterMenuList.find(item => item.id === ms.menuId);
-        return s + (ms.jatah * (m?.hpp || 0));
-      }, 0);
-
-      records.push({
-        id: `ds-${normDate}`,
-        tanggal: normDate,
-        cups: 0,
-        omset: 0,
-        hppTotal: totHpp,
-        totalJatah: fbData.totalJatah,
-        notes: fbData.notes || '',
-        menuSales: jatahMenuSales,
-        updatedAt: Date.now()
-      });
-    });
-
-    // 5. Merge with pullDailySalesFromCloud (preserving sheet jatah from JATAH HARIAN!)
-    if (records.length > 0) {
-      try {
-        const cloudSales = await pullDailySalesFromCloud();
-        if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
-          const byDate = new Map<string, any>();
-          records.forEach(r => byDate.set(normalizeDateString(r.tanggal) || r.tanggal, r));
-
-          Object.entries(cloudSales.recordsByDate).forEach(([tgl, cRec]: [string, any]) => {
-            const normTgl = normalizeDateString(tgl) || tgl;
-            if (cRec && normTgl) {
-              const sheetRec = byDate.get(normTgl);
-              if (sheetRec) {
-                // Merge: keep cloud sales (terjual), but prioritize sheet jatah (from JATAH HARIAN)
-                const mergedMs = (sheetRec.menuSales || []).map((sMs: any) => {
-                  const cMs = cRec.menuSales?.find((cm: any) =>
-                    cm.menuId === sMs.menuId ||
-                    (cm.nama && sMs.nama && cm.nama.trim().toLowerCase() === sMs.nama.trim().toLowerCase()) ||
-                    (cm.nama && sMs.nama && cm.nama.toLowerCase().replace(/[^a-z0-9]/g, '') === sMs.nama.toLowerCase().replace(/[^a-z0-9]/g, ''))
-                  );
-                  const finalTerjual = cMs && typeof cMs.terjual === 'number' && cMs.terjual > 0
-                    ? cMs.terjual
-                    : sMs.terjual;
-                  const finalJatah = sMs.fromJatahSheet
-                    ? sMs.jatah
-                    : (cMs && typeof cMs.jatah === 'number' && cMs.jatah > 0 ? cMs.jatah : sMs.jatah);
-
-                  return {
-                    ...sMs,
-                    terjual: finalTerjual,
-                    jatah: finalJatah,
-                    fromJatahSheet: sMs.fromJatahSheet || Boolean(cMs?.fromJatahSheet)
-                  };
-                });
-
-                byDate.set(normTgl, {
-                  ...cRec,
-                  ...sheetRec,
-                  cups: Math.max(cRec.cups || 0, sheetRec.cups || 0),
-                  omset: Math.max(cRec.omset || 0, sheetRec.omset || 0),
-                  totalJatah: sheetRec.totalJatah ?? cRec.totalJatah,
-                  menuSales: mergedMs
-                });
-              } else {
+      if (records.length > 0) {
+        try {
+          const cloudSales = await pullDailySalesFromCloud();
+          if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
+            const byDate = new Map<string, any>();
+            records.forEach(r => byDate.set(normalizeDateString(r.tanggal) || r.tanggal, r));
+            Object.entries(cloudSales.recordsByDate).forEach(([tgl, cRec]: [string, any]) => {
+              const normTgl = normalizeDateString(tgl) || tgl;
+              if (cRec && normTgl) {
                 byDate.set(normTgl, { ...cRec, tanggal: normTgl });
               }
-            }
-          });
-          return Array.from(byDate.values()).sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
-        }
-      } catch {}
-      return records;
+            });
+            return Array.from(byDate.values()).sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
+          }
+        } catch {}
+        return records;
+      }
     }
 
-    // Fallback: If no records yet, try 'Penjualan Harian' tab
+    // Fallback: If 'Harian Penjualan Menu' is not available, try 'Penjualan Harian' tab
     const fallbackRange = "'Penjualan Harian'!A1:G1000";
-    const fallbackRows = await fetchSheetRowsWithFallback(spreadsheetId, "Penjualan Harian", fallbackRange, resolvedAccessToken);
+    const fallbackRows = await fetchSheetRowsWithFallback(spreadsheetId, "Penjualan Harian", fallbackRange, accessToken);
     if (fallbackRows && fallbackRows.length > 1) {
-      const fbRecords: any[] = [];
+      const records: any[] = [];
       for (let i = 1; i < fallbackRows.length; i++) {
         const row = fallbackRows[i];
         if (!row || !row[0] || !row[1]) continue;
@@ -1696,7 +1282,7 @@ export async function fetchDailySalesFromSheet(
           try { menuSales = JSON.parse(row[6]); } catch (e) { /* ignore */ }
         }
 
-        fbRecords.push({
+        records.push({
           id: row[0],
           tanggal: row[1],
           cups: parseSheetNumber(row[2]),
@@ -1706,9 +1292,24 @@ export async function fetchDailySalesFromSheet(
           menuSales
         });
       }
-      if (fbRecords.length > 0) {
-        return fbRecords;
+      if (records.length > 0) {
+        try {
+          const cloudSales = await pullDailySalesFromCloud();
+          if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
+            const byDate = new Map<string, any>();
+            records.forEach(r => byDate.set(normalizeDateString(r.tanggal) || r.tanggal, r));
+            Object.entries(cloudSales.recordsByDate).forEach(([tgl, cRec]: [string, any]) => {
+              const normTgl = normalizeDateString(tgl) || tgl;
+              if (cRec && normTgl) {
+                byDate.set(normTgl, { ...cRec, tanggal: normTgl });
+              }
+            });
+            return Array.from(byDate.values()).sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
+          }
+        } catch {}
+        return records;
       }
+      return null;
     }
 
     try {
@@ -1738,8 +1339,7 @@ export async function saveDailySalesToSheet(
     const menuJatahHeaders = activeMenuList.map(m => `Jatah - ${m.nama}`);
     const menuTerjualHeaders = activeMenuList.map(m => m.nama);
 
-    // 1. Create and save to dedicated sheet tabs ('Jatah Barista', 'Input Jatah Barista')
-    // NOTE: Sheet 'JATAH HARIAN' is ONLY read/fetched from (user manually manages it), NEVER cleared/overwritten!
+    // 1. Create and save to dedicated sheet tab 'Jatah Barista' & 'Input Jatah Barista'
     const jatahTabsToSave = ["Jatah Barista", "Input Jatah Barista"];
 
     for (const tabTitle of jatahTabsToSave) {
