@@ -285,6 +285,16 @@ export const calculateMenuItemHppFromRecipe = (item: MenuItem, allIngredients: R
   return totalRecipeHpp > 0 ? totalRecipeHpp : item.hpp;
 };
 
+export const getEffectiveRecordCups = (rec?: { cups?: number; menuSales?: { terjual?: number }[] } | null): number => {
+  if (!rec) return 0;
+  if (Array.isArray(rec.menuSales) && rec.menuSales.length > 0) {
+    const calc = rec.menuSales.reduce((s, ms) => s + (Number(ms?.terjual) || 0), 0);
+    if (calc > 0) return calc;
+  }
+  const raw = Number(rec.cups) || 0;
+  return raw > 0 && raw < 50000 ? raw : 0;
+};
+
 export interface DailyMenuItemSale {
   menuId: string;
   nama: string;
@@ -696,13 +706,19 @@ export default function CogsDailySalesPage({
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.map((rec: DailySalesRecord) => ({
-            ...rec,
-            menuSales: (rec.menuSales || []).map(ms => ({
+          return parsed.map((rec: DailySalesRecord) => {
+            const menuSales = (rec.menuSales || []).map(ms => ({
               ...ms,
               jatah: ms.jatah === 20 ? 0 : (ms.jatah || 0)
-            }))
-          }));
+            }));
+            const calcCups = menuSales.reduce((s, ms) => s + (Number(ms.terjual) || 0), 0);
+            const validCups = calcCups > 0 ? calcCups : (rec.cups > 0 && rec.cups < 50000 ? rec.cups : 0);
+            return {
+              ...rec,
+              cups: validCups,
+              menuSales
+            };
+          });
         }
       } catch (e) { /* ignore */ }
     }
@@ -1138,10 +1154,14 @@ export default function CogsDailySalesPage({
                     return s + (((Number(ms.terjual) || 0) + (Number(ms.jatah) || 0)) * hppUnit);
                   }, 0);
 
+                  const safeExistingCups = existing.cups > 0 && existing.cups < 50000 ? existing.cups : 0;
+                  const safeCloudCups = cRec.cups > 0 && cRec.cups < 50000 ? cRec.cups : 0;
+                  const finalCups = calcCups > 0 ? calcCups : (hasLocalUpdate && safeExistingCups > 0 ? safeExistingCups : (safeCloudCups || safeExistingCups));
+
                   mergedMap.set(normDate, {
                     ...cRec,
                     ...(hasLocalUpdate ? { updatedAt: existing.updatedAt } : {}),
-                    cups: calcCups > 0 || hasLocalUpdate ? calcCups : (cRec.cups || existing.cups || 0),
+                    cups: finalCups,
                     omset: calcOmset > 0 || hasLocalUpdate ? calcOmset : (cRec.omset || existing.omset || 0),
                     hppTotal: calcHpp > 0 || hasLocalUpdate ? calcHpp : (cRec.hppTotal || existing.hppTotal || 0),
                     notes: (hasLocalUpdate && existing.notes) ? existing.notes : (cRec.notes || existing.notes || ''),
@@ -2149,6 +2169,36 @@ export default function CogsDailySalesPage({
     localStorage.setItem('aruskas_cogs_ingredients', JSON.stringify(ingredients));
   }, [ingredients]);
 
+  // Auto-heal corrupt cups numbers (e.g. negative timestamp IDs like -1784915110585)
+  useEffect(() => {
+    setDailySales(prev => {
+      let changed = false;
+      const healed = prev.map(rec => {
+        const calcCups = (rec.menuSales || []).reduce((s, ms) => s + (Number(ms.terjual) || 0), 0);
+        let correctedCups = rec.cups;
+        if (calcCups > 0) {
+          if (rec.cups !== calcCups) {
+            correctedCups = calcCups;
+            changed = true;
+          }
+        } else if (rec.cups < 0 || rec.cups > 50000) {
+          correctedCups = 0;
+          changed = true;
+        }
+        if (correctedCups !== rec.cups) {
+          return { ...rec, cups: correctedCups };
+        }
+        return rec;
+      });
+      if (changed) {
+        localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(healed));
+        pushDailySalesToCloud({ records: healed }).catch(() => {});
+        return healed;
+      }
+      return prev;
+    });
+  }, []);
+
   // Sync default itemized inputs whenever menuItems or selectedDate changes
   useEffect(() => {
     const normSelected = normalizeDateString(selectedDate);
@@ -2297,8 +2347,8 @@ export default function CogsDailySalesPage({
 
     if (selectedComparisonDailyDate === 'AVERAGE_ALL') {
       const totalOmset = filteredDailySales.reduce((acc, d) => acc + d.omset, 0);
-      const totalHpp = filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (d.cups * hppPerCup)), 0);
-      const totalCups = filteredDailySales.reduce((acc, d) => acc + d.cups, 0);
+      const totalHpp = filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (getEffectiveRecordCups(d) * hppPerCup)), 0);
+      const totalCups = filteredDailySales.reduce((acc, d) => acc + getEffectiveRecordCups(d), 0);
       const count = filteredDailySales.length || 1;
 
       const omset = totalOmset / count;
@@ -2322,9 +2372,10 @@ export default function CogsDailySalesPage({
     const rec = dailySales.find(d => d.tanggal === selectedComparisonDailyDate);
     if (rec) {
       const omset = rec.omset;
-      const hpp = rec.hppTotal || (rec.cups * hppPerCup);
+      const effectiveCups = getEffectiveRecordCups(rec);
+      const hpp = rec.hppTotal || (effectiveCups * hppPerCup);
       const grossProfit = omset - hpp;
-      const cups = rec.cups;
+      const cups = effectiveCups;
       const marginPct = omset > 0 ? (grossProfit / omset) * 100 : 0;
       const cogsRatioPct = omset > 0 ? (hpp / omset) * 100 : 0;
       return {
@@ -2353,11 +2404,11 @@ export default function CogsDailySalesPage({
   const sortedDailyComparisonList = useMemo(() => {
     const list = [...filteredDailySales];
     list.sort((a, b) => {
-      const hppA = a.hppTotal || (a.cups * hppPerCup);
+      const hppA = a.hppTotal || (getEffectiveRecordCups(a) * hppPerCup);
       const gpA = a.omset - hppA;
       const marginA = a.omset > 0 ? (gpA / a.omset) * 100 : 0;
 
-      const hppB = b.hppTotal || (b.cups * hppPerCup);
+      const hppB = b.hppTotal || (getEffectiveRecordCups(b) * hppPerCup);
       const gpB = b.omset - hppB;
       const marginB = b.omset > 0 ? (gpB / b.omset) * 100 : 0;
 
@@ -2522,7 +2573,7 @@ export default function CogsDailySalesPage({
 
   // Overall Monthly Accumulations (filtered by selected month)
   const totalDailyCups = useMemo(() => {
-    return filteredSalesForOmset.reduce((sum, item) => sum + item.cups, 0);
+    return filteredSalesForOmset.reduce((sum, item) => sum + getEffectiveRecordCups(item), 0);
   }, [filteredSalesForOmset]);
 
   const totalDailyRevenue = useMemo(() => {
@@ -2530,7 +2581,7 @@ export default function CogsDailySalesPage({
   }, [filteredSalesForOmset]);
 
   const totalDailyHppCalculated = useMemo(() => {
-    return filteredSalesForOmset.reduce((sum, item) => sum + (item.hppTotal || (item.cups * hppPerCup)), 0);
+    return filteredSalesForOmset.reduce((sum, item) => sum + (item.hppTotal || (getEffectiveRecordCups(item) * hppPerCup)), 0);
   }, [filteredSalesForOmset, hppPerCup]);
 
   // Active Omset
@@ -5729,7 +5780,8 @@ export default function CogsDailySalesPage({
 
                         {/* Rows from Historic Daily Sales */}
                         {sortedDailyComparisonList.map(rec => {
-                          const hppEst = rec.hppTotal || (rec.cups * hppPerCup);
+                          const cupsVal = getEffectiveRecordCups(rec);
+                          const hppEst = rec.hppTotal || (cupsVal * hppPerCup);
                           const gpEst = rec.omset - hppEst;
                           const marginPct = rec.omset > 0 ? (gpEst / rec.omset) * 100 : 0;
                           const cogsRatio = rec.omset > 0 ? (hppEst / rec.omset) * 100 : 0;
@@ -5740,7 +5792,7 @@ export default function CogsDailySalesPage({
                               <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
                                 {formatDateDDMMYYYY(rec.tanggal)}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">{rec.cups}</td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">{cupsVal}</td>
                               <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900">{formatRupiah(rec.omset)}</td>
                               <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-900">{formatRupiah(Math.round(hppEst))}</td>
                               <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-800">{formatRupiah(Math.round(gpEst))}</td>
@@ -6218,7 +6270,8 @@ export default function CogsDailySalesPage({
                     </tr>
                   ) : (
                     filteredDailySales.map(rec => {
-                      const hppEst = rec.hppTotal || (rec.cups * hppPerCup);
+                      const cupsVal = getEffectiveRecordCups(rec);
+                      const hppEst = rec.hppTotal || (cupsVal * hppPerCup);
                       const gpEst = rec.omset - hppEst;
                       const isExpanded = expandedDailyId === rec.id;
 
@@ -6229,7 +6282,7 @@ export default function CogsDailySalesPage({
                               {formatDateDDMMYYYY(rec.tanggal)}
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-extrabold text-slate-800">
-                              {rec.cups}
+                              {cupsVal}
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-800">
                               {formatRupiah(rec.omset)}
@@ -6344,24 +6397,24 @@ export default function CogsDailySalesPage({
                       TOTAL / AVG HISTORIC
                     </td>
                     <td className="py-3 px-3 text-right font-mono text-emerald-400 font-black">
-                      {filteredDailySales.reduce((acc, d) => acc + d.cups, 0)} Porsi
+                      {filteredDailySales.reduce((acc, d) => acc + getEffectiveRecordCups(d), 0)} Porsi
                     </td>
                     <td className="py-3 px-3 text-right font-mono text-emerald-300 font-black">
                       {formatRupiah(filteredDailySales.reduce((acc, d) => acc + d.omset, 0))}
                     </td>
                     <td className="py-3 px-3 text-right font-mono text-amber-200 font-black">
-                      {formatRupiah(Math.round(filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (d.cups * hppPerCup)), 0)))}
+                      {formatRupiah(Math.round(filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (getEffectiveRecordCups(d) * hppPerCup)), 0)))}
                     </td>
                     <td className="py-3 px-3 text-right font-mono text-indigo-300 font-black">
                       {formatRupiah(Math.round(
                         filteredDailySales.reduce((acc, d) => acc + d.omset, 0) - 
-                        filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (d.cups * hppPerCup)), 0)
+                        filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (getEffectiveRecordCups(d) * hppPerCup)), 0)
                       ))}
                     </td>
                     <td className="py-3 px-3 text-right font-mono text-emerald-400 font-black">
                       {(() => {
                         const totO = filteredDailySales.reduce((acc, d) => acc + d.omset, 0);
-                        const totH = filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (d.cups * hppPerCup)), 0);
+                        const totH = filteredDailySales.reduce((acc, d) => acc + (d.hppTotal || (getEffectiveRecordCups(d) * hppPerCup)), 0);
                         const margin = totO > 0 ? ((totO - totH) / totO) * 100 : 0;
                         return `${margin.toFixed(1)}%`;
                       })()}

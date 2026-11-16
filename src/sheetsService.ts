@@ -914,12 +914,19 @@ function parseSheetNumber(val: any): number {
   const str = val.trim();
   if (!str || str.startsWith('#')) return 0; // Ignore #REF!, #N/A, #VALUE! error cells
 
+  // If string contains ID prefix like "ds-", "m-", "ing-", "in-", or starts with non-numeric text, return 0
+  if (/^[a-zA-Z]+-/.test(str)) return 0;
+
   if (/^-?\d+(\.\d+)?$/.test(str)) {
     const num = parseFloat(str);
     return isNaN(num) ? 0 : num;
   }
 
-  const cleaned = str.replace(/[^0-9.,-]/g, '');
+  // Remove currency prefix like Rp, IDR
+  const withoutCurrency = str.replace(/^(rp|idr)\.?\s*/i, '');
+  if (/^[a-zA-Z]/.test(withoutCurrency)) return 0;
+
+  const cleaned = withoutCurrency.replace(/[^0-9.,-]/g, '');
   if (!cleaned) return 0;
 
   if (cleaned.includes(',') && !cleaned.includes('.')) {
@@ -1103,7 +1110,7 @@ export async function fetchDailySalesFromSheet(
         const hLower = rawHeader.toLowerCase();
 
         if (!rawHeader || rawHeader.startsWith('#')) continue;
-        if (hLower.includes('total') || hLower.includes('catatan') || hLower.includes('note') || hLower.includes('waktu') || hLower === 'id' || hLower === 'json') {
+        if (hLower.includes('total') || hLower.includes('catatan') || hLower.includes('note') || hLower.includes('waktu') || hLower.includes('id') || hLower.includes('json') || hLower.includes('tanggal')) {
           continue;
         }
 
@@ -1241,9 +1248,9 @@ export async function fetchDailySalesFromSheet(
         records.push({
           id: `ds-${normalizedTgl}`,
           tanggal: normalizedTgl,
-          cups: totCups,
-          omset: totOmset,
-          hppTotal: totHpp,
+          cups: Math.max(0, totCups),
+          omset: Math.max(0, totOmset),
+          hppTotal: Math.max(0, totHpp),
           notes,
           menuSales: menuSalesList
         });
@@ -1254,11 +1261,18 @@ export async function fetchDailySalesFromSheet(
           const cloudSales = await pullDailySalesFromCloud();
           if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
             const byDate = new Map<string, any>();
-            records.forEach(r => byDate.set(normalizeDateString(r.tanggal) || r.tanggal, r));
+            records.forEach(r => {
+              const calcC = (r.menuSales || []).reduce((s: number, ms: any) => s + (Number(ms.terjual) || 0), 0);
+              const cVal = calcC > 0 ? calcC : (r.cups > 0 && r.cups < 50000 ? r.cups : 0);
+              byDate.set(normalizeDateString(r.tanggal) || r.tanggal, { ...r, cups: cVal });
+            });
             Object.entries(cloudSales.recordsByDate).forEach(([tgl, cRec]: [string, any]) => {
               const normTgl = normalizeDateString(tgl) || tgl;
               if (cRec && normTgl) {
-                byDate.set(normTgl, { ...cRec, tanggal: normTgl });
+                const existing = byDate.get(normTgl);
+                const calcC = (cRec.menuSales || existing?.menuSales || []).reduce((s: number, ms: any) => s + (Number(ms.terjual) || 0), 0);
+                const cVal = calcC > 0 ? calcC : (cRec.cups > 0 && cRec.cups < 50000 ? cRec.cups : (existing?.cups || 0));
+                byDate.set(normTgl, { ...existing, ...cRec, tanggal: normTgl, cups: cVal });
               }
             });
             return Array.from(byDate.values()).sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
@@ -1282,12 +1296,16 @@ export async function fetchDailySalesFromSheet(
           try { menuSales = JSON.parse(row[6]); } catch (e) { /* ignore */ }
         }
 
+        const rawCups = parseSheetNumber(row[2]);
+        const calcCups = menuSales.reduce((s, ms) => s + (Number(ms.terjual) || 0), 0);
+        const validCups = calcCups > 0 ? calcCups : (rawCups > 0 && rawCups < 50000 ? rawCups : 0);
+
         records.push({
-          id: row[0],
+          id: row[0] && String(row[0]).startsWith('ds-') ? row[0] : `ds-${row[1]}`,
           tanggal: row[1],
-          cups: parseSheetNumber(row[2]),
-          omset: parseSheetNumber(row[3]),
-          hppTotal: parseSheetNumber(row[4]),
+          cups: validCups,
+          omset: Math.max(0, parseSheetNumber(row[3])),
+          hppTotal: Math.max(0, parseSheetNumber(row[4])),
           notes: row[5] || '',
           menuSales
         });
@@ -1297,11 +1315,18 @@ export async function fetchDailySalesFromSheet(
           const cloudSales = await pullDailySalesFromCloud();
           if (cloudSales?.recordsByDate && Object.keys(cloudSales.recordsByDate).length > 0) {
             const byDate = new Map<string, any>();
-            records.forEach(r => byDate.set(normalizeDateString(r.tanggal) || r.tanggal, r));
+            records.forEach(r => {
+              const calcC = (r.menuSales || []).reduce((s: number, ms: any) => s + (Number(ms.terjual) || 0), 0);
+              const cVal = calcC > 0 ? calcC : (r.cups > 0 && r.cups < 50000 ? r.cups : 0);
+              byDate.set(normalizeDateString(r.tanggal) || r.tanggal, { ...r, cups: cVal });
+            });
             Object.entries(cloudSales.recordsByDate).forEach(([tgl, cRec]: [string, any]) => {
               const normTgl = normalizeDateString(tgl) || tgl;
               if (cRec && normTgl) {
-                byDate.set(normTgl, { ...cRec, tanggal: normTgl });
+                const existing = byDate.get(normTgl);
+                const calcC = (cRec.menuSales || existing?.menuSales || []).reduce((s: number, ms: any) => s + (Number(ms.terjual) || 0), 0);
+                const cVal = calcC > 0 ? calcC : (cRec.cups > 0 && cRec.cups < 50000 ? cRec.cups : (existing?.cups || 0));
+                byDate.set(normTgl, { ...existing, ...cRec, tanggal: normTgl, cups: cVal });
               }
             });
             return Array.from(byDate.values()).sort((a, b) => (a.tanggal || '').localeCompare(b.tanggal || ''));
