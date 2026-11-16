@@ -303,6 +303,7 @@ export interface DailySalesRecord {
   hppTotal: number;
   notes?: string;
   menuSales?: DailyMenuItemSale[];
+  totalJatah?: number;
 }
 
 export interface BiayaOperasionalItem {
@@ -2221,7 +2222,9 @@ export default function CogsDailySalesPage({
       setQuickOmset(existingRecord.omset.toString());
       if (existingRecord.menuSales && existingRecord.menuSales.length > 0) {
         const totJatah = existingRecord.menuSales.reduce((s, ms) => s + (ms.jatah || 0), 0);
-        setQuickJatah(totJatah.toString());
+        setQuickJatah(totJatah > 0 ? totJatah.toString() : (existingRecord.totalJatah?.toString() || '0'));
+      } else if (existingRecord.totalJatah) {
+        setQuickJatah(existingRecord.totalJatah.toString());
       } else {
         setQuickJatah('0');
       }
@@ -2298,18 +2301,20 @@ export default function CogsDailySalesPage({
       totalHpp += (input.terjual + input.jatah) * itemHpp;
     });
 
+    const activeDailyRecord = dailySales.find(d => normalizeDateString(d.tanggal) === normalizeDateString(selectedDate));
+    const effectiveTotalJatah = totalJatah > 0 ? totalJatah : (activeDailyRecord?.totalJatah || 0);
     const grossProfit = totalOmset - totalHpp;
-    const fulfillmentPct = totalJatah > 0 ? (totalCups / totalJatah) * 100 : 0;
+    const fulfillmentPct = effectiveTotalJatah > 0 ? (totalCups / effectiveTotalJatah) * 100 : 0;
 
     return {
       totalCups,
-      totalJatah,
+      totalJatah: effectiveTotalJatah,
       totalOmset,
       totalHpp,
       grossProfit,
       fulfillmentPct
     };
-  }, [menuItems, itemizedInputs, ingredients]);
+  }, [menuItems, itemizedInputs, ingredients, dailySales, selectedDate]);
 
   // Active Comparison Data Metrics for Daily Sales vs Total HPP & Gross Margin %
   const activeCompData = useMemo(() => {

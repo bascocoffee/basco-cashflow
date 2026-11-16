@@ -952,7 +952,7 @@ export async function fetchDailySalesFromSheet(
 ): Promise<any[] | null> {
   try {
     // Read saved Jatah Barista & Notes fallback from dedicated 'JATAH HARIAN', 'Jatah Barista', 'Input Jatah Barista', and other tabs
-    const jatahFallbackMap: Record<string, { menuSales?: any[]; notes?: string }> = {};
+    const jatahFallbackMap: Record<string, { menuSales?: any[]; notes?: string; totalJatah?: number }> = {};
 
     // 1. Discover all sheets in spreadsheet to auto-detect any tab containing 'jatah' (e.g. 'JATAH HARIAN')
     const candidateSalesTabs = ["Harian Penjualan Menu", "Laporan Harian Penjualan", "Penjualan Harian"];
@@ -978,18 +978,26 @@ export async function fetchDailySalesFromSheet(
       }
     }
 
-    const defaultJatahCandidateTabs = [
-      "JATAH HARIAN",
-      "Jatah Harian",
-      "JATAH_HARIAN",
-      "Jatah Barista",
-      "Input Jatah Barista",
-      "Jatah Menu",
-      "Jatah"
-    ];
-    const jatahTabsToScan = Array.from(new Set([...detectedJatahTabs, ...defaultJatahCandidateTabs]));
+    // Specifically target sheet 'JATAH HARIAN' with Kolom G as Jatah:
+    // "hanya mengambil data dari sheet JATAH HARIAN dengan mengambil data di Kolom G yaitu Jatah"
+    let jatahTabsToScan: string[] = [];
+    const directMatch = sheetTitles.find(t => 
+      t.trim().toLowerCase() === 'jatah harian' || 
+      t.trim().toLowerCase() === 'jatah_harian' ||
+      t.trim().toLowerCase() === 'jatahharian'
+    );
+    if (directMatch) {
+      jatahTabsToScan = [directMatch];
+    } else {
+      const anyJatahTab = sheetTitles.find(t => t.toLowerCase().includes('jatah'));
+      if (anyJatahTab) {
+        jatahTabsToScan = [anyJatahTab];
+      } else {
+        jatahTabsToScan = ["JATAH HARIAN", "Jatah Harian"];
+      }
+    }
 
-    // 2. Fetch and parse from all candidate Jatah tabs (supports both matrix columns and vertical list layouts)
+    // 2. Fetch and parse from sheet 'JATAH HARIAN' (prioritizing Kolom G = Jatah)
     for (const jTab of jatahTabsToScan) {
       try {
         const rangeJatah = `'${jTab}'!A1:ZZ1000`;
@@ -1009,11 +1017,11 @@ export async function fetchDailySalesFromSheet(
           if (headerRowIdx === -1) headerRowIdx = 0;
 
           const headerRow = jRows[headerRowIdx] || [];
-          let dateColIdx = 0;
+          let dateColIdx = -1;
           let notesColIdx = -1;
           let jsonColIdx = -1;
           let menuColIdx = -1;
-          let valJatahColIdx = -1;
+          let valJatahColIdx = 6; // Default to Kolom G (index 6, 7th column)
           const menuColMap: Record<number, string> = {};
 
           for (let c = 0; c < headerRow.length; c++) {
@@ -1033,7 +1041,7 @@ export async function fetchDailySalesFromSheet(
               jsonColIdx = c;
               continue;
             }
-            if (hLower === 'menu' || hLower === 'nama menu' || hLower === 'produk' || hLower === 'item') {
+            if (hLower === 'menu' || hLower === 'nama menu' || hLower === 'produk' || hLower === 'item' || hLower === 'nama') {
               menuColIdx = c;
               continue;
             }
@@ -1058,91 +1066,126 @@ export async function fetchDailySalesFromSheet(
             }
           }
 
-          const isVerticalLayout = menuColIdx >= 0 && valJatahColIdx >= 0;
+          if (dateColIdx === -1) dateColIdx = 0;
 
           for (let i = headerRowIdx + 1; i < jRows.length; i++) {
             const r = jRows[i];
-            if (!r || !r[dateColIdx]) continue;
-            const rawTgl = String(r[dateColIdx]).trim();
-            if (!rawTgl || rawTgl.startsWith('#') || rawTgl.toLowerCase().includes('tanggal')) continue;
-            const normTgl = normalizeDateString(rawTgl) || rawTgl;
-            if (!normTgl) continue;
+            if (!r || r.length === 0) continue;
+
+            // 1. Identify date
+            let rawTgl = dateColIdx >= 0 ? String(r[dateColIdx] || '').trim() : '';
+            let normTgl = normalizeDateString(rawTgl);
+            if (!normTgl) {
+              for (let c = 0; c < Math.min(r.length, 5); c++) {
+                const testCell = String(r[c] || '').trim();
+                const parsedDate = normalizeDateString(testCell);
+                if (parsedDate) {
+                  rawTgl = testCell;
+                  normTgl = parsedDate;
+                  break;
+                }
+              }
+            }
+            if (!normTgl || rawTgl.toLowerCase().includes('tanggal')) continue;
 
             if (!jatahFallbackMap[normTgl]) {
-              jatahFallbackMap[normTgl] = { menuSales: [], notes: '' };
+              jatahFallbackMap[normTgl] = { menuSales: [], notes: '', totalJatah: 0 };
             }
-
             const currentMapEntry = jatahFallbackMap[normTgl];
             if (notesColIdx >= 0 && r[notesColIdx]) {
               currentMapEntry.notes = String(r[notesColIdx]).trim();
             }
 
-            if (isVerticalLayout) {
-              // Vertical layout: [Tanggal, Nama Menu, Jatah Barista]
-              const itemMenuName = String(r[menuColIdx] || '').trim();
-              const itemJatah = parseSheetNumber(r[valJatahColIdx]);
-              if (itemMenuName) {
-                const existingMs = currentMapEntry.menuSales?.find(
-                  ms => (ms.nama || '').trim().toLowerCase() === itemMenuName.toLowerCase()
+            // 2. Extract Jatah explicitly from Kolom G (index 6) or detected jatah column
+            const rawColG = r[6];
+            const hasColG = rawColG !== undefined && rawColG !== null && String(rawColG).trim() !== '';
+            const itemJatah = hasColG 
+              ? parseSheetNumber(rawColG) 
+              : (valJatahColIdx >= 0 && r[valJatahColIdx] !== undefined ? parseSheetNumber(r[valJatahColIdx]) : 0);
+
+            // 3. Identify menu name in row
+            let itemMenuName = menuColIdx >= 0 ? String(r[menuColIdx] || '').trim() : '';
+            if (!itemMenuName && Array.isArray(menuCatalog)) {
+              for (let c = 0; c < Math.min(r.length, 6); c++) {
+                if (c === dateColIdx || c === 6) continue;
+                const cellText = String(r[c] || '').trim();
+                if (!cellText) continue;
+                const matched = menuCatalog.find(m => 
+                  (m.nama || '').trim().toLowerCase() === cellText.toLowerCase() ||
+                  (Array.isArray(m.aliases) && m.aliases.some((a: string) => (a || '').trim().toLowerCase() === cellText.toLowerCase()))
                 );
-                if (existingMs) {
-                  existingMs.jatah = itemJatah;
-                  existingMs.fromJatahSheet = true;
-                } else {
-                  currentMapEntry.menuSales?.push({
-                    nama: itemMenuName,
-                    jatah: itemJatah,
-                    terjual: 0,
-                    fromJatahSheet: true
-                  });
+                if (matched) {
+                  itemMenuName = matched.nama;
+                  break;
                 }
               }
-            } else {
+            }
+
+            if (itemMenuName) {
+              // Row with specific menu name: Kolom G is jatah for this menu
+              const existingMs = currentMapEntry.menuSales?.find(
+                ms => (ms.nama || '').trim().toLowerCase() === itemMenuName.toLowerCase()
+              );
+              if (existingMs) {
+                existingMs.jatah = itemJatah;
+                existingMs.fromJatahSheet = true;
+              } else {
+                currentMapEntry.menuSales?.push({
+                  nama: itemMenuName,
+                  jatah: itemJatah,
+                  terjual: 0,
+                  fromJatahSheet: true
+                });
+              }
+            } else if (Object.keys(menuColMap).length > 0 && !hasColG) {
               // Horizontal matrix layout: [Tanggal, Jatah Espresso, Jatah Latte, ...]
               Object.entries(menuColMap).forEach(([colIdxStr, cleanNameLower]) => {
                 const cIdx = Number(colIdxStr);
                 const cellVal = r[cIdx];
                 if (cellVal !== undefined && cellVal !== null && String(cellVal).trim() !== '') {
-                  const itemJatah = parseSheetNumber(cellVal);
+                  const num = parseSheetNumber(cellVal);
                   const existingMs = currentMapEntry.menuSales?.find(
                     ms => (ms.nama || '').trim().toLowerCase() === cleanNameLower
                   );
                   if (existingMs) {
-                    existingMs.jatah = itemJatah;
+                    existingMs.jatah = num;
                     existingMs.fromJatahSheet = true;
                   } else {
                     currentMapEntry.menuSales?.push({
                       nama: cleanNameLower,
-                      jatah: itemJatah,
+                      jatah: num,
                       terjual: 0,
                       fromJatahSheet: true
                     });
                   }
                 }
               });
+            } else {
+              // If no specific menu name is on the row, Kolom G is recorded as the total jatah on this date
+              currentMapEntry.totalJatah = itemJatah;
+            }
 
-              // Also check JSON column if available
-              const jsonCell = jsonColIdx >= 0 ? r[jsonColIdx] : null;
-              if (jsonCell) {
-                try {
-                  const parsedMs = JSON.parse(jsonCell);
-                  if (Array.isArray(parsedMs)) {
-                    parsedMs.forEach((pItem: any) => {
-                      const existingMs = currentMapEntry.menuSales?.find(
-                        ms => (pItem.menuId && ms.menuId === pItem.menuId) ||
-                              (pItem.nama && (ms.nama || '').trim().toLowerCase() === (pItem.nama || '').trim().toLowerCase())
-                      );
-                      if (existingMs) {
-                        if (typeof pItem.jatah === 'number') existingMs.jatah = pItem.jatah;
-                        if (typeof pItem.terjual === 'number') existingMs.terjual = pItem.terjual;
-                        existingMs.fromJatahSheet = true;
-                      } else {
-                        currentMapEntry.menuSales?.push({ ...pItem, fromJatahSheet: true });
-                      }
-                    });
-                  }
-                } catch {}
-              }
+            // Also check JSON column if available
+            const jsonCell = jsonColIdx >= 0 ? r[jsonColIdx] : null;
+            if (jsonCell) {
+              try {
+                const parsedMs = JSON.parse(jsonCell);
+                if (Array.isArray(parsedMs)) {
+                  parsedMs.forEach((pItem: any) => {
+                    const existingMs = currentMapEntry.menuSales?.find(
+                      ms => (pItem.menuId && ms.menuId === pItem.menuId) ||
+                            (pItem.nama && (ms.nama || '').trim().toLowerCase() === (pItem.nama || '').trim().toLowerCase())
+                    );
+                    if (existingMs) {
+                      if (typeof pItem.jatah === 'number') existingMs.jatah = pItem.jatah;
+                      if (typeof pItem.terjual === 'number') existingMs.terjual = pItem.terjual;
+                      existingMs.fromJatahSheet = true;
+                    } else {
+                      currentMapEntry.menuSales?.push({ ...pItem, fromJatahSheet: true });
+                    }
+                  });
+                }
+              } catch {}
             }
 
             if (rawTgl !== normTgl) {
