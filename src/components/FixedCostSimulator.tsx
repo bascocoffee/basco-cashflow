@@ -41,6 +41,7 @@ import {
   GlobalPerformanceSnapshot
 } from '../sheetsService';
 import { logAppActivity } from '../utils/activityLogger';
+import { generateSmartCashflowChatReply } from '../utils/aiAssistantEngine';
 
 export interface FixedCostItem {
   id: string;
@@ -361,9 +362,89 @@ export default function FixedCostSimulator({
       effectiveCogs = Math.round(effectiveCogs * (1 + omsetSliderAdjust / 100));
     }
 
+    // 5b. Breakdown of HPP per division (Minuman, Makanan, Snack)
+    let hppMinuman = 0;
+    let hppFood = 0;
+    let hppSnack = 0;
+
+    filteredSales.forEach(ds => {
+      if (Array.isArray(ds.menuSales) && ds.menuSales.length > 0) {
+        ds.menuSales.forEach(ms => {
+          const kat = (ms.kategori || '').toLowerCase();
+          const cost = ((Number(ms.terjual) || 0) + (Number(ms.jatah) || 0)) * (Number(ms.hpp) || 0);
+          if (kat.includes('minum') || kat.includes('drink') || kat.includes('bar') || kat.includes('kopi')) {
+            hppMinuman += cost;
+          } else if (kat.includes('snack') || kat.includes('cemilan')) {
+            hppSnack += cost;
+          } else if (kat.includes('makan') || kat.includes('food')) {
+            hppFood += cost;
+          } else {
+            hppMinuman += cost;
+          }
+        });
+      }
+    });
+
+    const sumDiv = hppMinuman + hppFood + hppSnack;
+    if (sumDiv > 0 && effectiveCogs > 0) {
+      const scale = effectiveCogs / sumDiv;
+      hppMinuman = Math.round(hppMinuman * scale);
+      hppFood = Math.round(hppFood * scale);
+      hppSnack = Math.round(hppSnack * scale);
+    } else if (effectiveCogs > 0) {
+      hppMinuman = Math.round(effectiveCogs * 0.65);
+      hppSnack = Math.round(effectiveCogs * 0.20);
+      hppFood = Math.round(effectiveCogs * 0.15);
+    }
+
+    // 5c. Breakdown of Fixed Costs (Sewa, Gaji, Utilitas, Operasional)
+    const timeframeFactor = timeframeMode === 'harian' ? 1 / 30 : timeframeMode === 'tahunan' ? 12 : 1;
+    let sewaTempat = 0;
+    let gajiStaff = 0;
+    let utilitas = 0;
+    let operasionalLain = 0;
+
+    fixedCosts.forEach(fc => {
+      const cat = (fc.category || '').toLowerCase();
+      const name = (fc.name || '').toLowerCase();
+      const amt = (Number(fc.amount) || 0) * timeframeFactor;
+      if (cat.includes('sewa') || name.includes('sewa') || name.includes('ruko')) {
+        sewaTempat += amt;
+      } else if (cat.includes('tenaga') || cat.includes('gaji') || name.includes('gaji') || name.includes('barista') || name.includes('staff')) {
+        gajiStaff += amt;
+      } else if (cat.includes('utilitas') || name.includes('listrik') || name.includes('air') || name.includes('wifi') || name.includes('internet')) {
+        utilitas += amt;
+      } else {
+        operasionalLain += amt;
+      }
+    });
+
+    // Fallback: Check cashflow for salary if not captured in fixed costs
+    const salaryFromTx = filteredTx
+      .filter(t => (t.jenisPengeluaran || '').toLowerCase().includes('gaji') || (t.keterangan || '').toLowerCase().includes('gaji'))
+      .reduce((sum, t) => sum + (Number(t.kredit || 0) + Number(t.kredit2 || 0)), 0);
+    if (gajiStaff === 0 && salaryFromTx > 0) {
+      gajiStaff = salaryFromTx;
+    }
+
+    // Top Expenses from filteredTx
+    const expCatMap: Record<string, number> = {};
+    filteredTx.forEach(t => {
+      const amt = (Number(t.kredit) || 0) + (Number(t.kredit2) || 0);
+      if (amt > 0) {
+        const cat = t.jenisPengeluaran || t.kategori || t.keterangan || 'Operasional';
+        expCatMap[cat] = (expCatMap[cat] || 0) + amt;
+      }
+    });
+    const topExpenses = Object.entries(expCatMap)
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+
     // 6. Profitability & Capability Output
     const grossProfit = effectiveOmset - effectiveCogs;
     const grossMarginPct = effectiveOmset > 0 ? (grossProfit / effectiveOmset) * 100 : 65;
+    const cogsRatioPct = effectiveOmset > 0 ? (effectiveCogs / effectiveOmset) * 100 : 35;
     const operatingProfit = grossProfit - timeframeFixedCost;
     const netProfit = operatingProfit - timeframeDebtCost;
     const netMarginPct = effectiveOmset > 0 ? (netProfit / effectiveOmset) * 100 : 0;
@@ -409,8 +490,17 @@ export default function FixedCostSimulator({
       effectiveOmset,
       totalSalesCups,
       effectiveCogs,
+      hppMinuman,
+      hppFood,
+      hppSnack,
+      sewaTempat,
+      gajiStaff,
+      utilitas,
+      operasionalLain,
+      topExpenses,
       grossProfit,
       grossMarginPct,
+      cogsRatioPct,
       timeframeFixedCost,
       timeframeDebtCost,
       operatingProfit,
@@ -565,6 +655,41 @@ export default function FixedCostSimulator({
     setChatInput('');
     setIsSendingChat(true);
 
+    const statsPayload = {
+      totalDebit: liveMetrics.effectiveOmset,
+      totalKredit: liveMetrics.effectiveCogs + liveMetrics.timeframeFixedCost + liveMetrics.timeframeDebtCost,
+      saldo: liveMetrics.netProfit,
+      cashInflow: liveMetrics.cashInflow,
+      cashOutflow: liveMetrics.cashOutflow,
+      netCashflow: liveMetrics.netCashflow,
+      transactionCount: liveMetrics.txCount
+    };
+
+    const cafeMetricsPayload = {
+      totalSales: liveMetrics.effectiveOmset,
+      totalHpp: liveMetrics.effectiveCogs,
+      hppPercentage: liveMetrics.cogsRatioPct,
+      hppMinuman: liveMetrics.hppMinuman,
+      hppFood: liveMetrics.hppFood,
+      hppSnack: liveMetrics.hppSnack,
+      totalSalary: liveMetrics.gajiStaff,
+      salaryPercentage: liveMetrics.effectiveOmset > 0 ? (liveMetrics.gajiStaff / liveMetrics.effectiveOmset) * 100 : 0,
+      totalRent: liveMetrics.sewaTempat,
+      rentPercentage: liveMetrics.effectiveOmset > 0 ? (liveMetrics.sewaTempat / liveMetrics.effectiveOmset) * 100 : 0,
+      totalUtility: liveMetrics.utilitas,
+      utilityPercentage: liveMetrics.effectiveOmset > 0 ? (liveMetrics.utilitas / liveMetrics.effectiveOmset) * 100 : 0,
+      totalFixedCost: liveMetrics.timeframeFixedCost,
+      fixedCostPercentage: liveMetrics.fixedCostRatioPct,
+      totalDebt: liveMetrics.timeframeDebtCost,
+      debtPercentage: liveMetrics.debtRatioPct,
+      netProfit: liveMetrics.netProfit,
+      netProfitPercentage: liveMetrics.netMarginPct,
+      bepRevenue: liveMetrics.bepRevenue,
+      bepProgressPct: liveMetrics.bepProgressPct,
+      status: liveMetrics.status,
+      cups: liveMetrics.totalSalesCups
+    };
+
     try {
       const res = await fetch('/api/gemini/chat', {
         method: 'POST',
@@ -573,19 +698,31 @@ export default function FixedCostSimulator({
           provider: aiProvider,
           question: text,
           messages: next,
-          stats: {
-            totalDebit: liveMetrics.cashInflow,
-            totalKredit: liveMetrics.cashOutflow,
-            saldo: liveMetrics.netCashflow
-          },
+          periodName: currentPeriodLabel,
+          stats: statsPayload,
+          cafeMetrics: cafeMetricsPayload,
+          topExpenses: liveMetrics.topExpenses,
           context: {
             mode: timeframeMode,
             period: currentPeriodLabel,
             omset: liveMetrics.effectiveOmset,
-            fixedCost: liveMetrics.timeframeFixedCost,
-            debtCost: liveMetrics.timeframeDebtCost,
+            totalDebit: liveMetrics.effectiveOmset,
+            totalCOGS: liveMetrics.effectiveCogs,
             cogs: liveMetrics.effectiveCogs,
+            cogsRatio: liveMetrics.cogsRatioPct,
+            totalCOGSDrink: liveMetrics.hppMinuman,
+            totalCOGSFood: liveMetrics.hppFood,
+            totalCOGSSnack: liveMetrics.hppSnack,
+            fixedCost: liveMetrics.timeframeFixedCost,
+            totalFixedCost: liveMetrics.timeframeFixedCost,
+            debtCost: liveMetrics.timeframeDebtCost,
+            totalDebt: liveMetrics.timeframeDebtCost,
+            totalSalary: liveMetrics.gajiStaff,
+            totalRent: liveMetrics.sewaTempat,
+            totalUtility: liveMetrics.utilitas,
+            wagesRatio: liveMetrics.effectiveOmset > 0 ? (liveMetrics.gajiStaff / liveMetrics.effectiveOmset) * 100 : 0,
             netProfit: liveMetrics.netProfit,
+            netProfitMargin: liveMetrics.netMarginPct,
             bepRevenue: liveMetrics.bepRevenue,
             bepProgressPct: liveMetrics.bepProgressPct,
             status: liveMetrics.status
@@ -605,11 +742,19 @@ export default function FixedCostSimulator({
         }
       ]);
     } catch {
+      const offlineReply = generateSmartCashflowChatReply({
+        provider: aiProvider,
+        question: text,
+        stats: statsPayload,
+        cafeMetrics: cafeMetricsPayload,
+        periodName: currentPeriodLabel,
+        topExpenses: liveMetrics.topExpenses
+      });
       setChatMessages(prev => [
         ...prev,
         {
           role: 'model',
-          content: `Untuk periode ${currentPeriodLabel}, omset kafe tercatat **${formatRupiah(liveMetrics.effectiveOmset)}** dengan laba bersih **${formatRupiah(liveMetrics.netProfit)}**. Beban biaya tetap periode ini adalah **${formatRupiah(liveMetrics.timeframeFixedCost)}** (${liveMetrics.fixedCostRatioPct.toFixed(1)}% omset) dan target BEP **${formatRupiah(liveMetrics.bepRevenue)}** (capaian ${liveMetrics.bepProgressPct}%). Posisi keuangan kafe berstatus **${liveMetrics.status}**.`,
+          content: offlineReply,
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -660,10 +805,25 @@ export default function FixedCostSimulator({
           description: `Menyimpan evaluasi kinerja kafe (${timeframeMode} - ${currentPeriodLabel}) ke Google Sheets tab 'Evaluasi Kinerja Global'`
         });
       } else {
-        setSaveMessage({ type: 'error', text: result.message });
+        const isAuthErr = result.message.includes('401') || result.message.includes('UNAUTHENTICATED') || result.message.includes('invalid authentication credentials');
+        setSaveMessage({
+          type: isAuthErr ? 'warning' : 'error',
+          text: isAuthErr
+            ? 'Sesi login Google OAuth kedaluwarsa atau belum terhubung (401). Silakan klik tombol "Login Akun Google" untuk memperbarui sinkronisasi spreadsheet.'
+            : result.message,
+          needsAuth: isAuthErr
+        });
       }
     } catch (err: any) {
-      setSaveMessage({ type: 'error', text: err?.message || 'Gagal menyimpan snapshot.' });
+      const errMsg = err?.message || 'Gagal menyimpan snapshot.';
+      const isAuthErr = errMsg.includes('401') || errMsg.includes('UNAUTHENTICATED') || errMsg.includes('invalid authentication credentials');
+      setSaveMessage({
+        type: isAuthErr ? 'warning' : 'error',
+        text: isAuthErr
+          ? 'Sesi login Google OAuth kedaluwarsa atau belum terhubung (401). Silakan klik tombol "Login Akun Google" untuk memperbarui sinkronisasi spreadsheet.'
+          : errMsg,
+        needsAuth: isAuthErr
+      });
     } finally {
       setIsSavingToSheet(false);
     }

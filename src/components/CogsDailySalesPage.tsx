@@ -1279,7 +1279,7 @@ export default function CogsDailySalesPage({
                 const rUp = (r as any).updatedAt || 0;
                 const exUp = ex?.updatedAt || 0;
                 if (!ex || rUp > exUp) {
-                  map.set(d, { ...r, tanggal: d });
+                  map.set(d, { ...r, tanggal: d, cups: getEffectiveRecordCups(r) });
                   changed = true;
                 }
               });

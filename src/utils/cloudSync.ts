@@ -138,6 +138,16 @@ function setLocalSalesPatch(state: SharedDailySalesState) {
 let salesSyncTimer: any = null;
 let pendingSalesPush = false;
 
+const sanitizeCups = (rec: any): number => {
+  if (!rec) return 0;
+  if (Array.isArray(rec.menuSales) && rec.menuSales.length > 0) {
+    const calc = rec.menuSales.reduce((s: number, ms: any) => s + (Number(ms?.terjual) || 0), 0);
+    if (calc > 0) return calc;
+  }
+  const raw = Number(rec.cups) || 0;
+  return raw > 0 && raw < 50000 ? raw : 0;
+};
+
 export async function pushDailySalesToCloud(options: {
   record?: any;
   records?: any[];
@@ -163,6 +173,7 @@ export async function pushDailySalesToCloud(options: {
     const tgl = options.record.tanggal;
     currentPatch.recordsByDate[tgl] = {
       ...options.record,
+      cups: sanitizeCups(options.record),
       updatedAt: options.record.updatedAt || now,
     };
     if (currentPatch.deletedDates) {
@@ -179,6 +190,7 @@ export async function pushDailySalesToCloud(options: {
       if (r.updatedAt || options.immediate) {
         currentPatch.recordsByDate[r.tanggal] = {
           ...r,
+          cups: sanitizeCups(r),
           updatedAt: r.updatedAt || now,
         };
       }
@@ -217,7 +229,7 @@ export async function pushDailySalesToCloud(options: {
         Object.entries(remote.recordsByDate).forEach(([tgl, rec]: [string, any]) => {
           const delTs = mergedDeleted[tgl] || 0;
           if ((rec?.updatedAt || 0) >= delTs) {
-            mergedRecords[tgl] = rec;
+            mergedRecords[tgl] = { ...rec, cups: sanitizeCups(rec) };
           }
         });
       }
@@ -227,7 +239,7 @@ export async function pushDailySalesToCloud(options: {
         const delTs = mergedDeleted[tgl] || 0;
         const recTs = rec?.updatedAt || now;
         if (recTs >= delTs && (!existing || recTs >= (existing.updatedAt || 0))) {
-          mergedRecords[tgl] = { ...rec, updatedAt: recTs };
+          mergedRecords[tgl] = { ...rec, cups: sanitizeCups(rec), updatedAt: recTs };
         }
       });
 
@@ -283,7 +295,7 @@ export async function pullDailySalesFromCloud(): Promise<SharedDailySalesState |
         if (recTs < delTs) return;
         const existing = mergedRecords[tgl];
         if (!existing || recTs >= (existing.updatedAt || 0)) {
-          mergedRecords[tgl] = rec;
+          mergedRecords[tgl] = { ...rec, cups: sanitizeCups(rec) };
         }
       });
     };
