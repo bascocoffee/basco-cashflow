@@ -657,7 +657,7 @@ export default function Sidebar({
                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
                   <span className="truncate">{mysqlStatus?.database || 'basco_cashflow'}</span>
                   <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold shrink-0">
-                    {mysqlStatus?.connected ? `${mysqlStatus.tableCount || 7} tabel` : 'XAMPP/Local'}
+                    {mysqlStatus?.connected ? `${mysqlStatus.tableCount || 7} tabel` : 'Cloud/Standby'}
                   </span>
                 </div>
               </div>

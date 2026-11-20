@@ -16,17 +16,58 @@ let pool: Pool | null = null;
 let isDbConnected = false;
 let lastDbError = '';
 
-const getDbConfig = () => {
+const getDbConfig = (): PoolOptions & { database: string; host: string; port: number; user: string } => {
+  const connUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || '';
+  if (connUrl.trim()) {
+    try {
+      const parsed = new URL(connUrl.trim());
+      const host = parsed.hostname || '127.0.0.1';
+      const port = Number(parsed.port) || 3306;
+      const user = decodeURIComponent(parsed.username || 'root');
+      const password = decodeURIComponent(parsed.password || '');
+      const database = parsed.pathname.replace(/^\//, '') || 'basco_cashflow';
+      const isRemote = host !== '127.0.0.1' && host !== 'localhost';
+      const useSsl =
+        process.env.MYSQL_SSL === 'true' ||
+        process.env.MYSQL_SSL === '1' ||
+        connUrl.toLowerCase().includes('ssl') ||
+        isRemote;
+
+      return {
+        host,
+        port,
+        user,
+        password,
+        database,
+        ...(useSsl ? { ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: false } } : {}),
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 8000,
+      };
+    } catch (e) {
+      console.warn('[MySQL] Invalid MYSQL_URL format, falling back to individual env vars');
+    }
+  }
+
+  const host = process.env.MYSQL_HOST || '127.0.0.1';
+  const isRemote = host !== '127.0.0.1' && host !== 'localhost';
+  const useSsl =
+    process.env.MYSQL_SSL === 'true' ||
+    process.env.MYSQL_SSL === '1' ||
+    isRemote;
+
   return {
-    host: process.env.MYSQL_HOST || '127.0.0.1',
+    host,
     port: Number(process.env.MYSQL_PORT) || 3306,
     user: process.env.MYSQL_USER || 'root',
     password: process.env.MYSQL_PASSWORD || '',
     database: process.env.MYSQL_DATABASE || 'basco_cashflow',
+    ...(useSsl ? { ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: false } } : {}),
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 5000,
+    connectTimeout: 8000,
   };
 };
 
@@ -38,21 +79,29 @@ export async function initMySql(): Promise<MySqlStatus> {
   const dbName = config.database;
 
   try {
-    // 1. Initial connection without database selected to ensure DB exists
-    const rootConn = await mysql.createConnection({
-      host: config.host,
-      port: config.port,
-      user: config.user,
-      password: config.password,
-      connectTimeout: 4000
-    });
+    // 1. Best-effort: try to create DB if user has CREATE privilege (skipped gracefully on managed Cloud MySQL like Aiven/TiDB)
+    try {
+      const rootConn = await mysql.createConnection({
+        host: config.host,
+        port: config.port,
+        user: config.user,
+        password: config.password,
+        ...(config.ssl ? { ssl: config.ssl } : {}),
+        connectTimeout: 6000
+      });
 
-    await rootConn.query(
-      `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
-    );
-    await rootConn.end();
+      await rootConn.query(
+        `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+      );
+      await rootConn.end();
+    } catch {
+      // Managed cloud MySQL often pre-creates the database and restricts CREATE DATABASE
+    }
 
-    // 2. Create the main application pool
+    // 2. Create the main application pool directly to target database
+    if (pool) {
+      try { await pool.end(); } catch {}
+    }
     pool = mysql.createPool(config);
 
     // Test connection
