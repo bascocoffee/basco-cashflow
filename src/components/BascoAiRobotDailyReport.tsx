@@ -33,6 +33,163 @@ interface BascoAiRobotDailyReportProps {
   onNavigateToTab?: (tab: string) => void;
 }
 
+interface RobotChatMessage {
+  role: 'user' | 'model';
+  content: string;
+  timestamp: string;
+  actionTab?: string;
+  actionLabel?: string;
+}
+
+/**
+ * Karakter Maskot SVG "Basco" — Asisten Aplikasi & Asisten Pribadi Owner
+ */
+function BascoCharacterAvatar({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const dims = size === 'sm' ? 'w-7 h-7' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
+  return (
+    <div className={`${dims} rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-orange-600 p-0.5 shadow-md shrink-0 flex items-center justify-center relative`}>
+      <svg viewBox="0 0 64 64" className="w-full h-full rounded-[14px] bg-slate-950" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Antenna / Coffee Steam */}
+        <circle cx="32" cy="7" r="3.5" fill="#34D399" />
+        <rect x="30.5" y="10" width="3" height="6" rx="1.5" fill="#F59E0B" />
+        {/* Robot Head */}
+        <rect x="12" y="16" width="40" height="34" rx="12" fill="#1E293B" stroke="#F59E0B" strokeWidth="2.5" />
+        {/* Ear / Headset Pods */}
+        <rect x="6" y="26" width="6" height="14" rx="3" fill="#F59E0B" />
+        <rect x="52" y="26" width="6" height="14" rx="3" fill="#F59E0B" />
+        {/* Visor Screen */}
+        <rect x="17" y="23" width="30" height="16" rx="7" fill="#0F172A" />
+        {/* Expressive Eyes */}
+        <circle cx="25.5" cy="31" r="3.2" fill="#34D399" />
+        <circle cx="38.5" cy="31" r="3.2" fill="#34D399" />
+        <circle cx="26.5" cy="29.8" r="1" fill="#FFFFFF" />
+        <circle cx="39.5" cy="29.8" r="1" fill="#FFFFFF" />
+        {/* Friendly Smile */}
+        <path d="M26 43.5C28 45.8 36 45.8 38 43.5" stroke="#FBBF24" strokeWidth="2.2" strokeLinecap="round" />
+        {/* Mini Coffee Cup Badge */}
+        <path d="M27 53H37L35.5 59H28.5L27 53Z" fill="#D97706" />
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Knowledge Base Karakter Basco: Panduan Penggunaan Aplikasi & Asisten Owner
+ */
+function matchBascoAppGuide(
+  question: string,
+  metrics: {
+    effectiveTodayOmset: number;
+    todayCups: number;
+    dailyFixedCost: number;
+    bepPercent: number;
+    dailyBepOmset: number;
+    topMenuName: string;
+    overdueCount: number;
+    dueSoonCount: number;
+    totalRemainingDebt: number;
+  }
+): { content: string; actionTab?: string; actionLabel?: string } | null {
+  const q = question.toLowerCase();
+
+  // 1. Panduan umum / daftar fitur aplikasi
+  if (
+    q.includes('cara pakai') ||
+    q.includes('panduan') ||
+    q.includes('bantuan') ||
+    q.includes('fitur apa') ||
+    q.includes('menu apa') ||
+    q.includes('fungsi aplikasi')
+  ) {
+    return {
+      content: `Halo Bos! Saya **Basco**, asisten pribadi Anda di aplikasi ini. Berikut panduan singkat fungsi menu utama:\n\n1. **Dasbor Utama:** Catat arus kas masuk/keluar harian & pantau saldo kas.\n2. **Analisis COGS & Sales:** Input penjualan menu harian, jatah barista, edit resep/HPP, dan laporan barang masuk.\n3. **Stok Opname Bulanan:** Audit selisih stok bahan baku tiap akhir bulan.\n4. **Jadwal & Tugas Barista:** Atur shift kerja dan checklist tugas staf.\n5. **Pencatatan Hutang:** Pantau jatuh tempo supplier, cicilan & KUR.\n6. **Kinerja Global & AI:** Evaluasi BEP, rasio biaya tetap, dan analisis keuangan mendalam.\n\nTanyakan saja bagian mana yang ingin Anda pelajari, misalnya *"Cara input penjualan harian"*!`,
+      actionTab: 'dashboard',
+      actionLabel: 'Buka Dasbor Utama'
+    };
+  }
+
+  // 2. Cara input penjualan harian / jatah / cups
+  if (
+    (q.includes('cara') || q.includes('gimana') || q.includes('bagaimana') || q.includes('input')) &&
+    (q.includes('penjualan') || q.includes('sales') || q.includes('cup') || q.includes('jatah') || q.includes('omset'))
+  ) {
+    return {
+      content: `**Cara Input Penjualan Harian & Jatah Barista:**\n1. Buka menu **Analisis COGS & Sales** di sidebar.\n2. Pastikan berada di tab **1. Pencatatan Harian**.\n3. Pilih **Tanggal** yang ingin diinput.\n4. Isi jumlah **Terjual (Cups)** dan **Jatah Barista** per menu (bisa juga pakai fitur *Scan Struk* otomatis).\n5. Klik **Simpan Data Penjualan Harian** — data langsung tersimpan ke **Cloud MySQL & Google Sheets**!`,
+      actionTab: 'omset_cogs',
+      actionLabel: 'Buka Menu COGS & Penjualan'
+    };
+  }
+
+  // 3. Cara edit resep / HPP / tambah menu / barang masuk
+  if (
+    (q.includes('cara') || q.includes('gimana') || q.includes('bagaimana') || q.includes('edit') || q.includes('ubah') || q.includes('tambah')) &&
+    (q.includes('resep') || q.includes('hpp') || q.includes('menu') || q.includes('bahan') || q.includes('barang masuk'))
+  ) {
+    return {
+      content: `**Cara Mengelola Menu, Resep HPP & Barang Masuk:**\n1. Masuk ke menu **Analisis COGS & Sales**.\n2. Pilih tab **2. Penjualan Menu** atau **3. Kalkulator COGS** untuk menambah menu baru, mengatur harga jual, atau mengedit takaran resep bahan baku (HPP otomatis terhitung).\n3. Untuk mencatat pembelian/kulakan bahan baku beserta notanya, pilih tab **5. Barang Masuk**.`,
+      actionTab: 'omset_cogs',
+      actionLabel: 'Buka Katalog & Resep COGS'
+    };
+  }
+
+  // 4. Cara catat transaksi kas / pengeluaran / pemasukan
+  if (
+    (q.includes('cara') || q.includes('gimana') || q.includes('bagaimana') || q.includes('catat') || q.includes('input')) &&
+    (q.includes('transaksi') || q.includes('kas') || q.includes('pengeluaran') || q.includes('pemasukan') || q.includes('belanja'))
+  ) {
+    return {
+      content: `**Cara Mencatat Transaksi Kas Masuk / Keluar:**\n1. Buka **Dasbor Utama**.\n2. Klik tombol hijau **+ Transaksi Baru** di kanan atas.\n3. Pilih tipe (**Pemasukan** atau **Pengeluaran**), isi nominal, tanggal, kategori, dan keterangan.\n4. Klik **Simpan** — transaksi otomatis masuk ke buku kas, Cloud MySQL, dan Google Sheets.`,
+      actionTab: 'dashboard',
+      actionLabel: 'Buka Dasbor Utama'
+    };
+  }
+
+  // 5. MySQL & Google Sheets info
+  if (q.includes('mysql') || q.includes('database') || q.includes('spreadsheet') || q.includes('sheets') || q.includes('sinkron')) {
+    return {
+      content: `**Info Penyimpanan Ganda (Dual-Storage):**\nAplikasi Basco menyimpan seluruh data secara bersamaan ke:\n• **TiDB Cloud MySQL** (online 24 jam, instan, bebas error token).\n• **Google Sheets** (backup & tampilan spreadsheet).\n\nDi sidebar kiri bagian bawah, pastikan indikator **MySQL DB Aktif** menyala biru/cyan dan **Google Sheets Aktif** menyala hijau. Jika butuh tarik ulang data terbaru, klik tombol **Refresh** di kartu tersebut.`
+    };
+  }
+
+  // 6. Stok opname & jadwal barista
+  if ((q.includes('cara') || q.includes('gimana') || q.includes('bagaimana')) && (q.includes('stok') || q.includes('opname'))) {
+    return {
+      content: `**Cara Melakukan Stok Opname Bulanan:**\n1. Buka menu **Stok Opname Bulanan** di sidebar.\n2. Pilih bulan audit yang diinginkan.\n3. Masukkan stok fisik akhir hasil perhitungan di bar/gudang.\n4. Klik **Simpan ke Google Sheets** untuk merekam selisih pemakaian bahan baku.`,
+      actionTab: 'cogs',
+      actionLabel: 'Buka Stok Opname'
+    };
+  }
+
+  if ((q.includes('cara') || q.includes('gimana') || q.includes('bagaimana')) && (q.includes('jadwal') || q.includes('shift') || q.includes('tugas'))) {
+    return {
+      content: `**Cara Mengatur Jadwal & Tugas Staf:**\n• Gunakan menu **Jadwal Operasional** untuk mengatur roster shift pagi/sore barista.\n• Gunakan menu **Tugas Karyawan** untuk memantau *checklist* pekerjaan harian dan alokasi upah staf.`,
+      actionTab: 'barista_schedule',
+      actionLabel: 'Buka Jadwal Operasional'
+    };
+  }
+
+  // 7. Evaluasi hutang & tempo (owner assistant shortcut)
+  if (q.includes('hutang') || q.includes('tempo') || q.includes('cicilan')) {
+    return {
+      content: `**Ringkasan Kewajiban Hutang & Tempo:**\n• Total Sisa Hutang Aktif: **${formatRupiah(metrics.totalRemainingDebt)}**\n• Jatuh Tempo Terdekat: **${metrics.overdueCount} lewat tempo**, **${metrics.dueSoonCount} segera jatuh tempo**.\n\nUntuk melihat rincian kreditor atau mencatat pembayaran cicilan, langsung klik tombol di bawah ini ya Bos!`,
+      actionTab: 'debt_tracker',
+      actionLabel: 'Buka Pencatatan Hutang'
+    };
+  }
+
+  // 8. Target BEP hari ini
+  if (q.includes('bep') || (q.includes('target') && q.includes('hari ini'))) {
+    const kurang = Math.max(0, metrics.dailyBepOmset - metrics.effectiveTodayOmset);
+    return {
+      content: `**Status Target BEP Hari Ini:**\n• Omset Tercatat Hari Ini: **${formatRupiah(metrics.effectiveTodayOmset)}** (${metrics.todayCups} cups)\n• Beban Tetap & Cicilan Harian: **${formatRupiah(metrics.dailyFixedCost)}**\n• Target Omset BEP Harian: **${formatRupiah(metrics.dailyBepOmset)}** (Tercapai **${metrics.bepPercent}%**)\n• ${kurang === 0 ? '✅ **Target BEP hari ini sudah terlampaui, Bos!** Penjualan selanjutnya adalah margin profit.' : `⏳ Kurang **${formatRupiah(kurang)}** lagi untuk menutup seluruh beban harian.`}`,
+      actionTab: 'fixed_cost',
+      actionLabel: 'Buka Evaluasi Kinerja Global'
+    };
+  }
+
+  return null;
+}
+
 function formatRupiah(num: number): string {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -115,8 +272,8 @@ export default function BascoAiRobotDailyReport({
   });
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
-  // Chat with Robot state
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'model'; content: string; timestamp: string }>>(() => {
+  // Chat with Basco Assistant state
+  const [chatMessages, setChatMessages] = useState<RobotChatMessage[]>(() => {
     try {
       const saved = localStorage.getItem('basco_robot_chat_history');
       if (saved) return JSON.parse(saved);
@@ -124,7 +281,7 @@ export default function BascoAiRobotDailyReport({
     return [
       {
         role: 'model',
-        content: `Halo Bos! ☕🤖 Saya **Robot AI Basco**, intelijen harian cafe Anda. Saya memantau penjualan hari ini, arus kas masuk & keluar, beban biaya tetap, dan cicilan hutang secara realtime.\n\nAda yang ingin ditanyakan seputar kondisi kafe hari ini?`,
+        content: `Halo Bos! ☕🤖 Saya **Basco**, karakter asisten pribadi Anda & pemandu aplikasi **Basco Cashflow**.\n\nAnda bisa bertanya tentang:\n• **Cara menggunakan fitur & menu aplikasi** (input penjualan, edit resep HPP, stok, MySQL/Sheets).\n• **Laporan & strategi bisnis Owner** (omset hari ini, BEP, hutang tempo, margin).\n\nAda yang bisa Basco bantu hari ini?`,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
       }
     ];
@@ -316,13 +473,23 @@ Sajikan dengan format ringkas & menarik:
     } catch {}
   };
 
-  // Chat send handler
+  const handleResetChat = () => {
+    const initialMsg: RobotChatMessage = {
+      role: 'model',
+      content: `Halo Bos! ☕🤖 Saya **Basco**, karakter asisten pribadi Anda & pemandu aplikasi **Basco Cashflow**.\n\nAda yang ingin ditanyakan seputar penggunaan aplikasi atau kondisi kafe hari ini?`,
+      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    };
+    setChatMessages([initialMsg]);
+    localStorage.setItem('basco_robot_chat_history', JSON.stringify([initialMsg]));
+  };
+
+  // Chat send handler (App Assistant + Owner Business Assistant)
   const handleSendChat = async (overrideText?: string) => {
     const text = (overrideText || chatInput).trim();
     if (!text || isSendingChat) return;
 
-    const userMsg = {
-      role: 'user' as const,
+    const userMsg: RobotChatMessage = {
+      role: 'user',
       content: text,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     };
@@ -332,6 +499,25 @@ Sajikan dengan format ringkas & menarik:
     setChatInput('');
     setIsSendingChat(true);
 
+    // 1. Check built-in Basco App Guide & Quick Owner Assistant first
+    const localGuide = matchBascoAppGuide(text, todayMetrics);
+    if (localGuide) {
+      setTimeout(() => {
+        setChatMessages(prev => [
+          ...prev,
+          {
+            role: 'model',
+            content: localGuide.content,
+            actionTab: localGuide.actionTab,
+            actionLabel: localGuide.actionLabel,
+            timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+        setIsSendingChat(false);
+      }, 220);
+      return;
+    }
+
     try {
       const res = await fetch('/api/gemini/chat', {
         method: 'POST',
@@ -340,12 +526,22 @@ Sajikan dengan format ringkas & menarik:
           provider: 'claude',
           question: text,
           messages: nextMessages,
+          periodName: 'Hari Ini & Bulan Berjalan',
           stats: {
-            totalDebit: todayMetrics.todayInflow,
+            totalDebit: todayMetrics.effectiveTodayOmset || todayMetrics.todayInflow,
             totalKredit: todayMetrics.todayOutflow,
             saldo: todayMetrics.todayNetCashflow,
           },
+          cafeMetrics: {
+            totalSales: todayMetrics.effectiveTodayOmset,
+            cups: todayMetrics.todayCups,
+            totalFixedCost: todayMetrics.dailyFixedCost,
+            totalDebt: todayMetrics.dailyDebtCost,
+            bepRevenue: todayMetrics.dailyBepOmset,
+            bepProgressPct: todayMetrics.bepPercent,
+          },
           context: {
+            role: 'Basco Karakter Asisten Aplikasi & Asisten Pribadi Owner',
             omsetHariIni: todayMetrics.effectiveTodayOmset,
             cupsHariIni: todayMetrics.todayCups,
             fixedCostHarian: todayMetrics.dailyFixedCost,
@@ -359,7 +555,7 @@ Sajikan dengan format ringkas & menarik:
 
       if (!res.ok) throw new Error('Network error');
       const data = await res.json();
-      const reply = data.reply || data.answer || 'Robot AI Basco siap membantu.';
+      const reply = data.reply || data.answer || 'Basco siap membantu Bos!';
       setChatMessages(prev => [
         ...prev,
         {
@@ -373,7 +569,7 @@ Sajikan dengan format ringkas & menarik:
         ...prev,
         {
           role: 'model',
-          content: `Berdasarkan data hari ini, omset kafe tercatat **Rp ${todayMetrics.effectiveTodayOmset.toLocaleString('id-ID')}** (${todayMetrics.todayCups} cups), menutup **${todayMetrics.bepPercent}%** dari kebutuhan biaya tetap harian (Rp ${todayMetrics.dailyFixedCost.toLocaleString('id-ID')}). Ada pertanyaan spesifik lain yang ingin dianalisis?`,
+          content: `Berdasarkan data hari ini, omset kafe tercatat **Rp ${todayMetrics.effectiveTodayOmset.toLocaleString('id-ID')}** (${todayMetrics.todayCups} cups), menutup **${todayMetrics.bepPercent}%** dari kebutuhan biaya tetap harian (Rp ${todayMetrics.dailyFixedCost.toLocaleString('id-ID')}).\n\nBos juga bisa tanya cara pakai menu aplikasi (misal: *"Cara input penjualan"* atau *"Cara edit resep HPP"*).`,
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -414,15 +610,13 @@ Sajikan dengan format ringkas & menarik:
             <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500" />
           </span>
 
-          <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-full">
-            <Bot className="h-5 w-5" />
-          </div>
+          <BascoCharacterAvatar size="md" />
           <div className="text-left hidden sm:block pr-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block leading-tight">
-              Laporan Harian
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 block leading-tight">
+              Asisten Owner & Aplikasi
             </span>
             <span className="text-xs font-black tracking-tight text-white block">
-              Robot AI Basco 🤖
+              Tanya Basco 🤖
             </span>
           </div>
         </button>
@@ -452,22 +646,20 @@ Sajikan dengan format ringkas & menarik:
         >
           <div className="flex items-center space-x-2.5 min-w-0">
             <div className="relative">
-              <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
-                <Bot className="h-5 w-5" />
-              </div>
+              <BascoCharacterAvatar size="md" />
               <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-slate-900" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center space-x-1.5">
                 <span className="text-xs font-black text-white tracking-tight truncate">
-                  Robot AI Basco
+                  Basco — Asisten AI
                 </span>
-                <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase">
-                  Live Intel
+                <span className="px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 text-[9px] font-black uppercase">
+                  Owner Guide
                 </span>
               </div>
               <p className="text-[10px] text-slate-300 font-medium truncate">
-                {timeGreeting}, Bos! • Geser sesuka Anda
+                {timeGreeting}, Bos! • Panduan & Bisnis
               </p>
             </div>
           </div>
@@ -520,7 +712,7 @@ Sajikan dengan format ringkas & menarik:
                 }`}
               >
                 <MessageSquare className="h-3.5 w-3.5 text-indigo-600" />
-                <span>Tanya Robot AI</span>
+                <span>Tanya Basco (Chat)</span>
               </button>
             </div>
 
@@ -661,15 +853,30 @@ Sajikan dengan format ringkas & menarik:
                     onClick={() => setActiveTab('chat')}
                     className="text-indigo-600 hover:text-indigo-800 underline"
                   >
-                    Ngobrol dengan Robot →
+                    Tanya Asisten Basco →
                   </button>
                 </div>
               </div>
             )}
 
-            {/* TAB 2: CHAT WITH ROBOT AI */}
+            {/* TAB 2: CHAT WITH BASCO CHARACTER ASSISTANT */}
             {activeTab === 'chat' && (
-              <div className="flex flex-col h-[340px]">
+              <div className="flex flex-col h-[350px]">
+                {/* Sub-bar with persona badge & Reset Chat */}
+                <div className="px-3.5 py-1.5 bg-amber-50/80 border-b border-amber-200/70 flex items-center justify-between text-[10px]">
+                  <span className="font-bold text-amber-900">
+                    ☕ Mode Asisten Aplikasi & Owner
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleResetChat}
+                    className="text-slate-500 hover:text-rose-600 font-bold transition cursor-pointer"
+                    title="Bersihkan obrolan dan mulai ulang"
+                  >
+                    Reset Chat
+                  </button>
+                </div>
+
                 {/* Chat message stream */}
                 <div className="flex-1 p-3.5 overflow-y-auto space-y-2.5">
                   {chatMessages.map((msg, i) => (
@@ -680,8 +887,8 @@ Sajikan dengan format ringkas & menarik:
                       }`}
                     >
                       {msg.role === 'model' && (
-                        <div className="p-1 bg-indigo-950 text-emerald-400 rounded-lg shrink-0 mt-0.5">
-                          <Bot className="h-3.5 w-3.5" />
+                        <div className="shrink-0 mt-0.5">
+                          <BascoCharacterAvatar size="sm" />
                         </div>
                       )}
                       <div
@@ -692,6 +899,16 @@ Sajikan dengan format ringkas & menarik:
                         }`}
                       >
                         <p className="whitespace-pre-wrap">{msg.content}</p>
+                        {msg.role === 'model' && msg.actionTab && msg.actionLabel && onNavigateToTab && (
+                          <button
+                            type="button"
+                            onClick={() => onNavigateToTab(msg.actionTab!)}
+                            className="mt-2 inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10.5px] font-black transition cursor-pointer"
+                          >
+                            <span>{msg.actionLabel}</span>
+                            <ChevronRight className="h-3 w-3" />
+                          </button>
+                        )}
                         <span
                           className={`text-[9px] block text-right mt-1 ${
                             msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'
@@ -704,35 +921,49 @@ Sajikan dengan format ringkas & menarik:
                   ))}
                   {isSendingChat && (
                     <div className="flex items-center space-x-2 text-slate-400 text-xs italic">
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-600" />
-                      <span>Robot AI sedang mengetik...</span>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-600" />
+                      <span>Basco sedang menyiapkan jawaban...</span>
                     </div>
                   )}
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* Quick Suggestion Chips */}
-                <div className="px-3 py-1.5 border-t border-slate-200/80 bg-white/80 flex items-center space-x-1.5 overflow-x-auto text-[10px] font-bold">
+                {/* Quick Suggestion Chips (Panduan Aplikasi + Asisten Owner) */}
+                <div className="px-3 py-1.5 border-t border-slate-200/80 bg-white/90 flex items-center space-x-1.5 overflow-x-auto text-[10px] font-bold">
                   <button
                     type="button"
-                    onClick={() => handleSendChat('Berapa target omset harian minimum untuk untung?')}
-                    className="whitespace-nowrap px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                    onClick={() => handleSendChat('Bagaimana cara pakai aplikasi ini dan apa saja fiturnya?')}
+                    className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition cursor-pointer"
                   >
-                    Target BEP Hari Ini?
+                    📖 Cara Pakai Aplikasi
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSendChat('Bagaimana cara menaikkan penjualan shift sore/malam?')}
-                    className="whitespace-nowrap px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                    onClick={() => handleSendChat('Bagaimana cara input penjualan harian & resep HPP?')}
+                    className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
                   >
-                    Trik Upselling Malam
+                    ☕ Input Penjualan & HPP
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendChat('Berapa target BEP hari ini?')}
+                    className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                  >
+                    🎯 Target BEP Hari Ini?
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSendChat('Apakah ada hutang yang perlu segera dibayar?')}
-                    className="whitespace-nowrap px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                    className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
                   >
-                    Cek Tempo Hutang
+                    💳 Cek Tempo Hutang
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendChat('Bagaimana status database MySQL & Google Sheets?')}
+                    className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+                  >
+                    🗄️ Info MySQL & Sheets
                   </button>
                 </div>
 
@@ -746,15 +977,15 @@ Sajikan dengan format ringkas & menarik:
                 >
                   <input
                     type="text"
-                    placeholder="Ketik pertanyaan untuk Robot Basco..."
+                    placeholder="Tanya Basco (cara pakai aplikasi / kondisi kafe)..."
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                   <button
                     type="submit"
                     disabled={!chatInput.trim() || isSendingChat}
-                    className="p-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl disabled:opacity-50 transition shadow-xs shrink-0"
+                    className="p-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 rounded-xl disabled:opacity-50 transition shadow-xs shrink-0 cursor-pointer"
                   >
                     <Send className="h-3.5 w-3.5" />
                   </button>
