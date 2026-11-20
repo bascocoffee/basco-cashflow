@@ -8,11 +8,29 @@ import {
   generateSmartDebtAnalysis,
   type AiProvider,
 } from "./src/utils/aiAssistantEngine.js";
+import {
+  initMySql,
+  getMySqlStatus,
+  syncTransactionsToMySql,
+  getTransactionsFromMySql,
+  syncDailySalesToMySql,
+  getDailySalesFromMySql,
+  syncMenuCatalogToMySql,
+  getMenuCatalogFromMySql,
+  syncFixedCostsToMySql,
+  getFixedCostsFromMySql,
+  syncDebtsToMySql,
+  getDebtsFromMySql,
+  saveGlobalEvaluationToMySql
+} from "./src/server/mysqlService.js";
 
 dotenv.config();
 
 export const app = express();
 app.use(express.json({ limit: "10mb" }));
+
+// Initialize MySQL pool and tables in background
+initMySql().catch(err => console.warn("[MySQL] Init background warning:", err?.message || err));
 
 function isValidApiKey(key?: string): boolean {
   if (!key) return false;
@@ -1167,6 +1185,165 @@ app.post("/api/cogs/shared-sales", async (req, res) => {
   }
   await saveServerCloudSlot("daily_sales", sharedDailySalesCache);
   res.json({ ok: true, sharedDailySalesCache });
+});
+
+// -----------------------------------------------------------------------------
+// MYSQL DATABASE SYNC & API ROUTES (Dual-Storage Support)
+// -----------------------------------------------------------------------------
+app.get("/api/mysql/status", async (req, res) => {
+  try {
+    const status = await getMySqlStatus();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Failed to get MySQL status" });
+  }
+});
+
+app.post("/api/mysql/init", async (req, res) => {
+  try {
+    const status = await initMySql();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Failed to connect to MySQL" });
+  }
+});
+
+app.post("/api/mysql/transactions", async (req, res) => {
+  try {
+    const { transactions = [] } = req.body || {};
+    const result = await syncTransactionsToMySql(transactions);
+    res.json({ ok: true, count: result.count });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to save transactions to MySQL" });
+  }
+});
+
+app.get("/api/mysql/transactions", async (req, res) => {
+  try {
+    const transactions = await getTransactionsFromMySql();
+    res.json(transactions);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Failed to fetch transactions from MySQL" });
+  }
+});
+
+app.post("/api/mysql/daily-sales", async (req, res) => {
+  try {
+    const { records = [] } = req.body || {};
+    const result = await syncDailySalesToMySql(records);
+    res.json({ ok: true, count: result.count });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to save daily sales to MySQL" });
+  }
+});
+
+app.get("/api/mysql/daily-sales", async (req, res) => {
+  try {
+    const records = await getDailySalesFromMySql();
+    res.json(records);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Failed to fetch daily sales from MySQL" });
+  }
+});
+
+app.post("/api/mysql/menu-catalog", async (req, res) => {
+  try {
+    const { items = [] } = req.body || {};
+    const result = await syncMenuCatalogToMySql(items);
+    res.json({ ok: true, count: result.count });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to save menu catalog to MySQL" });
+  }
+});
+
+app.get("/api/mysql/menu-catalog", async (req, res) => {
+  try {
+    const items = await getMenuCatalogFromMySql();
+    res.json(items);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Failed to fetch menu catalog from MySQL" });
+  }
+});
+
+app.post("/api/mysql/fixed-costs", async (req, res) => {
+  try {
+    const { costs = [] } = req.body || {};
+    const result = await syncFixedCostsToMySql(costs);
+    res.json({ ok: true, count: result.count });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to save fixed costs to MySQL" });
+  }
+});
+
+app.get("/api/mysql/fixed-costs", async (req, res) => {
+  try {
+    const costs = await getFixedCostsFromMySql();
+    res.json(costs);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Failed to fetch fixed costs from MySQL" });
+  }
+});
+
+app.post("/api/mysql/debts", async (req, res) => {
+  try {
+    const { debts = [] } = req.body || {};
+    const result = await syncDebtsToMySql(debts);
+    res.json({ ok: true, count: result.count });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to save debts to MySQL" });
+  }
+});
+
+app.get("/api/mysql/debts", async (req, res) => {
+  try {
+    const debts = await getDebtsFromMySql();
+    res.json(debts);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Failed to fetch debts from MySQL" });
+  }
+});
+
+app.post("/api/mysql/global-evaluation", async (req, res) => {
+  try {
+    const { snapshot } = req.body || {};
+    const ok = await saveGlobalEvaluationToMySql(snapshot);
+    res.json({ ok });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message });
+  }
+});
+
+app.post("/api/mysql/sync-all", async (req, res) => {
+  try {
+    const {
+      transactions = [],
+      dailySales = [],
+      menuCatalog = [],
+      fixedCosts = [],
+      debts = []
+    } = req.body || {};
+
+    const [txRes, dsRes, menuRes, fcRes, debtRes] = await Promise.allSettled([
+      syncTransactionsToMySql(transactions),
+      syncDailySalesToMySql(dailySales),
+      syncMenuCatalogToMySql(menuCatalog),
+      syncFixedCostsToMySql(fixedCosts),
+      syncDebtsToMySql(debts)
+    ]);
+
+    res.json({
+      ok: true,
+      results: {
+        transactions: txRes.status === 'fulfilled' ? txRes.value : { count: 0 },
+        dailySales: dsRes.status === 'fulfilled' ? dsRes.value : { count: 0 },
+        menuCatalog: menuRes.status === 'fulfilled' ? menuRes.value : { count: 0 },
+        fixedCosts: fcRes.status === 'fulfilled' ? fcRes.value : { count: 0 },
+        debts: debtRes.status === 'fulfilled' ? debtRes.value : { count: 0 }
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to sync all data to MySQL" });
+  }
 });
 
 export default app;

@@ -4,6 +4,7 @@ import RecipePdfModal from './RecipePdfModal';
 import SalesCogsReportPdfModal from './SalesCogsReportPdfModal';
 import HppAiForum from './HppAiForum';
 import { pushDailySalesToCloud, pullDailySalesFromCloud, loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
+import { saveDailySalesToMySql, saveMenuCatalogToMySql } from '../utils/mysqlSync';
 import { scanSalesReceiptImage, type ReceiptScanResult } from '../utils/receiptScanner';
 import { logAppActivity } from '../utils/activityLogger';
 import { 
@@ -2155,6 +2156,9 @@ export default function CogsDailySalesPage({
   // Persistence
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(menuItems));
+    if (menuItems.length > 0) {
+      saveMenuCatalogToMySql(menuItems);
+    }
   }, [menuItems]);
 
   useEffect(() => {
@@ -2163,6 +2167,9 @@ export default function CogsDailySalesPage({
 
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(dailySales));
+    if (dailySales.length > 0) {
+      saveDailySalesToMySql(dailySales);
+    }
   }, [dailySales]);
 
   useEffect(() => {

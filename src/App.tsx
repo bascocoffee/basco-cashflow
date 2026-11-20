@@ -51,6 +51,7 @@ import {
   computeShoppingMetrics,
 } from "./utils/shoppingListData";
 import { Transaction, CATEGORIES, AppRole } from "./types";
+import { saveTransactionsToMySql, syncAllToMySql } from "./utils/mysqlSync";
 
 // Components
 import Sidebar, { TabType } from "./components/Sidebar";
@@ -766,6 +767,7 @@ export default function App() {
           "aruskas_manager_transactions",
           JSON.stringify(list),
         );
+        saveTransactionsToMySql(list);
       }
 
       // Fetch custom categories from sheet
@@ -1110,6 +1112,7 @@ export default function App() {
         "aruskas_manager_transactions",
         JSON.stringify(updated),
       );
+      saveTransactionsToMySql(updated);
       const txNominal = Number(data.debit || data.kredit || data.kredit2 || 0);
       const txKind = Number(data.debit || 0) > 0 ? "pemasukan" : "pengeluaran";
       logAppActivity({
@@ -1161,6 +1164,7 @@ export default function App() {
         "aruskas_manager_transactions",
         JSON.stringify(updated),
       );
+      saveTransactionsToMySql(updated);
       logAppActivity({
         role: userRole,
         actorName,

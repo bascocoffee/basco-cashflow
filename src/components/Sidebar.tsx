@@ -28,13 +28,15 @@ import {
   CreditCard,
   ShoppingCart,
   UserCheck,
-  History
+  History,
+  Database
 } from 'lucide-react';
 import { logout } from '../firebase';
 import { CALENDAR_NOTES_STORAGE_KEY, DEFAULT_CALENDAR_ACTIVITIES, computeH1Alerts } from '../utils/calendarNotesData';
 import { getStoredDebts, getDueDateStatus } from '../utils/debtUtils';
 import { SHOPPING_LIST_STORAGE_KEY, DEFAULT_SHOPPING_ITEMS, computeShoppingMetrics } from '../utils/shoppingListData';
 import { AppRole } from '../types';
+import { fetchMySqlStatus, retryMySqlConnection, MySqlStatusInfo } from '../utils/mysqlSync';
 
 export type TabType = 'dashboard' | 'employee_tasks' | 'calendar_notes' | 'barista_schedule' | 'omset_cogs' | 'cogs' | 'shopping_report' | 'categories' | 'fixed_cost' | 'debt_tracker' | 'ai_chat' | 'usage_history';
 
@@ -78,6 +80,26 @@ export default function Sidebar({
   onToggleCollapse
 }: SidebarProps) {
   const [copied, setCopied] = useState(false);
+  const [mysqlStatus, setMysqlStatus] = useState<MySqlStatusInfo | null>(null);
+  const [isCheckingMySql, setIsCheckingMySql] = useState(false);
+
+  useEffect(() => {
+    fetchMySqlStatus().then(setMysqlStatus).catch(() => {});
+    const interval = setInterval(() => {
+      fetchMySqlStatus().then(setMysqlStatus).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleRefreshMySql = async () => {
+    setIsCheckingMySql(true);
+    try {
+      const res = await retryMySqlConnection();
+      setMysqlStatus(res);
+    } finally {
+      setIsCheckingMySql(false);
+    }
+  };
 
   // Compute H-1 alerts count for sidebar badge
   const [h1AlertCount, setH1AlertCount] = useState<number>(() => {
@@ -596,6 +618,50 @@ export default function Sidebar({
                 </button>
               )}
             </div>
+          )}
+
+          {/* MySQL Database Connection Card */}
+          {userRole === 'owner' && (
+            isCollapsed ? (
+              <div className="pt-1 flex flex-col items-center">
+                <button
+                  type="button"
+                  onClick={handleRefreshMySql}
+                  className="p-2.5 bg-slate-900 hover:bg-slate-850 text-cyan-400 border border-slate-800 rounded-xl flex items-center justify-center relative transition group cursor-pointer"
+                  title={`MySQL Database: ${mysqlStatus?.connected ? 'Terhubung (Online)' : 'Standby / Offline'}`}
+                >
+                  <Database className="h-5 w-5" />
+                  <div className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${mysqlStatus?.connected ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'}`} />
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-900/90 border border-slate-800/90 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5">
+                    <Database className="h-3.5 w-3.5 text-cyan-400" />
+                    <span className={`text-[9.5px] font-black uppercase tracking-wider ${mysqlStatus?.connected ? 'text-cyan-400' : 'text-amber-400'}`}>
+                      {mysqlStatus?.connected ? 'MySQL DB Aktif' : 'MySQL Standby'}
+                    </span>
+                    <div className={`w-1.5 h-1.5 rounded-full ${mysqlStatus?.connected ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'}`} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRefreshMySql}
+                    disabled={isCheckingMySql}
+                    className="p-1 text-slate-400 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                    title="Cek / Hubungkan Ulang MySQL"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${isCheckingMySql ? 'animate-spin text-cyan-400' : ''}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
+                  <span className="truncate">{mysqlStatus?.database || 'basco_cashflow'}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold shrink-0">
+                    {mysqlStatus?.connected ? `${mysqlStatus.tableCount || 7} tabel` : 'XAMPP/Local'}
+                  </span>
+                </div>
+              </div>
+            )
           )}
 
           {/* Google Sheets Connection Card (Only visible for Owner) */}

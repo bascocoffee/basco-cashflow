@@ -1,6 +1,7 @@
 import { DebtItem, DebtCategory, DebtType } from '../types';
 import { Transaction } from '../types';
 import { parseDateString } from '../utils';
+import { saveDebtsToMySql } from './mysqlSync';
 
 export const DEBT_STORAGE_KEY = 'aruskas_debt_records';
 
@@ -441,6 +442,18 @@ export function saveStoredDebts(debts: DebtItem[]): void {
       (d: any) => d && !isLegacyOrAutoInjectedDebtId(String(d.id || ''))
     );
     localStorage.setItem(DEBT_STORAGE_KEY, JSON.stringify(cleaned));
+    if (cleaned.length > 0) {
+      saveDebtsToMySql(cleaned.map(d => ({
+        id: d.id,
+        kreditor: d.lenderName || d.name,
+        totalPinjaman: d.principalAmount,
+        sisaHutang: d.remainingAmount,
+        angsuranPerBulan: d.monthlyInstallment,
+        jatuhTempoTgl: d.dueDayOfMonth,
+        status: d.status,
+        catatan: d.notes
+      })));
+    }
   } catch (err) {
     console.error('Error saving debts to localStorage:', err);
   }

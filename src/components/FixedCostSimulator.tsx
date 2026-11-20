@@ -42,6 +42,7 @@ import {
 } from '../sheetsService';
 import { logAppActivity } from '../utils/activityLogger';
 import { generateSmartCashflowChatReply } from '../utils/aiAssistantEngine';
+import { saveFixedCostsToMySql, saveGlobalEvaluationToMySql } from '../utils/mysqlSync';
 
 export interface FixedCostItem {
   id: string;
@@ -218,6 +219,9 @@ export default function FixedCostSimulator({
   // Persist fixed costs
   useEffect(() => {
     localStorage.setItem('aruskas_fixed_costs', JSON.stringify(fixedCosts));
+    if (fixedCosts.length > 0) {
+      saveFixedCostsToMySql(fixedCosts);
+    }
   }, [fixedCosts]);
 
   // Load saved snapshots on mount
@@ -787,6 +791,9 @@ export default function FixedCostSimulator({
       status: liveMetrics.status,
       aiSummary: aiAnalysis ? aiAnalysis.slice(0, 450) : `${liveMetrics.status}: Laba Bersih ${formatRupiah(liveMetrics.netProfit)} (BEP ${liveMetrics.bepProgressPct}%)`
     };
+
+    // Save to MySQL in parallel
+    saveGlobalEvaluationToMySql(snapshot);
 
     try {
       const result = await saveGlobalPerformanceToSheet(spreadsheetId, snapshot, token);
