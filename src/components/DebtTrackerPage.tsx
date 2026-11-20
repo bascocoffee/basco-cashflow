@@ -1059,7 +1059,7 @@ export default function DebtTrackerPage({
         isAiSectionMinimized ? 'p-4 sm:p-5' : 'p-5 sm:p-6 space-y-4'
       }`}>
         <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 ${
-          isAiSectionMinimized ? '' : 'pb-3 border-b border-slate-150'
+          isAiSectionMinimized ? '' : 'pb-3 border-b border-slate-200'
         }`}>
           <div 
             className="flex items-center space-x-3 cursor-pointer select-none group flex-1 min-w-0"
@@ -1215,7 +1215,7 @@ export default function DebtTrackerPage({
             {/* Deep Gemini AI Generated Report */}
             {aiError && (
               <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-center space-x-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-red-650" />
+                <AlertTriangle className="h-4 w-4 shrink-0 text-red-700" />
                 <span>{aiError}</span>
               </div>
             )}
@@ -1343,7 +1343,7 @@ export default function DebtTrackerPage({
             <button
               type="button"
               onClick={() => handleOpenForm()}
-              className="text-xs font-bold text-amber-650 hover:underline"
+              className="text-xs font-bold text-amber-700 hover:underline"
             >
               Tambah Catatan Hutang Baru
             </button>
@@ -1469,7 +1469,7 @@ export default function DebtTrackerPage({
                       <button
                         type="button"
                         onClick={() => handleDeleteDebt(debt.id, debt.name)}
-                        className="p-1.5 text-slate-400 hover:text-red-650 hover:bg-red-50 rounded-xl transition cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-xl transition cursor-pointer"
                         title="Hapus Catatan Hutang"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1478,13 +1478,13 @@ export default function DebtTrackerPage({
                   </div>
 
                   {/* Progress Bar & Tenor info */}
-                  <div className="mt-3 pt-2.5 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="mt-3 pt-2.5 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex-1 min-w-0 pr-4">
                       <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
                         <span>Angsuran {debt.paidMonths} dari {debt.tenorMonths} bulan</span>
                         <span className="font-mono">{progressPct}% lunas</span>
                       </div>
-                      <div className="w-full h-1.5 bg-slate-150 rounded-full overflow-hidden">
+                      <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                         <div 
                           className={`h-full rounded-full transition-all duration-500 ${
                             debt.status === 'paid_off' ? 'bg-emerald-500' : 'bg-amber-500'
@@ -1505,7 +1505,7 @@ export default function DebtTrackerPage({
         )}
 
         {/* Footer info & Sync button */}
-        <div className="pt-3 border-t border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
+        <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
           <span>
             Menampilkan {filteredDebts.length} dari {debts.length} catatan hutang (Sheet: <strong>{DEBT_SHEET_TAB_NAME}</strong>)
           </span>
@@ -1532,7 +1532,7 @@ export default function DebtTrackerPage({
       {isFormModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-150 mb-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <h3 className="text-base font-black text-slate-900">
                 {editingDebt ? 'Edit Data Hutang' : 'Tambah Catatan Hutang Baru'}
               </h3>
@@ -1676,7 +1676,7 @@ export default function DebtTrackerPage({
                     <button
                       type="button"
                       onClick={handleAutoCalcInstallment}
-                      className="text-[10px] text-amber-650 hover:underline font-bold"
+                      className="text-[10px] text-amber-700 hover:underline font-bold"
                     >
                       Hitung Rata
                     </button>
@@ -1715,7 +1715,7 @@ export default function DebtTrackerPage({
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-150 flex items-center justify-end space-x-2">
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setIsFormModalOpen(false)}
@@ -1740,7 +1740,7 @@ export default function DebtTrackerPage({
       {paymentModalDebt && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-150 mb-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div>
                 <h3 className="text-base font-black text-slate-900">Catat Pembayaran Cicilan</h3>
                 <p className="text-xs text-slate-500 font-medium">{paymentModalDebt.name}</p>
@@ -1810,7 +1810,7 @@ export default function DebtTrackerPage({
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-150 flex items-center justify-end space-x-2">
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setPaymentModalDebt(null)}
@@ -1835,7 +1835,7 @@ export default function DebtTrackerPage({
       {historyModalDebt && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-150 mb-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div>
                 <h3 className="text-base font-black text-slate-900">Riwayat Pembayaran Cicilan</h3>
                 <p className="text-xs text-slate-500 font-medium">{historyModalDebt.name}</p>
@@ -1876,7 +1876,7 @@ export default function DebtTrackerPage({
               </div>
             )}
 
-            <div className="mt-4 pt-3 border-t border-slate-150 flex justify-end">
+            <div className="mt-4 pt-3 border-t border-slate-200 flex justify-end">
               <button
                 type="button"
                 onClick={() => setHistoryModalDebt(null)}

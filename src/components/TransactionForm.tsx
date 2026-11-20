@@ -154,7 +154,7 @@ export default function TransactionForm({
             
             {/* Type Selector (Debit vs Kredit) */}
             <div>
-              <label className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block mb-2">Tipe Transaksi</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Tipe Transaksi</label>
               <div className="grid grid-cols-2 gap-3 p-1 bg-slate-100 rounded">
                 <button
                   type="button"
@@ -185,7 +185,7 @@ export default function TransactionForm({
 
             {/* Error Message */}
             {error && (
-              <div className="p-3 bg-red-50 border border-red-150 rounded text-xs font-bold text-red-700 animate-shake">
+              <div className="p-3 bg-red-50 border border-red-200 rounded text-xs font-bold text-red-700 animate-shake">
                 {error}
               </div>
             )}
@@ -195,7 +195,7 @@ export default function TransactionForm({
               {/* Amount 1 */}
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label htmlFor="jumlah-input" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest">
+                  <label htmlFor="jumlah-input" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                     {type === 'kredit' && jenisPengeluaran2 !== '-' ? 'Jumlah Pengeluaran 1' : 'Jumlah Transaksi'}
                   </label>
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">IDR (Rupiah)</span>
@@ -214,7 +214,7 @@ export default function TransactionForm({
                     placeholder="0"
                     value={jumlah || ''}
                     onChange={(e) => setJumlah(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="block w-full rounded border border-slate-200 py-2 pl-9 pr-4 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-350 transition-colors"
+                    className="block w-full rounded border border-slate-200 py-2 pl-9 pr-4 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-400 transition-colors"
                   />
                 </div>
               </div>
@@ -224,7 +224,7 @@ export default function TransactionForm({
                 {type === 'kredit' && jenisPengeluaran2 !== '-' ? (
                   <div>
                     <div className="flex justify-between items-center mb-1.5">
-                      <label htmlFor="jumlah2-input" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest">
+                      <label htmlFor="jumlah2-input" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                         Jumlah Keterangan
                       </label>
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">IDR (Rupiah)</span>
@@ -243,7 +243,7 @@ export default function TransactionForm({
                         placeholder="0"
                         value={jumlah2 || ''}
                         onChange={(e) => setJumlah2(Math.max(0, parseInt(e.target.value) || 0))}
-                        className="block w-full rounded border border-slate-200 py-2 pl-9 pr-4 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-350 transition-colors bg-amber-50/10"
+                        className="block w-full rounded border border-slate-200 py-2 pl-9 pr-4 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-400 transition-colors bg-amber-50/10"
                       />
                     </div>
                   </div>
@@ -261,7 +261,7 @@ export default function TransactionForm({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Date / Tanggal */}
               <div>
-                <label htmlFor="tanggal-input" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block mb-1.5">Tanggal</label>
+                <label htmlFor="tanggal-input" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">Tanggal</label>
                 <div className="relative rounded shadow-sm">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                     <Calendar className="h-4 w-4 text-slate-400" />
@@ -280,7 +280,7 @@ export default function TransactionForm({
 
               {/* Operasional & Manajemen Select */}
               <div>
-                <label htmlFor="opman-select" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block mb-1.5">
+                <label htmlFor="opman-select" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">
                   Klasifikasi Operasional / Manajemen
                 </label>
                 <div className="relative rounded shadow-sm">
@@ -307,7 +307,7 @@ export default function TransactionForm({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Category / Jenis Pengeluaran 1 */}
               <div>
-                <label htmlFor="kategori-select" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block mb-1.5">Kategori / Pengeluaran 1</label>
+                <label htmlFor="kategori-select" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">Kategori / Pengeluaran 1</label>
                 <div className="flex space-x-1.5">
                   <div className="relative rounded shadow-sm flex-grow">
                     <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -341,7 +341,7 @@ export default function TransactionForm({
 
               {/* Category 2 / Jenis Pengeluaran 2 */}
               <div>
-                <label htmlFor="kategori2-select" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block mb-1.5">Kategori / Keterangan</label>
+                <label htmlFor="kategori2-select" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">Kategori / Keterangan</label>
                 <div className="relative rounded shadow-sm">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                     <Tag className="h-4 w-4 text-slate-400" />
@@ -367,7 +367,7 @@ export default function TransactionForm({
 
             {/* Description / Keterangan */}
             <div>
-              <label htmlFor="keterangan-input" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block mb-1.5">Keterangan / Deskripsi</label>
+              <label htmlFor="keterangan-input" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">Keterangan / Deskripsi</label>
               <div className="relative rounded shadow-sm">
                 <div className="pointer-events-none absolute top-2.5 left-3">
                   <FileText className="h-4 w-4 text-slate-400" />
@@ -380,7 +380,7 @@ export default function TransactionForm({
                   placeholder="Contoh: Belanja bahan dapur mingguan"
                   value={keterangan}
                   onChange={(e) => setKeterangan(e.target.value)}
-                  className="block w-full rounded border border-slate-200 py-2 pl-9 pr-4 text-xs font-bold text-slate-900 focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-350 transition-colors resize-none"
+                  className="block w-full rounded border border-slate-200 py-2 pl-9 pr-4 text-xs font-bold text-slate-900 focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-400 transition-colors resize-none"
                 />
               </div>
             </div>

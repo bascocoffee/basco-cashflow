@@ -1892,7 +1892,7 @@ export default function App() {
                     <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">
                       Spreadsheet sebelumnya terdeteksi di Google Drive Anda:
                     </p>
-                    <p className="text-[11px] font-bold text-slate-750 mt-2 font-mono truncate max-w-[285px]">
+                    <p className="text-[11px] font-bold text-slate-800 mt-2 font-mono truncate max-w-[285px]">
                       📁 {foundSheetInfo.name}
                     </p>
                   </div>
@@ -1939,7 +1939,7 @@ export default function App() {
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-red-50 border border-red-150 rounded text-xs font-bold text-red-700">
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-xs font-bold text-red-700">
                     {error}
                   </div>
                 )}
@@ -2004,7 +2004,7 @@ export default function App() {
               </span>
               <button
                 onClick={() => logout()}
-                className="text-red-650 hover:underline font-bold flex items-center space-x-1"
+                className="text-red-700 hover:underline font-bold flex items-center space-x-1"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 <span>Keluar</span>
@@ -2278,7 +2278,7 @@ export default function App() {
         <main className="flex-grow p-3 sm:p-5 lg:p-6">
           {error && (
             <div className="max-w-7xl mx-auto mb-4">
-              <div className="p-4 bg-red-50 border border-red-150 rounded-2xl text-xs font-semibold text-red-700 flex items-start space-x-2.5 shadow-xs">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-xs font-semibold text-red-700 flex items-start space-x-2.5 shadow-xs">
                 <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500 mt-0.5" />
                 <div className="flex-grow">
                   <span>{error}</span>

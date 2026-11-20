@@ -1112,7 +1112,7 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
           <div className="flex justify-between items-start">
             <div>
               <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Bahan Waste & Loss</span>
-              <h3 className="text-lg font-black text-red-650 mt-1 font-mono">
+              <h3 className="text-lg font-black text-red-700 mt-1 font-mono">
                 {formatRupiah(summaryCalculations.totalNominalWasteLoss)}
               </h3>
             </div>
@@ -1181,7 +1181,7 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
             <span className="font-black text-emerald-950 text-xs uppercase tracking-wide block">
               Integrasi Excel Stok Opname Bulanan
             </span>
-            <p className="text-[11.5px] text-emerald-850 font-medium mt-0.5 leading-relaxed">
+            <p className="text-[11.5px] text-emerald-800 font-medium mt-0.5 leading-relaxed">
               Download template Excel berisi master bahan baku & kalkulasi otomatis penjualan, catat fisik sisa di bar secara offline, lalu upload file untuk sinkronkan.
             </p>
           </div>
@@ -1392,7 +1392,7 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         
         {/* Table Header Controls */}
-        <div className="p-4 border-b border-slate-150 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/50">
+        <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/50">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-amber-950 text-amber-400 rounded-xl">
               <Boxes className="h-4 w-4" />
@@ -1478,7 +1478,7 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
                 <th className="py-3 px-3.5 text-center w-16">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-150">
+            <tbody className="divide-y divide-slate-200">
               {filteredItems.length === 0 ? (
                 <tr>
                   <td colSpan={12} className="py-8 text-center text-slate-400 font-medium">

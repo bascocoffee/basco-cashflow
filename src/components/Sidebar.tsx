@@ -394,7 +394,7 @@ export default function Sidebar({
         }`}
       >
         {/* Top Branding & Logo Header */}
-        <div className={`border-b border-slate-850 flex items-center bg-slate-900/90 transition-all duration-300 ${
+        <div className={`border-b border-slate-800 flex items-center bg-slate-900/90 transition-all duration-300 ${
           isCollapsed ? 'p-3 justify-center' : 'p-4 sm:p-5 justify-between'
         }`}>
           {isCollapsed ? (
@@ -481,7 +481,7 @@ export default function Sidebar({
                   {group.groupTitle}
                 </div>
               ) : (
-                <div className="h-px bg-slate-850 mx-2 my-2" title={group.groupTitle} />
+                <div className="h-px bg-slate-800 mx-2 my-2" title={group.groupTitle} />
               )}
 
               <div className="space-y-1">
@@ -499,7 +499,7 @@ export default function Sidebar({
                           isActive
                             ? item.highlight
                               ? 'bg-linear-to-br from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20'
-                              : 'bg-slate-850 text-amber-400 border border-amber-400/40 shadow-inner'
+                              : 'bg-slate-800 text-amber-400 border border-amber-400/40 shadow-inner'
                             : 'text-slate-400 hover:text-white hover:bg-slate-900/90'
                         }`}
                         title={`${item.label}${item.badge ? ` (${item.badge})` : ''}`}
@@ -531,7 +531,7 @@ export default function Sidebar({
                         isActive
                           ? item.highlight
                             ? 'bg-linear-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/20'
-                            : 'bg-slate-850 text-amber-400 font-extrabold border border-amber-400/30 shadow-inner'
+                            : 'bg-slate-800 text-amber-400 font-extrabold border border-amber-400/30 shadow-inner'
                           : 'text-slate-300 hover:text-white hover:bg-slate-900/80'
                       }`}
                     >
@@ -595,7 +595,7 @@ export default function Sidebar({
                     onOpenBackupModal();
                     onCloseMobile();
                   }}
-                  className="w-full flex items-center justify-center p-2.5 bg-slate-900 hover:bg-slate-850 text-amber-400 border border-slate-800 rounded-xl transition group cursor-pointer"
+                  className="w-full flex items-center justify-center p-2.5 bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 rounded-xl transition group cursor-pointer"
                   title="Backup & Restore JSON Data"
                 >
                   <FileJson className="h-5 w-5" />
@@ -607,7 +607,7 @@ export default function Sidebar({
                     onOpenBackupModal();
                     onCloseMobile();
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-amber-300 border border-slate-800 rounded-xl text-xs font-bold transition group cursor-pointer"
+                  className="w-full flex items-center justify-between px-3 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-amber-300 border border-slate-800 rounded-xl text-xs font-bold transition group cursor-pointer"
                 >
                   <div className="flex items-center space-x-2.5">
                     <div className="p-1.5 bg-amber-500/10 text-amber-400 rounded-lg group-hover:bg-amber-500/20 transition">
@@ -630,7 +630,7 @@ export default function Sidebar({
                 <button
                   type="button"
                   onClick={handleRefreshMySql}
-                  className="p-2.5 bg-slate-900 hover:bg-slate-850 text-cyan-400 border border-slate-800 rounded-xl flex items-center justify-center relative transition group cursor-pointer"
+                  className="p-2.5 bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 rounded-xl flex items-center justify-center relative transition group cursor-pointer"
                   title={`MySQL Database: ${mysqlStatus?.connected ? 'Terhubung (Online)' : 'Standby / Offline'}`}
                 >
                   <Database className="h-5 w-5" />
@@ -675,7 +675,7 @@ export default function Sidebar({
                   href={spreadsheetUrl || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2.5 bg-slate-900 hover:bg-slate-850 text-emerald-400 border border-slate-800 rounded-xl flex items-center justify-center relative transition group"
+                  className="p-2.5 bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-800 rounded-xl flex items-center justify-center relative transition group"
                   title={`Google Sheet Aktif: ${spreadsheetName}`}
                 >
                   <FileSpreadsheet className="h-5 w-5" />
@@ -744,7 +744,7 @@ export default function Sidebar({
         </div>
 
         {/* Bottom User Profile & Session Footer */}
-        <div className={`border-t border-slate-850 bg-slate-900/95 transition-all ${
+        <div className={`border-t border-slate-800 bg-slate-900/95 transition-all ${
           isCollapsed ? 'p-2.5 flex flex-col items-center space-y-2' : 'p-3.5 flex items-center justify-between'
         }`}>
           {isCollapsed ? (

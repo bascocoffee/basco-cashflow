@@ -130,14 +130,14 @@ export default function CategoryManager({
               {/* Modal Content */}
               <div className="p-6 space-y-4">
                 {error && (
-                  <div className="p-3 bg-red-50 border border-red-150 rounded text-xs font-bold text-red-700">
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-xs font-bold text-red-700">
                     {error}
                   </div>
                 )}
 
                 {/* Form to Add New Category */}
                 <form onSubmit={handleAdd} className="space-y-2">
-                  <label htmlFor="new-category-input" className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block">
+                  <label htmlFor="new-category-input" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">
                     Tambah Kategori Baru
                   </label>
                   <div className="flex space-x-2">
@@ -148,7 +148,7 @@ export default function CategoryManager({
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
                       disabled={isSubmitting}
-                      className="flex-grow block rounded border border-slate-200 py-1.5 px-3 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-350 transition-colors"
+                      className="flex-grow block rounded border border-slate-200 py-1.5 px-3 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 placeholder-slate-400 transition-colors"
                     />
                     <button
                       type="submit"
@@ -163,7 +163,7 @@ export default function CategoryManager({
 
                 {/* Categories List */}
                 <div className="space-y-2">
-                  <p className="text-[10px] font-bold text-slate-450 uppercase tracking-widest">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                     Daftar Kategori Saat Ini ({categories.length})
                   </p>
                   
@@ -179,7 +179,7 @@ export default function CategoryManager({
                                 type="text"
                                 value={editingValue}
                                 onChange={(e) => setEditingValue(e.target.value)}
-                                className="flex-grow block rounded border border-slate-250 py-1 px-2.5 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 transition-colors"
+                                className="flex-grow block rounded border border-slate-200 py-1 px-2.5 text-xs text-slate-900 font-bold focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950 transition-colors"
                                 autoFocus
                               />
                               <button

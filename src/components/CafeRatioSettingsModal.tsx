@@ -383,7 +383,7 @@ export default function CafeRatioSettingsModal({
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center">
               {/* Omset */}
-              <div className="bg-slate-50 rounded-lg p-2 border border-slate-150 flex flex-col justify-between">
+              <div className="bg-slate-50 rounded-lg p-2 border border-slate-200 flex flex-col justify-between">
                 <div>
                   <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">Total Omset</span>
                   <span className="text-xs font-black text-slate-900 font-mono block truncate">
@@ -635,7 +635,7 @@ export default function CafeRatioSettingsModal({
                       <th className="py-2.5 px-3 w-64">Kelompok Rasio Bisnis Cafe</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-150">
+                  <tbody className="divide-y divide-slate-200">
                     {filteredExpenseCategories.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="py-8 text-center text-slate-400 italic">
@@ -711,7 +711,7 @@ export default function CafeRatioSettingsModal({
                   return (
                     <div key={grpKey} className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-xs flex flex-col justify-between">
                       <div>
-                        <div className="flex justify-between items-center pb-2 border-b border-slate-150 mb-2">
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-200 mb-2">
                           <span className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
                             <span>{info.icon}</span> {info.shortLabel}
                           </span>
@@ -944,7 +944,7 @@ export default function CafeRatioSettingsModal({
                 </div>
 
                 {draftConfig.salesMode === 'selected_categories' && (
-                  <div className="pt-3 border-t border-slate-150 space-y-2">
+                  <div className="pt-3 border-t border-slate-200 space-y-2">
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-xs font-bold text-slate-600">Pilih Kategori Pemasukan:</span>
                       <div className="space-x-2">

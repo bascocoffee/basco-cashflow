@@ -415,7 +415,7 @@ export default function CogsDetail({ transactions }: CogsDetailProps) {
         return <div key={idx} className="h-2" />;
       }
       return (
-        <p key={idx} className="text-xs text-slate-650 leading-relaxed mb-1.5 font-medium">
+        <p key={idx} className="text-xs text-slate-700 leading-relaxed mb-1.5 font-medium">
           {parseInlineStyles(trimmed)}
         </p>
       );
@@ -532,7 +532,7 @@ export default function CogsDetail({ transactions }: CogsDetailProps) {
         <div className="lg:col-span-7 bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs flex flex-col">
           <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Rincian Transaksi Bahan Baku & HPP</h3>
-            <span className="text-[10px] font-bold bg-indigo-50 border border-indigo-150 text-indigo-700 px-2.5 py-1 rounded-full">
+            <span className="text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 px-2.5 py-1 rounded-full">
               {filteredAndSortedItems.length} transaksi
             </span>
           </div>
@@ -545,14 +545,14 @@ export default function CogsDetail({ transactions }: CogsDetailProps) {
                 placeholder="Cari kategori/keterangan..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-[11px] font-semibold text-slate-700 bg-white border border-slate-250 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 transition shadow-2xs"
+                className="w-full text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 transition shadow-2xs"
               />
             </div>
             <div>
               <select
                 value={selectedSubCategory}
                 onChange={(e) => setSelectedSubCategory(e.target.value)}
-                className="w-full text-[11px] font-bold text-slate-700 bg-white border border-slate-250 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 transition cursor-pointer shadow-2xs"
+                className="w-full text-[11px] font-bold text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 transition cursor-pointer shadow-2xs"
               >
                 <option value="all">Semua Kategori HPP</option>
                 <option value="Minuman">HPP Minuman</option>
@@ -564,7 +564,7 @@ export default function CogsDetail({ transactions }: CogsDetailProps) {
               <select
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value)}
-                className="w-full text-[11px] font-bold text-slate-700 bg-white border border-slate-250 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 transition cursor-pointer shadow-2xs"
+                className="w-full text-[11px] font-bold text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 transition cursor-pointer shadow-2xs"
               >
                 <option value="amount_desc">Nominal: Tinggi ke Rendah</option>
                 <option value="amount_asc">Nominal: Rendah ke Tinggi</option>
@@ -621,7 +621,7 @@ export default function CogsDetail({ transactions }: CogsDetailProps) {
 
         {/* Right Side: AI COGS Analysis */}
         <div className="lg:col-span-5 flex flex-col space-y-6">
-          <div className="bg-indigo-900/5 border border-indigo-150 rounded-3xl p-6 flex flex-col h-full justify-between">
+          <div className="bg-indigo-900/5 border border-indigo-200 rounded-3xl p-6 flex flex-col h-full justify-between">
             <div>
               <div className="flex items-center space-x-2 mb-4">
                 <Sparkles className="h-5 w-5 text-indigo-500" />
@@ -650,7 +650,7 @@ export default function CogsDetail({ transactions }: CogsDetailProps) {
             </div>
 
             {error && (
-              <div className="p-3.5 bg-red-50 border border-red-150 rounded-xl text-[11px] font-semibold text-red-700 flex items-start space-x-2 mb-4">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-[11px] font-semibold text-red-700 flex items-start space-x-2 mb-4">
                 <AlertCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
                 <span>{error}</span>
               </div>

@@ -1116,7 +1116,7 @@ export default function CalendarNotesPage({
                         ? 'bg-amber-50/40 border-amber-300/80 shadow-2xs'
                         : cell.isCurrentMonth
                         ? 'bg-white border-slate-200/80 hover:bg-slate-50 hover:border-slate-300'
-                        : 'bg-slate-50/60 border-slate-150 text-slate-400'
+                        : 'bg-slate-50/60 border-slate-200 text-slate-400'
                     }`}
                   >
                     {/* Top Date Header in Cell */}
@@ -1489,7 +1489,7 @@ export default function CalendarNotesPage({
                         </div>
 
                         {act.deskripsi && (
-                          <p className="text-xs text-slate-600 mt-2 bg-slate-50 p-2.5 rounded-xl border border-slate-150 whitespace-pre-wrap">
+                          <p className="text-xs text-slate-600 mt-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 whitespace-pre-wrap">
                             {act.deskripsi}
                           </p>
                         )}

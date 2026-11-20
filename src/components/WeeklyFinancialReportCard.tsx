@@ -299,7 +299,7 @@ export default function WeeklyFinancialReportCard({
       id="weekly-financial-report-card"
     >
       {/* HEADER SECTION WITH WEEK CONTROLLERS */}
-      <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-5 sm:p-6 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
         
         {/* Title & Badge */}
         <div className="flex items-start sm:items-center space-x-3.5">

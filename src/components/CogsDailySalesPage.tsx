@@ -4846,7 +4846,7 @@ export default function CogsDailySalesPage({
       </div>
 
       {/* Kartu Ringkasan Estimasi Laba Bersih Bulanan (Automated Calculation) */}
-      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 text-white rounded-2xl p-6 shadow-md border border-slate-800 space-y-5">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-6 shadow-md border border-slate-800 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
           <div className="flex items-center space-x-3">
             <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30">
@@ -5081,7 +5081,7 @@ export default function CogsDailySalesPage({
                       Tabel: Tanggal | Nama Menu | Porsi Terjual
                     </span>
                   </div>
-                  <p className="text-[11.5px] text-emerald-850 font-medium mt-0.5 leading-relaxed">
+                  <p className="text-[11.5px] text-emerald-800 font-medium mt-0.5 leading-relaxed">
                     Template tabel praktis berisi: <strong className="font-bold text-emerald-950">Tanggal</strong>, <strong className="font-bold text-emerald-950">Nama Menu</strong>, dan <strong className="font-bold text-emerald-950">Porsi Terjual</strong>. Download template, isi porsi terjual menu di Excel, lalu upload kembali untuk otomatis terinput ke catatan penjualan harian menu!
                   </p>
                 </div>

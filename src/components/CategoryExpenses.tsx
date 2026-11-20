@@ -237,7 +237,7 @@ export default function CategoryExpenses({
           {onBackToDashboard && (
             <button 
               onClick={onBackToDashboard}
-              className="p-1.5 rounded-lg hover:bg-slate-100 border border-slate-150 text-slate-500 hover:text-slate-900 transition flex items-center justify-center shrink-0"
+              className="p-1.5 rounded-lg hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-900 transition flex items-center justify-center shrink-0"
               title="Kembali ke Dasbor Utama"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -296,7 +296,7 @@ export default function CategoryExpenses({
           {onBackToDashboard && (
             <button 
               onClick={onBackToDashboard}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-850 text-white font-bold text-[10px] uppercase tracking-wider rounded transition"
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px] uppercase tracking-wider rounded transition"
             >
               Kembali ke Dashboard
             </button>
@@ -379,7 +379,7 @@ export default function CategoryExpenses({
             </div>
 
             {/* Quick Metrics */}
-            <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl grid grid-cols-2 gap-4">
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl grid grid-cols-2 gap-4">
               <div>
                 <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Dana Keluar</p>
                 <p className="text-sm font-black text-slate-900 tracking-tight font-mono">{formatRupiah(categoryStats.total)}</p>
@@ -454,7 +454,7 @@ export default function CategoryExpenses({
                         className={`p-3 rounded-xl border transition-all cursor-pointer ${
                           isSelected 
                             ? 'bg-slate-900/5 border-slate-900' 
-                            : 'bg-white border-slate-150 hover:border-slate-300'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
                         }`}
                         style={{
                           opacity: hoveredCategory && hoveredCategory !== item.category ? 0.75 : 1
@@ -470,7 +470,7 @@ export default function CategoryExpenses({
                             <span className="text-xs font-bold text-slate-900">
                               {item.category}
                             </span>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono bg-slate-50 border border-slate-150 px-1.5 py-0.5 rounded">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest font-mono bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
                               {item.count} transaksi
                             </span>
                           </div>
@@ -536,7 +536,7 @@ export default function CategoryExpenses({
                     const effectiveAmount = amt1 + amt2;
 
                     return (
-                      <div key={t.id} className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-150 transition-colors flex items-center justify-between">
+                      <div key={t.id} className="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 transition-colors flex items-center justify-between">
                         <div className="space-y-1 max-w-[70%]">
                           <p className="text-xs font-bold text-slate-900 truncate" title={t.keterangan || 'Tanpa keterangan'}>
                             {t.keterangan || <span className="text-slate-400 italic">Tanpa keterangan</span>}

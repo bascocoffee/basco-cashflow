@@ -471,7 +471,7 @@ export default function Dashboard({
         return <div key={idx} className="h-1.5" />;
       }
       return (
-        <p key={idx} className="text-xs text-slate-650 leading-relaxed mb-1.5 font-medium">
+        <p key={idx} className="text-xs text-slate-700 leading-relaxed mb-1.5 font-medium">
           {parseInlineStyles(trimmed)}
         </p>
       );
@@ -1631,7 +1631,7 @@ export default function Dashboard({
               href={spreadsheetUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded transition flex items-center justify-center space-x-2 w-full sm:w-auto"
+              className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 w-full sm:w-auto"
               title="Buka Spreadsheet langsung di Google Sheets"
             >
               <Download className="h-3.5 w-3.5 text-slate-500" />
@@ -1640,7 +1640,7 @@ export default function Dashboard({
           )}
           <button
             onClick={onManageCategories}
-            className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded transition flex items-center justify-center space-x-2 cursor-pointer w-full sm:w-auto"
+            className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer w-full sm:w-auto"
             id="manage-categories-btn"
             title="Kelola kategori transaksi"
           >
@@ -1649,7 +1649,7 @@ export default function Dashboard({
           </button>
           <button
             onClick={onAddTransaction}
-            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-650 text-white font-bold text-xs rounded shadow-sm flex items-center justify-center space-x-2 transition cursor-pointer w-full sm:w-auto"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center space-x-2 transition cursor-pointer w-full sm:w-auto"
             id="add-transaction-btn"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1743,7 +1743,7 @@ export default function Dashboard({
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer border ${
                 selectedMonth === 'all'
                   ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                  : 'bg-slate-50 text-slate-650 hover:bg-slate-100 border-slate-200'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
               }`}
             >
               Semua Bulan
@@ -1755,7 +1755,7 @@ export default function Dashboard({
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer border ${
                 selectedMonth === thisMonthLabel
                   ? 'bg-amber-800 text-white border-amber-800 shadow-xs'
-                  : 'bg-slate-50 text-slate-650 hover:bg-slate-100 border-slate-200'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
               }`}
             >
               Bulan Ini
@@ -1767,7 +1767,7 @@ export default function Dashboard({
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer border ${
                 selectedMonth === lastMonthLabel
                   ? 'bg-amber-800 text-white border-amber-800 shadow-xs'
-                  : 'bg-slate-50 text-slate-650 hover:bg-slate-100 border-slate-200'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
               }`}
             >
               Bulan Lalu
@@ -1938,7 +1938,7 @@ export default function Dashboard({
           }`}
         />
 
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-150">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-200">
           <div className="flex items-start gap-3">
             <div className={`p-2.5 rounded-xl shrink-0 ${
               monthlyOmsetMetrics.isAchieved 
@@ -2052,7 +2052,7 @@ export default function Dashboard({
           </div>
 
           {/* Graphical Progress Track */}
-          <div className="w-full h-4 bg-slate-150 rounded-full overflow-hidden p-0.5 relative shadow-inner">
+          <div className="w-full h-4 bg-slate-200 rounded-full overflow-hidden p-0.5 relative shadow-inner">
             <div
               className={`h-full rounded-full transition-all duration-700 ease-out relative ${
                 monthlyOmsetMetrics.isAchieved
@@ -2145,7 +2145,7 @@ export default function Dashboard({
       {/* RINGKASAN HUTANG & EVALUASI KELAYAKAN AI */}
       {debtDashboardSummary && (
         <div className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-xs relative overflow-hidden" id="dashboard-debt-overview-card">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
                 <CreditCard className="h-6 w-6" />
@@ -2323,7 +2323,7 @@ export default function Dashboard({
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* COGS CARD */}
-          <div className="bg-white p-4 rounded border border-amber-150 flex flex-col justify-between h-fit lg:col-span-1 md:col-span-2">
+          <div className="bg-white p-4 rounded border border-amber-200 flex flex-col justify-between h-fit lg:col-span-1 md:col-span-2">
             <div>
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
                 <div className="flex items-center gap-1.5">
@@ -2374,7 +2374,7 @@ export default function Dashboard({
                     <span>🥤 HPP Minuman</span>
                     <div className="flex space-x-2 font-mono">
                       <span className="text-slate-400">{formatRupiah(cafeMetrics.totalCOGSDrink)}</span>
-                      <span className="text-sky-650 font-black">{cafeMetrics.cogsDrinkRatio}%</span>
+                      <span className="text-sky-700 font-black">{cafeMetrics.cogsDrinkRatio}%</span>
                     </div>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-1">
@@ -2398,7 +2398,7 @@ export default function Dashboard({
                     <span>🍟 HPP Snack (Cemilan)</span>
                     <div className="flex space-x-2 font-mono">
                       <span className="text-slate-400">{formatRupiah(cafeMetrics.totalCOGSSnack)}</span>
-                      <span className="text-orange-650 font-black">{cafeMetrics.cogsSnackRatio}%</span>
+                      <span className="text-orange-700 font-black">{cafeMetrics.cogsSnackRatio}%</span>
                     </div>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-1">
@@ -2421,7 +2421,7 @@ export default function Dashboard({
             </button>
 
             {showCogsDetail && (
-              <div className="mt-3 border-t border-slate-150 pt-2.5">
+              <div className="mt-3 border-t border-slate-200 pt-2.5">
                 <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2.5 flex justify-between">
                   <span>Rincian HPP per Jenis</span>
                   <span className="text-slate-600 font-bold">Total: {formatRupiah(cafeMetrics.totalCOGS)}</span>
@@ -2441,12 +2441,12 @@ export default function Dashboard({
                                          type === 'Snack' ? 'bg-orange-100 text-orange-800 border border-orange-200/50' :
                                          'bg-sky-100 text-sky-800 border border-sky-200/50';
                       return (
-                        <div key={type} className="bg-slate-50/70 p-2 rounded border border-slate-150">
+                        <div key={type} className="bg-slate-50/70 p-2 rounded border border-slate-200">
                           <div className="flex justify-between items-center border-b border-slate-200/60 pb-1 mb-2">
                             <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-black uppercase ${badgeColor}`}>
                               {icon} {type} ({items.length})
                             </span>
-                            <span className="font-mono font-extrabold text-slate-800 text-[9.5px] bg-white px-1.5 py-0.5 rounded border border-slate-150">
+                            <span className="font-mono font-extrabold text-slate-800 text-[9.5px] bg-white px-1.5 py-0.5 rounded border border-slate-200">
                               {formatRupiah(totalType)}
                             </span>
                           </div>
@@ -2456,7 +2456,7 @@ export default function Dashboard({
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 mb-0.5">
                                     <span className="text-[8px] font-semibold text-slate-400 font-mono">{formatLocalDate(item.tanggal)}</span>
-                                    <span className="text-[8px] bg-white text-slate-500 border border-slate-150 px-1 rounded truncate max-w-[85px]" title={item.category}>
+                                    <span className="text-[8px] bg-white text-slate-500 border border-slate-200 px-1 rounded truncate max-w-[85px]" title={item.category}>
                                       {item.category}
                                     </span>
                                   </div>
@@ -2480,7 +2480,7 @@ export default function Dashboard({
           </div>
 
           {/* STAFF CARD */}
-          <div className="bg-white p-4 rounded border border-amber-150 flex flex-col justify-between h-fit">
+          <div className="bg-white p-4 rounded border border-amber-200 flex flex-col justify-between h-fit">
             <div>
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
                 <div className="flex items-center gap-1.5">
@@ -2537,7 +2537,7 @@ export default function Dashboard({
             </button>
 
             {showWagesDetail && (
-              <div className="mt-3 border-t border-slate-150 pt-2.5">
+              <div className="mt-3 border-t border-slate-200 pt-2.5">
                 <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2.5 flex justify-between">
                   <span>Rincian Gaji per Jenis</span>
                   <span className="text-slate-600 font-bold">Total: {formatRupiah(cafeMetrics.totalWages)}</span>
@@ -2556,12 +2556,12 @@ export default function Dashboard({
                       });
                       
                       return Object.entries(groups).map(([cat, group]) => (
-                        <div key={cat} className="bg-slate-50/70 p-2 rounded border border-slate-150">
+                        <div key={cat} className="bg-slate-50/70 p-2 rounded border border-slate-200">
                           <div className="flex justify-between items-center border-b border-slate-200/60 pb-1 mb-2">
                             <span className="text-[8.5px] px-1.5 py-0.5 rounded font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200/50">
                               💼 {cat} ({group.items.length})
                             </span>
-                            <span className="font-mono font-extrabold text-slate-800 text-[9.5px] bg-white px-1.5 py-0.5 rounded border border-slate-150">
+                            <span className="font-mono font-extrabold text-slate-800 text-[9.5px] bg-white px-1.5 py-0.5 rounded border border-slate-200">
                               {formatRupiah(group.total)}
                             </span>
                           </div>
@@ -2590,7 +2590,7 @@ export default function Dashboard({
           </div>
 
           {/* OPERATIONAL CARD */}
-          <div className="bg-white p-4 rounded border border-amber-150 flex flex-col justify-between h-fit">
+          <div className="bg-white p-4 rounded border border-amber-200 flex flex-col justify-between h-fit">
             <div>
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
                 <div className="flex items-center gap-1.5">
@@ -2647,7 +2647,7 @@ export default function Dashboard({
             </button>
 
             {showOperasionalDetail && (
-              <div className="mt-3 border-t border-slate-150 pt-2.5">
+              <div className="mt-3 border-t border-slate-200 pt-2.5">
                 <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-2.5 flex justify-between">
                   <span>Rincian Operasional per Jenis</span>
                   <span className="text-slate-600 font-bold">Total: {formatRupiah(cafeMetrics.totalOperasional)}</span>
@@ -2666,12 +2666,12 @@ export default function Dashboard({
                       });
                       
                       return Object.entries(groups).map(([cat, group]) => (
-                        <div key={cat} className="bg-slate-50/70 p-2 rounded border border-slate-150">
+                        <div key={cat} className="bg-slate-50/70 p-2 rounded border border-slate-200">
                           <div className="flex justify-between items-center border-b border-slate-200/60 pb-1 mb-2">
                             <span className="text-[8.5px] px-1.5 py-0.5 rounded font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200/50">
                               🛠️ {cat} ({group.items.length})
                             </span>
-                            <span className="font-mono font-extrabold text-slate-800 text-[9.5px] bg-white px-1.5 py-0.5 rounded border border-slate-150">
+                            <span className="font-mono font-extrabold text-slate-800 text-[9.5px] bg-white px-1.5 py-0.5 rounded border border-slate-200">
                               {formatRupiah(group.total)}
                             </span>
                           </div>
@@ -2700,7 +2700,7 @@ export default function Dashboard({
           </div>
 
           {/* NET PROFIT CARD */}
-          <div className="bg-white p-4 rounded border border-amber-150 flex flex-col justify-between">
+          <div className="bg-white p-4 rounded border border-amber-200 flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
                 <div className="flex items-center gap-1.5">
@@ -2759,14 +2759,14 @@ export default function Dashboard({
             </button>
 
             {showProfitabilityDetail && (
-              <div className="mt-3 border-t border-slate-150 pt-2.5 text-left space-y-3 font-sans">
+              <div className="mt-3 border-t border-slate-200 pt-2.5 text-left space-y-3 font-sans">
                 <div className="text-[9px] font-black uppercase tracking-wider text-slate-400 flex justify-between">
                   <span>Metrik Profitabilitas Detail</span>
                   <span className="text-slate-600 font-bold">Hasil Filter</span>
                 </div>
 
                 {/* 1. Gross Profit */}
-                <div className="bg-slate-50/70 p-2 rounded border border-slate-150 space-y-1">
+                <div className="bg-slate-50/70 p-2 rounded border border-slate-200 space-y-1">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wide">Laba Kotor (GP)</span>
                     <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded uppercase ${
@@ -2784,7 +2784,7 @@ export default function Dashboard({
                 </div>
 
                 {/* 2. Operating Profit */}
-                <div className="bg-slate-50/70 p-2 rounded border border-slate-150 space-y-1">
+                <div className="bg-slate-50/70 p-2 rounded border border-slate-200 space-y-1">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wide">Laba Operasional</span>
                     <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded uppercase ${
@@ -2834,7 +2834,7 @@ export default function Dashboard({
                 })()}
 
                 {/* 4. Rekomendasi Taktis */}
-                <div className="bg-amber-50/60 p-2.5 rounded border border-amber-150 space-y-1">
+                <div className="bg-amber-50/60 p-2.5 rounded border border-amber-200 space-y-1">
                   <span className="text-[9px] font-black text-amber-900 uppercase tracking-wider block">⚡ Rekomendasi Profitabilitas</span>
                   <p className="text-[9px] text-slate-600 font-medium leading-relaxed">
                     {cafeMetrics.cogsRatio > targetCogsPct ? (
@@ -2858,7 +2858,7 @@ export default function Dashboard({
           <span className="text-sm mt-0.5">💡</span>
           <div>
             <p className="font-bold">Tips Manajemen Basco Cashflow:</p>
-            <p className="text-amber-850 mt-0.5 leading-relaxed">
+            <p className="text-amber-800 mt-0.5 leading-relaxed">
               Jaga Rasio HPP (COGS) maksimal <span className="font-bold">{targetCogsPct}%</span> dan Gaji Staff maksimal <span className="font-bold">{targetWagesPct}%</span> dari total omset untuk mengamankan Nett Profit Margin yang ideal di atas <span className="font-bold">{targetNetProfitPct}%</span>. Gunakan filter jangka waktu di bawah untuk melihat profitabilitas bulanan atau tahunan secara berkala.
             </p>
           </div>
@@ -3425,7 +3425,7 @@ export default function Dashboard({
 
               <button
                 onClick={handleClearFilters}
-                className="text-[10px] font-bold text-red-650 hover:underline transition ml-1 uppercase tracking-wider"
+                className="text-[10px] font-bold text-red-700 hover:underline transition ml-1 uppercase tracking-wider"
               >
                 Reset Semua Filter
               </button>
@@ -3539,7 +3539,7 @@ export default function Dashboard({
                           <div className="flex items-center justify-center space-x-1.5">
                             <button
                               onClick={() => onEditTransaction(t)}
-                              className="p-1.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-650 transition"
+                              className="p-1.5 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition"
                               title="Edit Transaksi"
                             >
                               <Edit2 className="h-3 w-3" />
@@ -3598,8 +3598,8 @@ export default function Dashboard({
                           {t.operasionalDanManajemen && t.operasionalDanManajemen !== '-' && (
                             <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase border tracking-wide ${
                               t.operasionalDanManajemen === 'Operasional' 
-                                ? 'bg-blue-50 text-blue-750 border-blue-100' 
-                                : 'bg-purple-50 text-purple-750 border-purple-100'
+                                ? 'bg-blue-50 text-blue-800 border-blue-100' 
+                                : 'bg-purple-50 text-purple-800 border-purple-100'
                             }`}>
                               {t.operasionalDanManajemen}
                             </span>
@@ -3635,7 +3635,7 @@ export default function Dashboard({
                       </button>
                       <button
                         onClick={() => handleDeleteClick(t)}
-                        className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-650 text-slate-600 rounded text-[10px] font-bold flex items-center space-x-1"
+                        className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 text-slate-600 rounded text-[10px] font-bold flex items-center space-x-1"
                       >
                         <Trash2 className="h-3 w-3" />
                         <span>Hapus</span>
@@ -3678,7 +3678,7 @@ export default function Dashboard({
       </div>
 
       {/* CLAUDE & GEMINI AI ANALYST SUMMARY CARD */}
-      <div className="bg-white rounded border border-indigo-150 p-6 shadow-xs relative overflow-hidden" id="ai-analyst-panel">
+      <div className="bg-white rounded border border-indigo-200 p-6 shadow-xs relative overflow-hidden" id="ai-analyst-panel">
         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
         
         <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 ${isAiSummaryMinimized ? '' : 'border-b border-indigo-50 pb-4 mb-4'}`}>
@@ -3769,7 +3769,7 @@ export default function Dashboard({
         {!isAiSummaryMinimized && (
           <>
             {summaryError && (
-              <div className="p-4 bg-rose-50 border border-rose-100 text-rose-850 rounded-xl text-xs font-semibold flex items-start space-x-2.5">
+              <div className="p-4 bg-rose-50 border border-rose-100 text-rose-800 rounded-xl text-xs font-semibold flex items-start space-x-2.5">
                 <span className="text-sm mt-0.5">⚠️</span>
                 <div>
                   <p className="font-bold">Gagal Membuat Analisis AI</p>
@@ -3850,8 +3850,8 @@ export default function Dashboard({
                       </div>
                       <div className={`rounded-xl px-3 py-2 text-xs font-medium shadow-xs border ${
                         msg.role === 'user'
-                          ? 'bg-indigo-600 border-indigo-650 text-white font-semibold'
-                          : 'bg-white border-slate-200 text-slate-850'
+                          ? 'bg-indigo-600 border-indigo-700 text-white font-semibold'
+                          : 'bg-white border-slate-200 text-slate-800'
                       }`}>
                         {msg.role === 'user' ? (
                           <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
@@ -3893,7 +3893,7 @@ export default function Dashboard({
                       type="button"
                       disabled={chatLoading}
                       onClick={() => handleSendCustomQuestion(preset)}
-                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-[10px] font-bold text-slate-650 hover:text-slate-800 rounded-lg border border-slate-250 transition cursor-pointer"
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-[10px] font-bold text-slate-700 hover:text-slate-800 rounded-lg border border-slate-200 transition cursor-pointer"
                     >
                       💡 {preset}
                     </button>
@@ -3920,7 +3920,7 @@ export default function Dashboard({
                 <button
                   type="submit"
                   disabled={chatLoading || !customQuestion.trim()}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-150 disabled:text-slate-300 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shrink-0 cursor-pointer shadow-sm"
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-300 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shrink-0 cursor-pointer shadow-sm"
                 >
                   <span>Kirim</span>
                   <Send className="h-3.5 w-3.5" />
@@ -4016,17 +4016,17 @@ export default function Dashboard({
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="p-4 border border-slate-300 rounded bg-slate-50/50">
               <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Total Pemasukan (IN)</p>
-              <p className="text-lg font-extrabold text-emerald-750 font-mono mt-1">{formatRupiah(filteredStats.totalDebit)}</p>
+              <p className="text-lg font-extrabold text-emerald-800 font-mono mt-1">{formatRupiah(filteredStats.totalDebit)}</p>
               <p className="text-[9px] text-slate-400 mt-1 font-bold">Penerimaan dari Penjualan / Cafe</p>
             </div>
             <div className="p-4 border border-slate-300 rounded bg-slate-50/50">
               <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Total Pengeluaran (OUT)</p>
-              <p className="text-lg font-extrabold text-rose-750 font-mono mt-1">{formatRupiah(filteredStats.totalKredit)}</p>
+              <p className="text-lg font-extrabold text-rose-800 font-mono mt-1">{formatRupiah(filteredStats.totalKredit)}</p>
               <p className="text-[9px] text-slate-400 mt-1 font-bold">HPP, Gaji, Operasional, dll</p>
             </div>
             <div className="p-4 border border-slate-300 rounded bg-slate-50/50">
               <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">Arus Kas Bersih (Profit)</p>
-              <p className={`text-lg font-extrabold font-mono mt-1 ${filteredStats.saldo >= 0 ? 'text-emerald-750' : 'text-rose-750'}`}>
+              <p className={`text-lg font-extrabold font-mono mt-1 ${filteredStats.saldo >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
                 {formatRupiah(filteredStats.saldo)}
               </p>
               <p className="text-[9px] text-slate-400 mt-1 font-bold">
@@ -4045,7 +4045,7 @@ export default function Dashboard({
                 <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Rasio Bahan Baku (COGS)</p>
                 <p className="text-sm font-extrabold text-slate-800 mt-0.5">{cafeMetrics.cogsRatio}%</p>
               </div>
-              <div className="text-[7.5px] text-slate-500 font-bold border-t border-slate-150 pt-1 mt-1 space-y-0.5 text-left">
+              <div className="text-[7.5px] text-slate-500 font-bold border-t border-slate-200 pt-1 mt-1 space-y-0.5 text-left">
                 <div className="flex justify-between"><span>🥤 Minuman:</span><span>{cafeMetrics.cogsDrinkRatio}%</span></div>
                 <div className="flex justify-between"><span>🍔 Makanan:</span><span>{cafeMetrics.cogsFoodRatio}%</span></div>
                 <div className="flex justify-between"><span>🍟 Snack:</span><span>{cafeMetrics.cogsSnackRatio}%</span></div>
@@ -4062,7 +4062,7 @@ export default function Dashboard({
           </div>
 
           {/* Kartu Ringkasan Estimasi Laba Bersih Bulanan (Automated Calculation) */}
-          <div className="mt-4 p-5 bg-gradient-to-r from-slate-900 via-slate-850 to-indigo-950 print:bg-none print:bg-slate-50 text-white print:text-slate-900 rounded-2xl border border-slate-800 print:border-slate-300 shadow-sm space-y-4">
+          <div className="mt-4 p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 print:bg-none print:bg-slate-50 text-white print:text-slate-900 rounded-2xl border border-slate-800 print:border-slate-300 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 print:border-slate-300 pb-3">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-indigo-500/20 text-indigo-400 print:text-indigo-800 print:bg-indigo-100 rounded-xl border border-indigo-500/30 print:border-indigo-200">
@@ -4080,7 +4080,7 @@ export default function Dashboard({
                   </p>
                 </div>
               </div>
-              <div className="text-[10px] font-mono text-emerald-300 print:text-emerald-850 bg-emerald-950/60 print:bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-800/50 print:border-emerald-200 self-start sm:self-auto font-black">
+              <div className="text-[10px] font-mono text-emerald-300 print:text-emerald-800 bg-emerald-950/60 print:bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-800/50 print:border-emerald-200 self-start sm:self-auto font-black">
                 Formula: Laba Kotor - Fixed Cost = Laba Bersih
               </div>
             </div>
@@ -4222,7 +4222,7 @@ export default function Dashboard({
             </tbody>
             {pdfPrintData.pengeluaranList.length > 0 && (
               <tfoot>
-                <tr className="bg-slate-150 font-black border-t-2 border-slate-400 text-slate-900">
+                <tr className="bg-slate-200 font-black border-t-2 border-slate-400 text-slate-900">
                   <td colSpan={2} className="p-2 border border-slate-300 uppercase tracking-wider text-right font-black">
                     Total Pengeluaran:
                   </td>
@@ -4302,7 +4302,7 @@ export default function Dashboard({
             </tbody>
             {pdfPrintData.pemasukanList.length > 0 && (
               <tfoot>
-                <tr className="bg-slate-150 font-black border-t-2 border-slate-400 text-slate-900">
+                <tr className="bg-slate-200 font-black border-t-2 border-slate-400 text-slate-900">
                   <td colSpan={2} className="p-2 border border-slate-300 uppercase tracking-wider text-right font-black">
                     Total Pemasukan:
                   </td>

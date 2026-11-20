@@ -310,7 +310,7 @@ Saya siap membantu Anda menganalisis database kas kafe, memantau rasio HPP (COGS
         return <div key={idx} className="h-1.5" />;
       }
       return (
-        <p key={idx} className="text-xs text-slate-650 leading-relaxed mb-1 font-medium">
+        <p key={idx} className="text-xs text-slate-700 leading-relaxed mb-1 font-medium">
           {parseInlineStyles(trimmed)}
         </p>
       );
@@ -351,7 +351,7 @@ Saya siap membantu Anda menganalisis database kas kafe, memantau rasio HPP (COGS
           </div>
           <button
             onClick={handleClearChat}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white rounded-lg transition text-[10px] font-bold border border-slate-700/60"
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg transition text-[10px] font-bold border border-slate-700/60"
             title="Mulai Ulang Chat"
           >
             Hapus Riwayat
@@ -374,7 +374,7 @@ Saya siap membantu Anda menganalisis database kas kafe, memantau rasio HPP (COGS
               </div>
               <div className={`rounded-2xl p-4 shadow-xs border ${
                 m.role === 'user'
-                  ? 'bg-emerald-600 border-emerald-650 text-white'
+                  ? 'bg-emerald-600 border-emerald-700 text-white'
                   : 'bg-white border-slate-200 text-slate-800'
               }`}>
                 {m.role === 'user' ? (
@@ -404,7 +404,7 @@ Saya siap membantu Anda menganalisis database kas kafe, memantau rasio HPP (COGS
           )}
 
           {error && (
-            <div className="p-4 bg-red-50 border border-red-150 rounded-2xl text-xs font-semibold text-red-700 flex items-start space-x-2 shadow-xs">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-xs font-semibold text-red-700 flex items-start space-x-2 shadow-xs">
               <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500 mt-0.5" />
               <span>{error}</span>
             </div>

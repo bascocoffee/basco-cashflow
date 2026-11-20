@@ -134,13 +134,13 @@ export default function Navbar({
                 <button 
                   onClick={handleCopyLink} 
                   title="Salin Link Spreadsheet" 
-                  className="hover:text-emerald-650 transition p-0.5 rounded hover:bg-slate-100"
+                  className="hover:text-emerald-700 transition p-0.5 rounded hover:bg-slate-100"
                 >
                   {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 text-slate-500" />}
                 </button>
                 <button 
                   onClick={onDisconnectSheet} 
-                  className="text-red-500 hover:text-red-650 text-[11px] font-bold ml-1 transition"
+                  className="text-red-500 hover:text-red-700 text-[11px] font-bold ml-1 transition"
                   title="Ganti Spreadsheet"
                 >
                   Ganti

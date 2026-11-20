@@ -2319,7 +2319,7 @@ export default function BaristaSchedulePage({
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-150 text-xs font-medium">
+                <tbody className="divide-y divide-slate-200 text-xs font-medium">
                   {filteredBaristas.map((barista) => {
                     const stats = calculateBaristaWeekHours(barista.id);
                     const bTheme = COLOR_THEMES[barista.color] || COLOR_THEMES.amber;
@@ -3158,7 +3158,7 @@ export default function BaristaSchedulePage({
 
                       {/* Masa Kerja & Gaji Badges */}
                       <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center justify-between text-[11px] bg-slate-50 p-2 rounded-xl border border-slate-150">
+                        <div className="flex items-center justify-between text-[11px] bg-slate-50 p-2 rounded-xl border border-slate-200">
                           <span className="text-slate-500 font-bold flex items-center space-x-1">
                             <Award className="h-3.5 w-3.5 text-amber-600" />
                             <span>Masa Kerja:</span>
@@ -3187,7 +3187,7 @@ export default function BaristaSchedulePage({
                       </div>
 
                       {barista.notes && (
-                        <p className="text-[11px] text-slate-500 font-medium bg-slate-50 p-2 rounded-xl border border-slate-150">
+                        <p className="text-[11px] text-slate-500 font-medium bg-slate-50 p-2 rounded-xl border border-slate-200">
                           {barista.notes}
                         </p>
                       )}
