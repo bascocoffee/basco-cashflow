@@ -15,6 +15,15 @@ export interface MySqlStatus {
 let pool: Pool | null = null;
 let isDbConnected = false;
 let lastDbError = '';
+let initPromise: Promise<MySqlStatus> | null = null;
+
+const isConfiguredForCurrentEnv = (host: string, connUrl: string): boolean => {
+  if (connUrl && connUrl.trim().length > 0) return true;
+  if (process.env.VERCEL && (host === '127.0.0.1' || host === 'localhost')) {
+    return false;
+  }
+  return true;
+};
 
 const getDbConfig = (): PoolOptions & { database: string; host: string; port: number; user: string } => {
   const connUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || '';
@@ -77,6 +86,13 @@ const getDbConfig = (): PoolOptions & { database: string; host: string; port: nu
 export async function initMySql(): Promise<MySqlStatus> {
   const config = getDbConfig();
   const dbName = config.database;
+  const connUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || '';
+
+  if (!isConfiguredForCurrentEnv(config.host, connUrl)) {
+    isDbConnected = false;
+    lastDbError = 'MYSQL_URL belum diisi di Vercel Environment Variables.';
+    return buildStatus(config, 0);
+  }
 
   try {
     // 1. Best-effort: try to create DB if user has CREATE privilege (skipped gracefully on managed Cloud MySQL like Aiven/TiDB)
@@ -233,10 +249,38 @@ export async function initMySql(): Promise<MySqlStatus> {
   }
 }
 
+function buildStatus(config: { host: string; port: number; database: string; user: string }, tableCount: number): MySqlStatus {
+  return {
+    enabled: true,
+    connected: isDbConnected,
+    host: config.host,
+    port: config.port,
+    database: config.database,
+    user: config.user,
+    tableCount,
+    message: isDbConnected
+      ? `Terhubung ke MySQL (${config.database} - ${tableCount} tabel aktif)`
+      : `MySQL Standby: ${lastDbError || 'Server MySQL belum terkonfigurasi'}`,
+    lastChecked: new Date().toISOString()
+  };
+}
+
+export async function ensureMySqlReady(): Promise<boolean> {
+  if (pool && isDbConnected) return true;
+  if (!initPromise) {
+    initPromise = initMySql().finally(() => {
+      initPromise = null;
+    });
+  }
+  await initPromise;
+  return isDbConnected;
+}
+
 /**
  * Get Current Status of MySQL
  */
 export async function getMySqlStatus(): Promise<MySqlStatus> {
+  await ensureMySqlReady();
   const config = getDbConfig();
   let tableCount = 0;
 
@@ -252,26 +296,14 @@ export async function getMySqlStatus(): Promise<MySqlStatus> {
     }
   }
 
-  return {
-    enabled: true,
-    connected: isDbConnected,
-    host: config.host,
-    port: config.port,
-    database: config.database,
-    user: config.user,
-    tableCount,
-    message: isDbConnected
-      ? `Terhubung ke MySQL (${config.database} - ${tableCount} tabel aktif)`
-      : `MySQL Offline: ${lastDbError || 'Server MySQL belum aktif (Nyalakan XAMPP / MySQL Service)'}`,
-    lastChecked: new Date().toISOString()
-  };
+  return buildStatus(config, tableCount);
 }
 
 // -----------------------------------------------------------------------------
 // TRANSACTIONS (Buku Kas & Mutasi Kas)
 // -----------------------------------------------------------------------------
 export async function syncTransactionsToMySql(transactions: any[]): Promise<{ count: number }> {
-  if (!pool || !isDbConnected || !Array.isArray(transactions) || transactions.length === 0) {
+  if (!(await ensureMySqlReady()) || !pool || !Array.isArray(transactions) || transactions.length === 0) {
     return { count: 0 };
   }
 
@@ -335,7 +367,7 @@ export async function syncTransactionsToMySql(transactions: any[]): Promise<{ co
 }
 
 export async function getTransactionsFromMySql(): Promise<any[]> {
-  if (!pool || !isDbConnected) return [];
+  if (!(await ensureMySqlReady()) || !pool) return [];
   const [rows]: any = await pool.query(
     "SELECT * FROM transactions ORDER BY tanggal ASC, created_at ASC"
   );
@@ -361,7 +393,7 @@ export async function getTransactionsFromMySql(): Promise<any[]> {
 // DAILY SALES & MENU SALES
 // -----------------------------------------------------------------------------
 export async function syncDailySalesToMySql(records: any[]): Promise<{ count: number }> {
-  if (!pool || !isDbConnected || !Array.isArray(records) || records.length === 0) {
+  if (!(await ensureMySqlReady()) || !pool || !Array.isArray(records) || records.length === 0) {
     return { count: 0 };
   }
 
@@ -412,7 +444,7 @@ export async function syncDailySalesToMySql(records: any[]): Promise<{ count: nu
 }
 
 export async function getDailySalesFromMySql(): Promise<any[]> {
-  if (!pool || !isDbConnected) return [];
+  if (!(await ensureMySqlReady()) || !pool) return [];
   const [rows]: any = await pool.query("SELECT * FROM daily_sales ORDER BY tanggal ASC");
   return (rows || []).map((r: any) => {
     let menuSales: any[] = [];
@@ -435,7 +467,7 @@ export async function getDailySalesFromMySql(): Promise<any[]> {
 // MENU CATALOG
 // -----------------------------------------------------------------------------
 export async function syncMenuCatalogToMySql(items: any[]): Promise<{ count: number }> {
-  if (!pool || !isDbConnected || !Array.isArray(items) || items.length === 0) {
+  if (!(await ensureMySqlReady()) || !pool || !Array.isArray(items) || items.length === 0) {
     return { count: 0 };
   }
 
@@ -480,7 +512,7 @@ export async function syncMenuCatalogToMySql(items: any[]): Promise<{ count: num
 }
 
 export async function getMenuCatalogFromMySql(): Promise<any[]> {
-  if (!pool || !isDbConnected) return [];
+  if (!(await ensureMySqlReady()) || !pool) return [];
   const [rows]: any = await pool.query("SELECT * FROM menu_catalog ORDER BY nama ASC");
   return (rows || []).map((r: any) => {
     let aliases: string[] = [];
@@ -503,7 +535,7 @@ export async function getMenuCatalogFromMySql(): Promise<any[]> {
 // FIXED COSTS & DEBTS
 // -----------------------------------------------------------------------------
 export async function syncFixedCostsToMySql(costs: any[]): Promise<{ count: number }> {
-  if (!pool || !isDbConnected || !Array.isArray(costs) || costs.length === 0) return { count: 0 };
+  if (!(await ensureMySqlReady()) || !pool || !Array.isArray(costs) || costs.length === 0) return { count: 0 };
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -535,7 +567,7 @@ export async function syncFixedCostsToMySql(costs: any[]): Promise<{ count: numb
 }
 
 export async function getFixedCostsFromMySql(): Promise<any[]> {
-  if (!pool || !isDbConnected) return [];
+  if (!(await ensureMySqlReady()) || !pool) return [];
   const [rows]: any = await pool.query("SELECT * FROM fixed_costs ORDER BY category ASC, name ASC");
   return (rows || []).map((r: any) => ({
     id: r.id,
@@ -546,7 +578,7 @@ export async function getFixedCostsFromMySql(): Promise<any[]> {
 }
 
 export async function syncDebtsToMySql(debts: any[]): Promise<{ count: number }> {
-  if (!pool || !isDbConnected || !Array.isArray(debts) || debts.length === 0) return { count: 0 };
+  if (!(await ensureMySqlReady()) || !pool || !Array.isArray(debts) || debts.length === 0) return { count: 0 };
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -586,7 +618,7 @@ export async function syncDebtsToMySql(debts: any[]): Promise<{ count: number }>
 }
 
 export async function getDebtsFromMySql(): Promise<any[]> {
-  if (!pool || !isDbConnected) return [];
+  if (!(await ensureMySqlReady()) || !pool) return [];
   const [rows]: any = await pool.query("SELECT * FROM debts ORDER BY status ASC, kreditor ASC");
   return (rows || []).map((r: any) => ({
     id: r.id,
@@ -604,7 +636,7 @@ export async function getDebtsFromMySql(): Promise<any[]> {
 // GLOBAL EVALUATION SNAPSHOT
 // -----------------------------------------------------------------------------
 export async function saveGlobalEvaluationToMySql(s: any): Promise<boolean> {
-  if (!pool || !isDbConnected || !s) return false;
+  if (!(await ensureMySqlReady()) || !pool || !s) return false;
   try {
     const sql = `
       INSERT INTO global_evaluations (
