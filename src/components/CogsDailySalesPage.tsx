@@ -493,9 +493,9 @@ export default function CogsDailySalesPage({
   user,
   userRole = 'owner'
 }: CogsDailySalesPageProps = {}) {
-  // Navigation Subtab State inside App 2 (for Barista: locked to 'pencatatan_harian')
+  // Navigation Subtab State inside App 2 (Default to 'pencatatan_harian' to avoid overwhelming vertical scroll)
   const [activeSubTab, setActiveSubTab] = useState<'pencatatan_harian' | 'penjualan_menu' | 'kalkulator_cogs' | 'penggunaan_bahan' | 'barang_masuk' | 'forum_ai_hpp' | 'all'>(
-    userRole === 'barista' ? 'pencatatan_harian' : 'all'
+    'pencatatan_harian'
   );
 
   useEffect(() => {
@@ -5716,10 +5716,10 @@ export default function CogsDailySalesPage({
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <div className="overflow-x-auto max-h-[420px] overflow-y-auto border border-slate-200 rounded-xl">
                     <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100/90 text-[10px] font-black uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                      <thead className="sticky top-0 z-10 bg-slate-100 shadow-xs">
+                        <tr className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-600 border-b border-slate-200">
                           <th className="py-2.5 px-3">Tanggal</th>
                           <th className="py-2.5 px-3 text-right">Porsi/Cups</th>
                           <th className="py-2.5 px-3 text-right">Total Penjualan (Omset)</th>
@@ -6254,9 +6254,9 @@ export default function CogsDailySalesPage({
 
             {!isMinHistoric && (
               <>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[450px] overflow-y-auto border border-slate-200 rounded-xl">
               <table className="w-full text-left border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-slate-50 shadow-xs">
                   <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
                     <th className="py-3 px-3">Tanggal (TGL/BLN/THN)</th>
                     <th className="py-3 px-3 text-right">Porsi/Cups</th>
