@@ -1366,7 +1366,10 @@ export default function CogsDailySalesPage({
       }
     };
 
-    const intervalId = setInterval(pollCrossDeviceSales, 7000);
+    const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      pollCrossDeviceSales();
+    }, 30000);
     const handleFocus = () => {
       pollCrossDeviceSales();
     };

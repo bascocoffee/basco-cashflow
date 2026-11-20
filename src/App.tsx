@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { User } from "firebase/auth";
 import {
   TrendingUp,
@@ -55,23 +55,22 @@ import { saveTransactionsToMySql, syncAllToMySql } from "./utils/mysqlSync";
 
 // Components
 import Sidebar, { TabType } from "./components/Sidebar";
-import Dashboard from "./components/Dashboard";
-import TransactionForm from "./components/TransactionForm";
-import CategoryManager from "./components/CategoryManager";
-import CategoryExpenses from "./components/CategoryExpenses";
-import AiChat from "./components/AiChat";
-import CogsDetail from "./components/CogsDetail";
-import FixedCostSimulator from "./components/FixedCostSimulator";
-import CogsDailySalesPage from "./components/CogsDailySalesPage";
-import StockOpnamePage from "./components/StockOpnamePage";
-import BaristaSchedulePage from "./components/BaristaSchedulePage";
-import CalendarNotesPage from "./components/CalendarNotesPage";
-import DebtTrackerPage from "./components/DebtTrackerPage";
-import ShoppingReportPage from "./components/ShoppingReportPage";
-import BackupRestoreModal from "./components/BackupRestoreModal";
-import EmployeeTaskPage from "./components/EmployeeTaskPage";
-import UsageHistoryPage from "./components/UsageHistoryPage";
-import BascoAiRobotDailyReport from "./components/BascoAiRobotDailyReport";
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const TransactionForm = lazy(() => import("./components/TransactionForm"));
+const CategoryManager = lazy(() => import("./components/CategoryManager"));
+const CategoryExpenses = lazy(() => import("./components/CategoryExpenses"));
+const AiChat = lazy(() => import("./components/AiChat"));
+const FixedCostSimulator = lazy(() => import("./components/FixedCostSimulator"));
+const CogsDailySalesPage = lazy(() => import("./components/CogsDailySalesPage"));
+const StockOpnamePage = lazy(() => import("./components/StockOpnamePage"));
+const BaristaSchedulePage = lazy(() => import("./components/BaristaSchedulePage"));
+const CalendarNotesPage = lazy(() => import("./components/CalendarNotesPage"));
+const DebtTrackerPage = lazy(() => import("./components/DebtTrackerPage"));
+const ShoppingReportPage = lazy(() => import("./components/ShoppingReportPage"));
+const BackupRestoreModal = lazy(() => import("./components/BackupRestoreModal"));
+const EmployeeTaskPage = lazy(() => import("./components/EmployeeTaskPage"));
+const UsageHistoryPage = lazy(() => import("./components/UsageHistoryPage"));
+const BascoAiRobotDailyReport = lazy(() => import("./components/BascoAiRobotDailyReport"));
 import { logAppActivity } from "./utils/activityLogger";
 import {
   KeyRound,
@@ -2301,7 +2300,18 @@ export default function App() {
                 Mengambil data terbaru dari Google Sheets...
               </p>
             </div>
-          ) : activeTab === "dashboard" ? (
+          ) : (
+            <Suspense
+              fallback={
+                <div className="h-[340px] flex flex-col items-center justify-center space-y-2.5">
+                  <RefreshCw className="h-7 w-7 text-amber-600 animate-spin" />
+                  <p className="text-xs font-semibold text-slate-500">
+                    Memuat halaman...
+                  </p>
+                </div>
+              }
+            >
+              {activeTab === "dashboard" ? (
             <Dashboard
               transactions={transactions}
               onAddTransaction={handleAddClick}
@@ -2417,46 +2427,51 @@ export default function App() {
               onRefresh={handleRefresh}
               isLoadingData={isLoadingData}
             />
+              )}
+            </Suspense>
           )}
         </main>
 
-        {/* Transaction Modal Form */}
-        <TransactionForm
-          isOpen={isFormOpen}
-          onClose={() => setIsFormOpen(false)}
-          onSubmit={handleFormSubmit}
-          editingTransaction={editingTransaction}
-          categories={categories}
-          onManageCategories={() => setIsCategoryManagerOpen(true)}
-        />
-
-        {/* Category Manager Modal */}
-        <CategoryManager
-          isOpen={isCategoryManagerOpen}
-          onClose={() => setIsCategoryManagerOpen(false)}
-          categories={categories}
-          onAddCategory={handleAddCategory}
-          onEditCategory={handleEditCategory}
-          onDeleteCategory={handleDeleteCategory}
-        />
-
-        {/* Global Backup & Restore JSON Modal */}
-        <BackupRestoreModal
-          isOpen={isGlobalBackupModalOpen}
-          onClose={() => setIsGlobalBackupModalOpen(false)}
-          transactions={transactions}
-          categories={categories}
-        />
-
-        {/* Robot AI Basco Daily Intelligence Report - Floating, Draggable & Closable (Khusus Role Owner) */}
-        {userRole === "owner" && (
-          <BascoAiRobotDailyReport
-            userRole={userRole}
-            transactions={transactions}
-            spreadsheetUrl={spreadsheetUrl}
-            onNavigateToTab={(tab) => setActiveTab(tab as TabType)}
+        {/* Lazy-loaded Modals & Floating Robot */}
+        <Suspense fallback={null}>
+          {/* Transaction Modal Form */}
+          <TransactionForm
+            isOpen={isFormOpen}
+            onClose={() => setIsFormOpen(false)}
+            onSubmit={handleFormSubmit}
+            editingTransaction={editingTransaction}
+            categories={categories}
+            onManageCategories={() => setIsCategoryManagerOpen(true)}
           />
-        )}
+
+          {/* Category Manager Modal */}
+          <CategoryManager
+            isOpen={isCategoryManagerOpen}
+            onClose={() => setIsCategoryManagerOpen(false)}
+            categories={categories}
+            onAddCategory={handleAddCategory}
+            onEditCategory={handleEditCategory}
+            onDeleteCategory={handleDeleteCategory}
+          />
+
+          {/* Global Backup & Restore JSON Modal */}
+          <BackupRestoreModal
+            isOpen={isGlobalBackupModalOpen}
+            onClose={() => setIsGlobalBackupModalOpen(false)}
+            transactions={transactions}
+            categories={categories}
+          />
+
+          {/* Robot AI Basco Daily Intelligence Report - Floating, Draggable & Closable (Khusus Role Owner) */}
+          {userRole === "owner" && (
+            <BascoAiRobotDailyReport
+              userRole={userRole}
+              transactions={transactions}
+              spreadsheetUrl={spreadsheetUrl}
+              onNavigateToTab={(tab) => setActiveTab(tab as TabType)}
+            />
+          )}
+        </Suspense>
 
         {/* Modern Compact Footer */}
         <footer className="bg-white border-t border-slate-200/80 py-4 text-center text-[11px] font-semibold text-slate-500 mt-auto">

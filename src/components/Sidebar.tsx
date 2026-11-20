@@ -160,7 +160,10 @@ export default function Sidebar({
     };
 
     updateCount();
-    const interval = setInterval(updateCount, 10000);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      updateCount();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
