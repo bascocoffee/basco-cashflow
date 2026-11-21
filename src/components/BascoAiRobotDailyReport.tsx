@@ -25,6 +25,7 @@ import { Transaction, AppRole, DebtItem } from '../types';
 import { getStoredDebts, getDueDateStatus } from '../utils/debtUtils';
 import { pullDailySalesFromCloud } from '../utils/cloudSync';
 import { DailySalesRecord, FixedCostItem } from './FixedCostSimulator';
+import { computeLiveInventoryStock, LiveIngredientStockItem } from '../utils/inventoryEngine';
 
 interface BascoAiRobotDailyReportProps {
   userRole?: AppRole;
@@ -88,6 +89,7 @@ function matchBascoAppGuide(
     overdueCount: number;
     dueSoonCount: number;
     totalRemainingDebt: number;
+    lowStockItems?: LiveIngredientStockItem[];
   }
 ): { content: string; actionTab?: string; actionLabel?: string } | null {
   const q = question.toLowerCase();
@@ -184,6 +186,37 @@ function matchBascoAppGuide(
       content: `**Status Target BEP Hari Ini:**\n• Omset Tercatat Hari Ini: **${formatRupiah(metrics.effectiveTodayOmset)}** (${metrics.todayCups} cups)\n• Beban Tetap & Cicilan Harian: **${formatRupiah(metrics.dailyFixedCost)}**\n• Target Omset BEP Harian: **${formatRupiah(metrics.dailyBepOmset)}** (Tercapai **${metrics.bepPercent}%**)\n• ${kurang === 0 ? '✅ **Target BEP hari ini sudah terlampaui, Bos!** Penjualan selanjutnya adalah margin profit.' : `⏳ Kurang **${formatRupiah(kurang)}** lagi untuk menutup seluruh beban harian.`}`,
       actionTab: 'fixed_cost',
       actionLabel: 'Buka Evaluasi Kinerja Global'
+    };
+  }
+
+  // 9. Cek stok menipis / pemotongan stok otomatis
+  if (
+    q.includes('stok menipis') ||
+    q.includes('bahan habis') ||
+    q.includes('stok bahan') ||
+    q.includes('sisa stok') ||
+    q.includes('mau habis') ||
+    q.includes('perlu belanja')
+  ) {
+    const alerts = metrics.lowStockItems || [];
+    if (alerts.length === 0) {
+      return {
+        content: `✅ **Laporan Stok Bahan Baku Live:**\nSeluruh stok bahan baku terpantau dalam kondisi **AMAN** dan mencukupi berdasarkan hitungan pemotongan otomatis resep.`,
+        actionTab: 'omset_cogs',
+        actionLabel: 'Lihat Stok Bahan Live'
+      };
+    }
+    const listText = alerts
+      .slice(0, 6)
+      .map(
+        (a) =>
+          `• **${a.namaBahan}**: Sisa **${Math.round(a.remainingStock).toLocaleString('id-ID')} ${a.satuanTakaran}** (${a.status.toUpperCase()}${a.daysRemaining !== null ? ` • ~${a.daysRemaining.toFixed(1)} hari` : ''})`
+      )
+      .join('\n');
+    return {
+      content: `⚠️ **Peringatan Stok Bahan Baku Menipis (${alerts.length} item):**\n${listText}${alerts.length > 6 ? `\n• *...dan ${alerts.length - 6} bahan lainnya*` : ''}\n\nKlik tombol di bawah untuk lihat detail pemotongan otomatis & salin daftar belanja!`,
+      actionTab: 'omset_cogs',
+      actionLabel: 'Buka Stok Bahan Live'
     };
   }
 
@@ -349,8 +382,31 @@ export default function BascoAiRobotDailyReport({
       const status = getDueDateStatus(d);
       return status.status === 'overdue' || status.status === 'due_today' || status.status === 'due_soon' || status.daysLeft <= 7;
     });
+    const overdueCount = activeDebts.filter(d => getDueDateStatus(d).status === 'overdue').length;
+    const dueSoonCount = debtAlerts.length - overdueCount;
+    const totalRemainingDebt = activeDebts.reduce((s, d) => s + (Number(d.remainingAmount) || 0), 0);
 
-    // 7. Today's Top Menu item
+    // 7. Live Inventory Low Stock Alerts (Auto-deducted from recipes)
+    let lowStockItems: LiveIngredientStockItem[] = [];
+    try {
+      const rawIngs = JSON.parse(localStorage.getItem('aruskas_cogs_ingredients') || '[]');
+      const rawBatches = JSON.parse(localStorage.getItem('aruskas_cogs_incoming_batches') || '[]');
+      const rawMenu = JSON.parse(localStorage.getItem('aruskas_cogs_page_menu_catalog') || '[]');
+      if (Array.isArray(rawIngs) && rawIngs.length > 0) {
+        const inv = computeLiveInventoryStock({
+          ingredients: rawIngs,
+          incomingBatches: Array.isArray(rawBatches) ? rawBatches : [],
+          dailySales,
+          menuItems: Array.isArray(rawMenu) ? rawMenu : [],
+          todayStr,
+        });
+        lowStockItems = inv.items.filter(i => i.status !== 'aman');
+      }
+    } catch {
+      // ignore
+    }
+
+    // 8. Today's Top Menu item
     let topMenuName = '-';
     let topMenuQty = 0;
     if (todayRecord?.menuSales && todayRecord.menuSales.length > 0) {
@@ -376,6 +432,10 @@ export default function BascoAiRobotDailyReport({
       bepPorsiNeeded,
       bepPercent,
       debtAlerts,
+      overdueCount,
+      dueSoonCount,
+      totalRemainingDebt,
+      lowStockItems,
       topMenuName,
       topMenuQty
     };
@@ -791,6 +851,35 @@ Sajikan dengan format ringkas & menarik:
                   </div>
                 )}
 
+                {/* Low Stock Warning if any */}
+                {todayMetrics.lowStockItems.length > 0 && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 flex items-start justify-between space-x-2 text-amber-950 text-xs">
+                    <div className="flex items-start space-x-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-black block text-[11px]">
+                          Peringatan Stok Menipis ({todayMetrics.lowStockItems.length} Bahan)
+                        </span>
+                        <span className="text-[10px] text-amber-900 leading-tight block">
+                          {todayMetrics.lowStockItems
+                            .slice(0, 3)
+                            .map((i) => `${i.namaBahan} (${Math.round(i.remainingStock)} ${i.satuanTakaran})`)
+                            .join(', ')}
+                        </span>
+                      </div>
+                    </div>
+                    {onNavigateToTab && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToTab('omset_cogs')}
+                        className="text-[10px] font-black text-amber-900 underline shrink-0 cursor-pointer"
+                      >
+                        Cek
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* AI Robot Briefing Output Box */}
                 <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs text-xs space-y-2">
                   <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
@@ -936,6 +1025,13 @@ Sajikan dengan format ringkas & menarik:
                     className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition cursor-pointer"
                   >
                     📖 Cara Pakai Aplikasi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendChat('Cek stok menipis dan bahan yang mau habis')}
+                    className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 transition cursor-pointer"
+                  >
+                    📦 Cek Stok Menipis
                   </button>
                   <button
                     type="button"

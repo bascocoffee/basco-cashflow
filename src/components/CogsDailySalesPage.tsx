@@ -3,6 +3,8 @@ import * as XLSX from 'xlsx';
 import RecipePdfModal from './RecipePdfModal';
 import SalesCogsReportPdfModal from './SalesCogsReportPdfModal';
 import HppAiForum from './HppAiForum';
+import LiveInventoryStockPanel from './LiveInventoryStockPanel';
+import { computeLiveInventoryStock } from '../utils/inventoryEngine';
 import { pushDailySalesToCloud, pullDailySalesFromCloud, loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
 import { saveDailySalesToMySql, saveMenuCatalogToMySql } from '../utils/mysqlSync';
 import { scanSalesReceiptImage, type ReceiptScanResult } from '../utils/receiptScanner';
@@ -2155,6 +2157,15 @@ export default function CogsDailySalesPage({
       return true;
     });
   }, [dailySales, historicSelectedMonth, historicSearchQuery]);
+
+  const liveInventoryAlertCount = useMemo(() => {
+    return computeLiveInventoryStock({
+      ingredients,
+      incomingBatches,
+      dailySales,
+      menuItems,
+    }).alertCount;
+  }, [ingredients, incomingBatches, dailySales, menuItems]);
 
   // Persistence
   useEffect(() => {
@@ -4682,6 +4693,11 @@ export default function CogsDailySalesPage({
           >
             <Layers className="h-4 w-4" />
             <span>4. Penggunaan Bahan Baku</span>
+            {liveInventoryAlertCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                {liveInventoryAlertCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -8371,6 +8387,13 @@ export default function CogsDailySalesPage({
       {/* ========================================================================= */}
       {(activeSubTab === 'all' || activeSubTab === 'penggunaan_bahan') && (
         <div id="sec-penggunaan-bahan" className="space-y-6 scroll-mt-6">
+          <LiveInventoryStockPanel
+            ingredients={ingredients}
+            incomingBatches={incomingBatches}
+            dailySales={dailySales}
+            menuItems={menuItems}
+            onNavigateToIncomingGoods={() => setActiveSubTab('barang_masuk')}
+          />
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-6">
             
             {/* Header & Controls */}
