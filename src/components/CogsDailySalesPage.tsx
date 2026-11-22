@@ -2181,9 +2181,6 @@ export default function CogsDailySalesPage({
 
   useEffect(() => {
     localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(dailySales));
-    if (dailySales.length > 0) {
-      saveDailySalesToMySql(dailySales);
-    }
   }, [dailySales]);
 
   useEffect(() => {

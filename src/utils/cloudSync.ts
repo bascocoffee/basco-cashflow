@@ -200,7 +200,7 @@ export async function pushDailySalesToCloud(options: {
 
   setLocalSalesPatch(currentPatch);
 
-  // Also notify legacy endpoint immediately
+  // Also notify legacy endpoint & TiDB Cloud MySQL immediately
   try {
     fetch("/api/cogs/shared-sales", {
       method: "POST",
@@ -211,6 +211,22 @@ export async function pushDailySalesToCloud(options: {
         selectedDate: currentPatch.lastSelectedDate,
       }),
     }).catch(() => {});
+
+    const mysqlRecordsToSave = options.record
+      ? [{ ...options.record, cups: sanitizeCups(options.record) }]
+      : Array.isArray(options.records) && options.records.length > 0
+      ? options.records
+          .filter((r) => r && r.tanggal && r.id !== "ds-1" && r.id !== "ds-2" && r.id !== "ds-3")
+          .map((r) => ({ ...r, cups: sanitizeCups(r) }))
+      : [];
+
+    if (mysqlRecordsToSave.length > 0) {
+      fetch("/api/mysql/daily-sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: mysqlRecordsToSave }),
+      }).catch(() => {});
+    }
   } catch {}
 
   const executeCloudPush = async () => {
@@ -271,12 +287,24 @@ export async function pushDailySalesToCloud(options: {
 
 export async function pullDailySalesFromCloud(): Promise<SharedDailySalesState | null> {
   try {
-    const [cloudSlot, apiResp] = await Promise.all([
+    const [cloudSlot, apiResp, mysqlResp] = await Promise.all([
       loadCloudSlot<SharedDailySalesState>("daily_sales"),
       fetch(`/api/cogs/shared-sales?_t=${Date.now()}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
+      fetch(`/api/mysql/daily-sales?_t=${Date.now()}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
     ]);
+
+    const mysqlByDate: Record<string, any> = {};
+    if (Array.isArray(mysqlResp)) {
+      mysqlResp.forEach((rec: any) => {
+        if (rec && rec.tanggal) {
+          mysqlByDate[rec.tanggal] = rec;
+        }
+      });
+    }
 
     const local = getLocalSalesPatch();
     const mergedRecords: Record<string, any> = {};
@@ -303,6 +331,7 @@ export async function pullDailySalesFromCloud(): Promise<SharedDailySalesState |
     mergeSource(local.recordsByDate);
     mergeSource(apiResp?.recordsByDate);
     mergeSource(cloudSlot?.recordsByDate);
+    mergeSource(mysqlByDate);
 
     // Determine latest selectedDate by comparing updatedAt
     let bestSelectedDate = local.lastSelectedDate;

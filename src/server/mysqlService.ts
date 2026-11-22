@@ -458,7 +458,8 @@ export async function getDailySalesFromMySql(): Promise<any[]> {
       omset: Number(r.omset) || 0,
       hppTotal: Number(r.hpp_total) || 0,
       notes: r.notes || '',
-      menuSales
+      menuSales,
+      updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : Date.now()
     };
   });
 }
