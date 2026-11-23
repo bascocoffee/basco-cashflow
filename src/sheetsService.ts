@@ -958,10 +958,111 @@ export async function fetchDailySalesFromSheet(
   menuCatalog?: any[]
 ): Promise<any[] | null> {
   try {
-    // Read saved Jatah Barista & Notes fallback from dedicated 'Jatah Barista', 'Input Jatah Barista', and 'Penjualan Harian' tabs
+    // Read saved Jatah Barista & Notes fallback from dedicated 'JATAH HARIAN', 'Jatah Barista', 'Input Jatah Barista', and 'Penjualan Harian' tabs
     const jatahFallbackMap: Record<string, { menuSales?: any[]; notes?: string }> = {};
 
-    // 1. Try reading from dedicated tabs 'Jatah Barista' & 'Input Jatah Barista'
+    // 1. Try reading from dedicated tab 'JATAH HARIAN' (Form log absensi jatah per staf)
+    try {
+      const jhTab = "JATAH HARIAN";
+      const jhRows = await fetchSheetRowsWithFallback(spreadsheetId, jhTab, `'${jhTab}'!A1:I2000`, accessToken);
+      if (jhRows && jhRows.length > 1) {
+        const headerRow = jhRows[0] || [];
+        let dateIdx = -1;
+        let namaIdx = -1;
+        let ambilIdx = -1;
+        let jatahMenuIdx = -1;
+        let jmlIdx = -1;
+        let ketIdx = -1;
+
+        headerRow.forEach((h: string, idx: number) => {
+          const hl = (h || '').toLowerCase().trim();
+          if (hl.includes('tanggal') || hl.includes('date') || hl === 'tgl') dateIdx = idx;
+          else if (hl.includes('nama') || hl.includes('barista')) namaIdx = idx;
+          else if (hl.includes('ambil')) ambilIdx = idx;
+          else if (hl === 'jatah' || hl.includes('menu')) jatahMenuIdx = idx;
+          else if (hl.includes('jumlah') || hl.includes('porsi') || hl.includes('qty')) jmlIdx = idx;
+          else if (hl.includes('keterangan') || hl.includes('catatan') || hl.includes('note')) ketIdx = idx;
+        });
+
+        if (dateIdx < 0) dateIdx = 2;
+        if (namaIdx < 0) namaIdx = 3;
+        if (ambilIdx < 0) ambilIdx = 5;
+        if (jatahMenuIdx < 0) jatahMenuIdx = 6;
+        if (jmlIdx < 0) jmlIdx = 7;
+        if (ketIdx < 0) ketIdx = 8;
+
+        const jatahByDateMenus: Record<string, { menuCount: Record<string, number>; notes: string[] }> = {};
+
+        for (let i = 1; i < jhRows.length; i++) {
+          const r = jhRows[i];
+          if (!r) continue;
+          const rawDate = (r[dateIdx] || '').trim();
+          if (!rawDate) continue;
+          const normDate = normalizeDateString(rawDate) || rawDate;
+
+          const isAmbil = String(r[ambilIdx] || '').trim().toLowerCase();
+          if (isAmbil === 'false' || isAmbil === 'tidak' || isAmbil === '0') continue;
+
+          const menuRaw = (r[jatahMenuIdx] || '').trim();
+          if (!menuRaw) continue;
+
+          const qty = Number(r[jmlIdx]) || 1;
+          const namaStaf = (r[namaIdx] || '').trim();
+          const ket = (r[ketIdx] || '').trim();
+
+          if (!jatahByDateMenus[normDate]) {
+            jatahByDateMenus[normDate] = { menuCount: {}, notes: [] };
+          }
+          if (namaStaf) {
+            const noteEntry = `${namaStaf}: ${menuRaw}${qty > 1 ? ` (x${qty})` : ''}${ket ? ` - ${ket}` : ''}`;
+            jatahByDateMenus[normDate].notes.push(noteEntry);
+          }
+
+          const menuParts = menuRaw.split(',').map((s: string) => s.trim()).filter(Boolean);
+          if (menuParts.length > 0) {
+            const perItemQty = Math.max(1, Math.round(qty / menuParts.length));
+            menuParts.forEach((mName: string) => {
+              const cleanMName = mName.toLowerCase();
+              jatahByDateMenus[normDate].menuCount[cleanMName] = (jatahByDateMenus[normDate].menuCount[cleanMName] || 0) + perItemQty;
+            });
+          }
+        }
+
+        Object.entries(jatahByDateMenus).forEach(([normDate, data]) => {
+          const existing = jatahFallbackMap[normDate] || { menuSales: [], notes: '' };
+          const msList = existing.menuSales ? [...existing.menuSales] : [];
+
+          Object.entries(data.menuCount).forEach(([mNameLower, count]) => {
+            const foundIdx = msList.findIndex((item: any) =>
+              (item.nama || '').trim().toLowerCase() === mNameLower ||
+              (item.menuNama || '').trim().toLowerCase() === mNameLower
+            );
+            if (foundIdx >= 0) {
+              msList[foundIdx] = {
+                ...msList[foundIdx],
+                jatah: (Number(msList[foundIdx].jatah) || 0) + count
+              };
+            } else {
+              msList.push({
+                nama: mNameLower,
+                terjual: 0,
+                jatah: count
+              });
+            }
+          });
+
+          const combinedNotes = [existing.notes, data.notes.slice(0, 5).join('; ')].filter(Boolean).join(' | ');
+          jatahFallbackMap[normDate] = {
+            menuSales: msList,
+            notes: combinedNotes
+          };
+        });
+      }
+    } catch (err) {
+      console.warn("Could not parse dedicated tab 'JATAH HARIAN':", err);
+    }
+
+    // 2. Try reading from dedicated tabs 'Jatah Barista' & 'Input Jatah Barista'
     const jatahTabs = ["Jatah Barista", "Input Jatah Barista"];
     for (const jTab of jatahTabs) {
       try {
