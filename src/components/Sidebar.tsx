@@ -58,6 +58,8 @@ interface SidebarProps {
   onCloseMobile: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  onSwitchRole?: (role: AppRole) => void;
+  isOwnerOrigin?: boolean;
 }
 
 export default function Sidebar({
@@ -77,7 +79,9 @@ export default function Sidebar({
   isOpenMobile,
   onCloseMobile,
   isCollapsed = false,
-  onToggleCollapse
+  onToggleCollapse,
+  onSwitchRole,
+  isOwnerOrigin = false
 }: SidebarProps) {
   const [copied, setCopied] = useState(false);
   const [mysqlStatus, setMysqlStatus] = useState<MySqlStatusInfo | null>(null);
@@ -742,6 +746,56 @@ export default function Sidebar({
             )
           )}
         </div>
+
+        {/* Quick Return to Owner Banner if in Simulation Mode */}
+        {isOwnerOrigin && userRole !== 'owner' && (
+          <div className="border-t border-purple-800/50 bg-gradient-to-r from-purple-950 to-slate-900 p-2.5">
+            {isCollapsed ? (
+              <button
+                type="button"
+                onClick={() => onSwitchRole?.('owner')}
+                className="w-full p-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl transition flex items-center justify-center shadow-xs cursor-pointer"
+                title="Kembali ke Dashboard Owner"
+              >
+                <span className="text-sm">👑</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSwitchRole?.('owner')}
+                className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+              >
+                <span>👑</span>
+                <span>Kembali ke Owner</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Quick Switcher for Owner Role */}
+        {userRole === 'owner' && onSwitchRole && !isCollapsed && (
+          <div className="px-3.5 py-2 bg-slate-900/60 border-t border-slate-800 flex items-center justify-between text-[10px]">
+            <span className="text-slate-400 font-bold">Simulasi Role:</span>
+            <div className="flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={() => onSwitchRole('barista')}
+                className="px-2 py-0.5 bg-slate-800 hover:bg-sky-950/60 text-slate-300 hover:text-sky-300 rounded font-bold border border-slate-700/80 transition cursor-pointer"
+                title="Beralih ke tampilan Barista"
+              >
+                ☕ Barista
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchRole('manager')}
+                className="px-2 py-0.5 bg-slate-800 hover:bg-amber-950/60 text-slate-300 hover:text-amber-300 rounded font-bold border border-slate-700/80 transition cursor-pointer"
+                title="Beralih ke tampilan Manajer"
+              >
+                👔 Manajer
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Bottom User Profile & Session Footer */}
         <div className={`border-t border-slate-800 bg-slate-900/95 transition-all ${

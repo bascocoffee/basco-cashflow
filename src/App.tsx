@@ -343,6 +343,15 @@ export default function App() {
       : "owner";
   });
 
+  // Track if current session originated from Owner (allowing switching back and forth without re-login)
+  const [isOwnerOrigin, setIsOwnerOrigin] = useState<boolean>(() => {
+    const savedRole = localStorage.getItem("aruskas_user_role");
+    const savedOrigin = localStorage.getItem("aruskas_owner_origin");
+    return savedOrigin === "true" || savedRole === "owner";
+  });
+  const ownerUserRef = useRef<User | null>(null);
+  const ownerLoggedInWithGoogleRef = useRef<boolean>(false);
+
   // Selected Role Tab on Landing Page
   const [loginRoleTab, setLoginRoleTab] = useState<AppRole>("owner");
   const [rolePinInput, setRolePinInput] = useState("");
@@ -444,6 +453,15 @@ export default function App() {
     const unsubscribe = initAuth(
       async (firebaseUser, cachedToken) => {
         setUser(firebaseUser);
+        if (firebaseUser) {
+          ownerUserRef.current = firebaseUser;
+          ownerLoggedInWithGoogleRef.current = true;
+          const currentRole = (localStorage.getItem("aruskas_user_role") as AppRole) || "owner";
+          if (currentRole === "owner") {
+            localStorage.setItem("aruskas_owner_origin", "true");
+            setIsOwnerOrigin(true);
+          }
+        }
         const sheetId = getInitialSheetId();
         const sheetName = getInitialSheetName();
         const sheetUrl = getInitialSheetUrl();
@@ -636,6 +654,16 @@ export default function App() {
     localStorage.setItem("aruskas_is_manager_mode", "true");
     setUser(ROLE_USERS[role]);
 
+    if (role === "owner") {
+      localStorage.setItem("aruskas_owner_origin", "true");
+      setIsOwnerOrigin(true);
+      ownerUserRef.current = ROLE_USERS.owner;
+      ownerLoggedInWithGoogleRef.current = false;
+    } else {
+      localStorage.removeItem("aruskas_owner_origin");
+      setIsOwnerOrigin(false);
+    }
+
     const sheetId = getInitialSheetId();
     const sheetName = getInitialSheetName();
     const sheetUrl = getInitialSheetUrl();
@@ -717,6 +745,10 @@ export default function App() {
     setIsManagerMode(false);
     localStorage.removeItem("aruskas_is_manager_mode");
     localStorage.removeItem("aruskas_user_role");
+    localStorage.removeItem("aruskas_owner_origin");
+    setIsOwnerOrigin(false);
+    ownerUserRef.current = null;
+    ownerLoggedInWithGoogleRef.current = false;
     setUserRole("owner");
     setUser(null);
     setToken(null);
@@ -726,6 +758,64 @@ export default function App() {
     try {
       await logout();
     } catch {}
+  };
+
+  // Seamless Role Switching (Owner <-> Barista <-> Manajer) without re-login
+  const handleSwitchRole = (targetRole: AppRole) => {
+    if (targetRole === userRole) return;
+
+    // When starting from owner, mark session origin as owner
+    if (userRole === "owner" || isOwnerOrigin) {
+      localStorage.setItem("aruskas_owner_origin", "true");
+      setIsOwnerOrigin(true);
+      if (userRole === "owner" && user) {
+        ownerUserRef.current = user;
+      }
+    }
+
+    setUserRole(targetRole);
+    localStorage.setItem("aruskas_user_role", targetRole);
+
+    if (targetRole === "owner") {
+      const restoredUser = ownerUserRef.current || ROLE_USERS.owner;
+      setUser(restoredUser);
+      if (ownerLoggedInWithGoogleRef.current) {
+        setIsManagerMode(false);
+        localStorage.removeItem("aruskas_is_manager_mode");
+      } else {
+        setIsManagerMode(true);
+        localStorage.setItem("aruskas_is_manager_mode", "true");
+      }
+      setActiveTab("dashboard");
+    } else {
+      // Switching to Barista or Manager
+      setIsManagerMode(true);
+      localStorage.setItem("aruskas_is_manager_mode", "true");
+      setUser(ROLE_USERS[targetRole]);
+      if (targetRole === "barista") {
+        setActiveTab("omset_cogs");
+      } else if (targetRole === "manager") {
+        setActiveTab("employee_tasks");
+      }
+    }
+
+    logAppActivity({
+      role: targetRole,
+      actorName:
+        targetRole === "owner"
+          ? (ownerUserRef.current?.displayName || "Owner Basco")
+          : ROLE_USERS[targetRole].displayName || undefined,
+      actionType: "navigate",
+      module: "Peralihan Role",
+      description: `Beralih ke akses role ${
+        targetRole === "owner"
+          ? "Owner"
+          : targetRole === "manager"
+            ? "Manajer"
+            : "Barista"
+      } dari Dashboard Owner tanpa login ulang`,
+      immediateSync: true,
+    });
   };
 
   // Drive and Sheets logic whenever a Spreadsheet ID is active (any role, with or without OAuth token)
@@ -897,6 +987,15 @@ export default function App() {
         setToken(result.accessToken);
         setUserRole(chosenRole);
         localStorage.setItem("aruskas_user_role", chosenRole);
+        if (chosenRole === "owner") {
+          localStorage.setItem("aruskas_owner_origin", "true");
+          setIsOwnerOrigin(true);
+          ownerUserRef.current = result.user;
+          ownerLoggedInWithGoogleRef.current = true;
+        } else {
+          localStorage.removeItem("aruskas_owner_origin");
+          setIsOwnerOrigin(false);
+        }
         setIsManagerMode(false);
         localStorage.removeItem("aruskas_is_manager_mode");
 
@@ -2137,6 +2236,8 @@ export default function App() {
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={handleToggleSidebarCollapse}
+        onSwitchRole={handleSwitchRole}
+        isOwnerOrigin={isOwnerOrigin}
       />
 
       {/* Main Content Area with Dynamic Left Padding on Desktop */}
@@ -2145,6 +2246,46 @@ export default function App() {
           isSidebarCollapsed ? "lg:pl-20" : "lg:pl-72"
         }`}
       >
+        {/* Sticky Simulation Mode Banner (When Owner is viewing Barista or Manajer) */}
+        {isOwnerOrigin && userRole !== "owner" && (
+          <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-purple-950 text-white px-4 sm:px-6 py-2.5 border-b border-purple-800/80 shadow-md flex flex-wrap items-center justify-between gap-2.5 text-xs z-40 sticky top-0">
+            <div className="flex items-center space-x-2.5">
+              <span className="px-2 py-0.5 bg-amber-400 text-slate-950 font-black text-[10px] rounded uppercase tracking-wider shadow-2xs">
+                👑 Sesi Owner
+              </span>
+              <span className="text-purple-100 font-medium">
+                Anda sedang mengakses mode <strong>{userRole === "barista" ? "☕ Barista (Staff Kasir & Bar)" : "👔 Manajer (Operasional & Tim)"}</strong> tanpa login ulang.
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              {userRole === "barista" ? (
+                <button
+                  type="button"
+                  onClick={() => handleSwitchRole("manager")}
+                  className="px-2.5 py-1 bg-purple-900/90 hover:bg-purple-800 text-purple-200 hover:text-white border border-purple-700/60 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1"
+                >
+                  <span>👔 Beralih ke Manajer</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleSwitchRole("barista")}
+                  className="px-2.5 py-1 bg-purple-900/90 hover:bg-purple-800 text-purple-200 hover:text-white border border-purple-700/60 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1"
+                >
+                  <span>☕ Beralih ke Barista</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleSwitchRole("owner")}
+                className="px-3 py-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black rounded-lg text-xs shadow-xs transition cursor-pointer flex items-center space-x-1"
+              >
+                <span>👑 Kembali ke Dashboard Owner</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Top Header Bar */}
         <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-2xs">
           <div className="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -2252,6 +2393,41 @@ export default function App() {
                 </button>
               )}
 
+              {/* Quick Role Switch Pills for Owner */}
+              {userRole === "owner" && (
+                <div className="hidden xl:flex items-center space-x-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 px-1.5">Akses:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchRole("barista")}
+                    className="px-2 py-0.5 text-[10.5px] font-bold text-slate-700 hover:text-sky-950 hover:bg-white rounded-lg transition cursor-pointer flex items-center space-x-1"
+                    title="Beralih ke tampilan Barista tanpa login ulang"
+                  >
+                    <span>☕ Barista</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchRole("manager")}
+                    className="px-2 py-0.5 text-[10.5px] font-bold text-slate-700 hover:text-amber-950 hover:bg-white rounded-lg transition cursor-pointer flex items-center space-x-1"
+                    title="Beralih ke tampilan Manajer tanpa login ulang"
+                  >
+                    <span>👔 Manajer</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Quick Return to Owner Button when simulating */}
+              {isOwnerOrigin && userRole !== "owner" && (
+                <button
+                  type="button"
+                  onClick={() => handleSwitchRole("owner")}
+                  className="flex items-center space-x-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-600 text-white rounded-xl text-[10.5px] font-black uppercase tracking-wider shadow-2xs transition cursor-pointer"
+                  title="Kembali ke Dashboard Owner"
+                >
+                  <span>👑 Ke Owner</span>
+                </button>
+              )}
+
               {/* Role Badge indicator */}
               <div
                 className={`hidden sm:flex items-center space-x-1 px-2.5 py-1 rounded-xl text-[10.5px] font-extrabold uppercase tracking-wider border shadow-2xs ${
@@ -2328,6 +2504,7 @@ export default function App() {
               onNavigateToShopping={() => setActiveTab("shopping_report")}
               onRefresh={handleRefresh}
               isLoadingData={isLoadingData}
+              onSwitchRole={handleSwitchRole}
             />
           ) : activeTab === "employee_tasks" ? (
             <EmployeeTaskPage
@@ -2426,6 +2603,7 @@ export default function App() {
               onNavigateToShopping={() => setActiveTab("shopping_report")}
               onRefresh={handleRefresh}
               isLoadingData={isLoadingData}
+              onSwitchRole={handleSwitchRole}
             />
               )}
             </Suspense>
