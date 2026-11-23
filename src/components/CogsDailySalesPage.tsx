@@ -8390,6 +8390,13 @@ export default function CogsDailySalesPage({
             dailySales={dailySales}
             menuItems={menuItems}
             onNavigateToIncomingGoods={() => setActiveSubTab('barang_masuk')}
+            filterTimeframe={ingredientFilterTimeframe}
+            selectedMonth={ingredientSelectedMonth}
+            selectedDate={ingredientSelectedDate}
+            availableMonths={availableMonths}
+            onChangeTimeframe={(tf) => setIngredientFilterTimeframe(tf === 'all' ? 'bulanan' : tf)}
+            onChangeMonth={setIngredientSelectedMonth}
+            onChangeDate={setIngredientSelectedDate}
           />
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-6">
             
