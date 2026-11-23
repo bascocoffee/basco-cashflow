@@ -12,7 +12,8 @@ import {
   Calendar,
   Layers,
   ArrowDownLeft,
-  ArrowUpRight
+  ArrowUpRight,
+  Scale
 } from 'lucide-react';
 import { IncomingIngredientBatch } from '../types';
 import {
@@ -21,6 +22,7 @@ import {
   saveInventorySetting,
   InventorySettingsMap,
   StockStatusType,
+  InventoryFilterMode,
   InventoryFilterPeriod
 } from '../utils/inventoryEngine';
 
@@ -50,11 +52,14 @@ interface LiveInventoryStockPanelProps {
   onNavigateToIncomingGoods?: () => void;
 
   // Optional timeframe controls synced with parent
-  filterTimeframe?: 'all' | 'bulanan' | 'harian';
+  filterTimeframe?: InventoryFilterMode;
+  selectedYear?: string;
   selectedMonth?: string;
   selectedDate?: string;
+  availableYears?: string[];
   availableMonths?: string[];
-  onChangeTimeframe?: (tf: 'all' | 'bulanan' | 'harian') => void;
+  onChangeTimeframe?: (tf: InventoryFilterMode) => void;
+  onChangeYear?: (y: string) => void;
   onChangeMonth?: (m: string) => void;
   onChangeDate?: (d: string) => void;
 }
@@ -95,6 +100,22 @@ const formatMonthName = (ymStr: string) => {
   return ymStr;
 };
 
+const formatDateIndo = (dateStr: string) => {
+  if (!dateStr) return '-';
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return dateStr;
+  const year = parts[0];
+  const month = parts[1];
+  const day = parts[2];
+  const monthsIndo = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  const mIndex = parseInt(month, 10) - 1;
+  const mName = mIndex >= 0 && mIndex < 12 ? monthsIndo[mIndex] : month;
+  return `${day} ${mName} ${year}`;
+};
+
 export default function LiveInventoryStockPanel({
   ingredients,
   incomingBatches,
@@ -102,10 +123,13 @@ export default function LiveInventoryStockPanel({
   menuItems,
   onNavigateToIncomingGoods,
   filterTimeframe: propTimeframe,
+  selectedYear: propYear,
   selectedMonth: propMonth,
   selectedDate: propDate,
+  availableYears: propAvailableYears,
   availableMonths: propAvailableMonths,
   onChangeTimeframe,
+  onChangeYear,
   onChangeMonth,
   onChangeDate,
 }: LiveInventoryStockPanelProps) {
@@ -115,14 +139,32 @@ export default function LiveInventoryStockPanel({
   const [copiedRestock, setCopiedRestock] = useState(false);
 
   // Internal timeframe state if not controlled by parent
-  const [internalTimeframe, setInternalTimeframe] = useState<'all' | 'bulanan' | 'harian'>('bulanan');
+  const [internalTimeframe, setInternalTimeframe] = useState<InventoryFilterMode>('bulanan');
+  const [internalYear, setInternalYear] = useState<string>(() => new Date().getFullYear().toString());
   const [internalMonth, setInternalMonth] = useState<string>(() => new Date().toISOString().slice(0, 7));
   const [internalDate, setInternalDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
-  const activeTimeframe = propTimeframe !== undefined ? propTimeframe : internalTimeframe;
+  const activeTimeframe: InventoryFilterMode = propTimeframe !== undefined ? propTimeframe : internalTimeframe;
+  const activeYear = propYear !== undefined ? propYear : internalYear;
   const activeMonth = propMonth !== undefined ? propMonth : internalMonth;
   const activeDate = propDate !== undefined ? propDate : internalDate;
 
+  // Available Years
+  const derivedAvailableYears = useMemo(() => {
+    if (propAvailableYears && propAvailableYears.length > 0) return propAvailableYears;
+    const s = new Set<string>();
+    dailySales.forEach((d) => {
+      if (d.tanggal && d.tanggal.length >= 4) s.add(d.tanggal.slice(0, 4));
+    });
+    incomingBatches.forEach((b) => {
+      if (b.tanggal && b.tanggal.length >= 4) s.add(b.tanggal.slice(0, 4));
+    });
+    const currentYear = new Date().getFullYear().toString();
+    s.add(currentYear);
+    return Array.from(s).sort((a, b) => b.localeCompare(a));
+  }, [propAvailableYears, dailySales, incomingBatches]);
+
+  // Available Months
   const derivedAvailableMonths = useMemo(() => {
     if (propAvailableMonths && propAvailableMonths.length > 0) return propAvailableMonths;
     const s = new Set<string>();
@@ -137,9 +179,14 @@ export default function LiveInventoryStockPanel({
     return Array.from(s).sort((a, b) => b.localeCompare(a));
   }, [propAvailableMonths, dailySales, incomingBatches]);
 
-  const handleSetTimeframe = (tf: 'all' | 'bulanan' | 'harian') => {
+  const handleSetTimeframe = (tf: InventoryFilterMode) => {
     if (onChangeTimeframe) onChangeTimeframe(tf);
     setInternalTimeframe(tf);
+  };
+
+  const handleSetYear = (y: string) => {
+    if (onChangeYear) onChangeYear(y);
+    setInternalYear(y);
   };
 
   const handleSetMonth = (m: string) => {
@@ -155,10 +202,11 @@ export default function LiveInventoryStockPanel({
   const filterPeriodParam: InventoryFilterPeriod = useMemo(() => {
     return {
       mode: activeTimeframe,
+      selectedYear: activeYear,
       selectedMonth: activeMonth,
       selectedDate: activeDate,
     };
-  }, [activeTimeframe, activeMonth, activeDate]);
+  }, [activeTimeframe, activeYear, activeMonth, activeDate]);
 
   const summary = useMemo(
     () =>
@@ -197,10 +245,18 @@ export default function LiveInventoryStockPanel({
     if (urgent.length === 0) return;
     const lines = [
       `📦 *DAFTAR BELANJA STOK MENIPIS — BASCO COFFEE*`,
-      `Periode: ${activeTimeframe === 'bulanan' ? formatMonthName(activeMonth) : activeTimeframe === 'harian' ? activeDate : 'Akumulasi Keseluruhan'}`,
+      `Periode: ${
+        activeTimeframe === 'harian'
+          ? formatDateIndo(activeDate)
+          : activeTimeframe === 'bulanan'
+          ? formatMonthName(activeMonth)
+          : activeTimeframe === 'tahunan'
+          ? `Tahun ${activeYear}`
+          : 'Akumulasi Keseluruhan'
+      }`,
       ...urgent.map(
         (i, idx) =>
-          `${idx + 1}. ${i.namaBahan} — Sisa Fisik: ${Math.round(i.remainingStock).toLocaleString('id-ID')} ${i.satuanTakaran} (${STATUS_BADGE[i.status].label})`
+          `${idx + 1}. ${i.namaBahan} — Sisa: ${Math.round(i.remainingStock).toLocaleString('id-ID')} ${i.satuanTakaran} (${STATUS_BADGE[i.status].label})`
       ),
     ];
     navigator.clipboard.writeText(lines.join('\n'));
@@ -212,11 +268,21 @@ export default function LiveInventoryStockPanel({
 
   const periodLabelText = useMemo(() => {
     if (activeTimeframe === 'all') return 'Semua Data Terdata (Akumulasi)';
+    if (activeTimeframe === 'tahunan') {
+      return activeYear === 'ALL' ? 'Semua Tahun Terdata' : `Tahun ${activeYear}`;
+    }
     if (activeTimeframe === 'bulanan') {
       return activeMonth === 'ALL' ? 'Semua Bulan Terdata' : formatMonthName(activeMonth);
     }
-    return `Tanggal ${activeDate}`;
-  }, [activeTimeframe, activeMonth, activeDate]);
+    return formatDateIndo(activeDate);
+  }, [activeTimeframe, activeYear, activeMonth, activeDate]);
+
+  const periodBadgeTitle = useMemo(() => {
+    if (activeTimeframe === 'harian') return 'Harian';
+    if (activeTimeframe === 'bulanan') return 'Bulanan';
+    if (activeTimeframe === 'tahunan') return 'Tahunan';
+    return 'Total';
+  }, [activeTimeframe]);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 space-y-4">
@@ -236,7 +302,7 @@ export default function LiveInventoryStockPanel({
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Stok awal + Barang Masuk dikurangi otomatis pemakaian resep (penjualan menu & jatah barista).
+              Logika: Barang masuk periode terpilih dikurangi otomatis bahan baku terpakai (sales menu & jatah barista) dari Laporan Penggunaan Bahan Baku.
             </p>
           </div>
         </div>
@@ -265,30 +331,20 @@ export default function LiveInventoryStockPanel({
         </div>
       </div>
 
-      {/* Timeframe & Period Selector Bar */}
-      <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-slate-600 flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5 text-slate-500" />
-            <span>Filter Mutasi:</span>
+      {/* OPSI CEK: HARIAN, BULANAN, TAHUNAN, SEMUA WAKTU */}
+      <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <Calendar className="h-4 w-4 text-amber-600" />
+            <span>Pilihan Cek Stok:</span>
           </span>
 
-          <div className="flex items-center bg-white p-0.5 rounded-lg border border-slate-200 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => handleSetTimeframe('bulanan')}
-              className={`px-2.5 py-1 rounded-md text-xs font-black transition cursor-pointer ${
-                activeTimeframe === 'bulanan'
-                  ? 'bg-amber-500 text-slate-950 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              🗓️ Bulanan
-            </button>
+          {/* Mode Selector Buttons: Harian, Bulanan, Tahunan, Semua Waktu */}
+          <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
             <button
               type="button"
               onClick={() => handleSetTimeframe('harian')}
-              className={`px-2.5 py-1 rounded-md text-xs font-black transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
                 activeTimeframe === 'harian'
                   ? 'bg-amber-500 text-slate-950 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -298,8 +354,30 @@ export default function LiveInventoryStockPanel({
             </button>
             <button
               type="button"
+              onClick={() => handleSetTimeframe('bulanan')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                activeTimeframe === 'bulanan'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              🗓️ Bulanan
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetTimeframe('tahunan')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                activeTimeframe === 'tahunan'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              📆 Tahunan
+            </button>
+            <button
+              type="button"
               onClick={() => handleSetTimeframe('all')}
-              className={`px-2.5 py-1 rounded-md text-xs font-black transition cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
                 activeTimeframe === 'all'
                   ? 'bg-amber-500 text-slate-950 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -309,43 +387,66 @@ export default function LiveInventoryStockPanel({
             </button>
           </div>
 
-          {activeTimeframe === 'bulanan' && (
-            <select
-              value={activeMonth}
-              onChange={(e) => handleSetMonth(e.target.value)}
-              className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
-            >
-              <option value="ALL">Semua Bulan Terdata</option>
-              {derivedAvailableMonths.map((ym) => (
-                <option key={ym} value={ym}>
-                  {formatMonthName(ym)}
-                </option>
-              ))}
-            </select>
-          )}
-
+          {/* Conditional Pickers based on activeTimeframe */}
           {activeTimeframe === 'harian' && (
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-600">Pilih Tanggal:</span>
               <input
                 type="date"
                 value={activeDate}
                 onChange={(e) => handleSetDate(e.target.value)}
-                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
               />
               <button
                 type="button"
                 onClick={() => handleSetDate(new Date().toISOString().split('T')[0])}
-                className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 text-[11px] font-bold rounded-lg transition cursor-pointer"
+                className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-[11px] font-bold rounded-xl transition cursor-pointer"
               >
                 Hari Ini
               </button>
             </div>
           )}
+
+          {activeTimeframe === 'bulanan' && (
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-600">Pilih Bulan:</span>
+              <select
+                value={activeMonth}
+                onChange={(e) => handleSetMonth(e.target.value)}
+                className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+              >
+                <option value="ALL">Semua Bulan Terdata</option>
+                {derivedAvailableMonths.map((ym) => (
+                  <option key={ym} value={ym}>
+                    🗓️ {formatMonthName(ym)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {activeTimeframe === 'tahunan' && (
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-600">Pilih Tahun:</span>
+              <select
+                value={activeYear}
+                onChange={(e) => handleSetYear(e.target.value)}
+                className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+              >
+                <option value="ALL">Semua Tahun Terdata</option>
+                {derivedAvailableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    📆 Tahun {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
-        <div className="text-xs text-slate-500 font-medium flex items-center space-x-1 self-end md:self-center">
-          <span>Periode Analisis:</span>
-          <span className="font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
+        <div className="text-xs text-slate-500 font-medium flex items-center space-x-1.5 self-end lg:self-center">
+          <span>Periode Terpilih:</span>
+          <span className="font-extrabold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
             {periodLabelText}
           </span>
         </div>
@@ -358,7 +459,7 @@ export default function LiveInventoryStockPanel({
             <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5 animate-pulse" />
             <div className="text-xs">
               <p className="font-black text-rose-900">
-                Peringatan Stok Menipis: {summary.alertCount} bahan baku perlu segera diperhatikan!
+                Peringatan Stok: {summary.alertCount} bahan baku perlu segera diperhatikan!
               </p>
               <p className="text-rose-800 font-medium mt-0.5">
                 {urgentItems
@@ -387,50 +488,62 @@ export default function LiveInventoryStockPanel({
         </div>
       )}
 
-      {/* Summary KPIs: Mutasi Masuk vs Habis Terjual vs Sisa */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-          <p className="text-[10px] font-black uppercase text-slate-500">Total Bahan Terpantau</p>
-          <p className="text-lg font-black text-slate-900 mt-0.5">{summary.items.length}</p>
-          <span className="text-[10px] text-slate-400">Master Resep Aktif</span>
+      {/* Summary KPIs: Masuk Periode vs Dipakai Periode vs Net Periode vs Sisa */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 shadow-2xs">
+          <p className="text-[10px] font-black uppercase text-slate-500">Bahan Terpantau</p>
+          <p className="text-xl font-black text-slate-900 mt-1">{summary.items.length}</p>
+          <span className="text-[10px] text-slate-400 font-medium">Master Bahan Baku</span>
         </div>
 
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-2xs">
           <p className="text-[10px] font-black uppercase text-emerald-800 flex items-center gap-1">
-            <ArrowDownLeft className="h-3 w-3 text-emerald-600" />
-            <span>Barang Masuk ({activeTimeframe === 'all' ? 'Total' : 'Periode'})</span>
+            <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Barang Masuk ({periodBadgeTitle})</span>
           </p>
-          <p className="text-lg font-black text-emerald-900 mt-0.5">
+          <p className="text-xl font-black text-emerald-950 mt-1">
             +{Math.round(summary.totalPeriodIncoming).toLocaleString('id-ID')}
           </p>
           <span className="text-[10px] text-emerald-700 font-medium">
-            {incomingBatches.filter(b => activeTimeframe === 'all' || (b.tanggal && b.tanggal.startsWith(activeMonth))).length} batch tercatat
+            Kuantitas barang masuk {periodBadgeTitle.toLowerCase()}
           </span>
         </div>
 
-        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+        <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 shadow-2xs">
           <p className="text-[10px] font-black uppercase text-amber-900 flex items-center gap-1">
-            <ArrowUpRight className="h-3 w-3 text-amber-600" />
-            <span>Habis Terjual ({activeTimeframe === 'all' ? 'Total' : 'Periode'})</span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-amber-600" />
+            <span>Dipakai ({periodBadgeTitle})</span>
           </p>
-          <p className="text-lg font-black text-amber-950 mt-0.5">
+          <p className="text-xl font-black text-amber-950 mt-1">
             -{Math.round(summary.totalPeriodUsed).toLocaleString('id-ID')}
           </p>
           <span className="text-[10px] text-amber-800 font-medium">
-            {summary.totalPeriodPorsiTerjual} porsi sales + {summary.totalPeriodPorsiJatah} jatah
+            {summary.totalPeriodPorsiTerjual} sales + {summary.totalPeriodPorsiJatah} jatah barista
           </span>
         </div>
 
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200">
-          <p className="text-[10px] font-black uppercase text-rose-800 flex items-center gap-1">
-            <Flame className="h-3 w-3 text-rose-600" />
-            <span>Perlu Restock</span>
+        <div className={`p-3.5 rounded-2xl border shadow-2xs ${
+          summary.totalPeriodNet >= 0
+            ? 'bg-indigo-50 border-indigo-200'
+            : 'bg-rose-50 border-rose-200'
+        }`}>
+          <p className={`text-[10px] font-black uppercase flex items-center gap-1 ${
+            summary.totalPeriodNet >= 0 ? 'text-indigo-800' : 'text-rose-800'
+          }`}>
+            <Scale className="h-3.5 w-3.5" />
+            <span>Net ({periodBadgeTitle})</span>
           </p>
-          <p className="text-lg font-black text-rose-950 mt-0.5">
-            {summary.alertCount} Bahan
+          <p className={`text-xl font-black mt-1 ${
+            summary.totalPeriodNet >= 0 ? 'text-indigo-950' : 'text-rose-950'
+          }`}>
+            {summary.totalPeriodNet >= 0
+              ? `+${Math.round(summary.totalPeriodNet).toLocaleString('id-ID')}`
+              : Math.round(summary.totalPeriodNet).toLocaleString('id-ID')}
           </p>
-          <span className="text-[10px] text-rose-700 font-medium">
-            {summary.habisCount} habis • {summary.kritisCount} kritis • {summary.menipisCount} menipis
+          <span className={`text-[10px] font-bold ${
+            summary.totalPeriodNet >= 0 ? 'text-indigo-700' : 'text-rose-700'
+          }`}>
+            {summary.totalPeriodNet >= 0 ? 'Surplus (Masuk > Pakai)' : 'Defisit (Pakai > Masuk)'}
           </span>
         </div>
       </div>
@@ -474,45 +587,47 @@ export default function LiveInventoryStockPanel({
         </div>
       </div>
 
-      {/* Live Inventory Table with Inner Scroll & Sticky Header */}
-      <div className="overflow-x-auto max-h-[440px] overflow-y-auto border border-slate-200 rounded-xl">
+      {/* Live Inventory Table */}
+      <div className="overflow-x-auto max-h-[440px] overflow-y-auto border border-slate-200 rounded-2xl shadow-2xs">
         <table className="w-full text-left border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-slate-100 shadow-xs">
-            <tr className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-600 border-b border-slate-200">
-              <th className="py-2.5 px-3">Nama Bahan</th>
+            <tr className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-700 border-b border-slate-200">
+              <th className="py-2.5 px-3">Nama Bahan Baku</th>
               <th className="py-2.5 px-3 text-right">Stok Awal</th>
-              <th className="py-2.5 px-3 text-right">
-                {activeTimeframe === 'all' ? 'Total Masuk' : 'Masuk Periode'}
+              <th className="py-2.5 px-3 text-right text-emerald-800 bg-emerald-50/40">
+                Masuk ({periodBadgeTitle})
               </th>
-              <th className="py-2.5 px-3 text-right">
-                {activeTimeframe === 'all' ? 'Terpakai (Resep)' : 'Habis Terjual (Resep)'}
+              <th className="py-2.5 px-3 text-right text-amber-900 bg-amber-50/40">
+                Dipakai ({periodBadgeTitle})
               </th>
-              {activeTimeframe !== 'all' && (
-                <th className="py-2.5 px-3 text-right bg-slate-200/50">Net Periode</th>
-              )}
-              <th className="py-2.5 px-3 text-right font-black bg-amber-50/60">Sisa Stok Fisik Live</th>
-              <th className="py-2.5 px-3 text-center">Estimasi Cukup</th>
+              <th className="py-2.5 px-3 text-right bg-slate-200/50">
+                Net ({periodBadgeTitle})
+              </th>
+              <th className="py-2.5 px-3 text-right font-black bg-amber-100/40">
+                Sisa Stok Live
+              </th>
+              <th className="py-2.5 px-3 text-center">Ketahanan</th>
               <th className="py-2.5 px-3 text-right">Batas Min</th>
               <th className="py-2.5 px-3 text-center">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 font-medium">
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={activeTimeframe !== 'all' ? 9 : 8} className="py-8 text-center text-slate-400 font-medium">
+                <td colSpan={9} className="py-8 text-center text-slate-400 font-medium">
                   Tidak ada bahan baku yang sesuai filter.
                 </td>
               </tr>
             ) : (
               filteredItems.map((item) => {
                 const badge = STATUS_BADGE[item.status];
-                const netPeriod = item.periodIncoming - item.periodUsed;
+                const isNetPositive = item.periodNet >= 0;
 
                 return (
-                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                  <tr key={item.id} className="hover:bg-slate-50/90 transition-colors">
                     <td className="py-2.5 px-3 font-bold text-slate-900">
                       <div>
-                        <span>{item.namaBahan}</span>
+                        <span className="font-extrabold">{item.namaBahan}</span>
                         <span className="ml-1.5 text-[10px] font-semibold text-slate-400">
                           ({item.satuanTakaran})
                         </span>
@@ -529,33 +644,33 @@ export default function LiveInventoryStockPanel({
                         title="Edit Stok Awal Manual"
                       />
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/20">
                       <div>
-                        <span>+{Math.round(activeTimeframe === 'all' ? item.totalIncoming : item.periodIncoming).toLocaleString('id-ID')}</span>
+                        <span>+{Math.round(item.periodIncoming).toLocaleString('id-ID')}</span>
                         {activeTimeframe !== 'all' && item.totalIncoming > item.periodIncoming && (
                           <span className="block text-[9.5px] font-normal text-slate-400">
-                            Total All: +{Math.round(item.totalIncoming).toLocaleString('id-ID')}
+                            All: +{Math.round(item.totalIncoming).toLocaleString('id-ID')}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-800">
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-800 bg-amber-50/20">
                       <div>
-                        <span>-{Math.round(activeTimeframe === 'all' ? item.totalUsed : item.periodUsed).toLocaleString('id-ID')}</span>
-                        {activeTimeframe !== 'all' && (item.periodPorsiTerjual > 0 || item.periodPorsiJatah > 0) && (
+                        <span>-{Math.round(item.periodUsed).toLocaleString('id-ID')}</span>
+                        {(item.periodPorsiTerjual > 0 || item.periodPorsiJatah > 0) && (
                           <span className="block text-[9.5px] font-normal text-slate-500">
                             {item.periodPorsiTerjual} sales • {item.periodPorsiJatah} jatah
                           </span>
                         )}
                       </div>
                     </td>
-                    {activeTimeframe !== 'all' && (
-                      <td className="py-2.5 px-3 text-right font-mono font-bold bg-slate-50/60">
-                        <span className={netPeriod >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
-                          {netPeriod >= 0 ? `+${Math.round(netPeriod).toLocaleString('id-ID')}` : Math.round(netPeriod).toLocaleString('id-ID')}
-                        </span>
-                      </td>
-                    )}
+                    <td className="py-2.5 px-3 text-right font-mono font-bold bg-slate-50/80">
+                      <span className={isNetPositive ? 'text-emerald-700' : 'text-rose-700'}>
+                        {isNetPositive
+                          ? `+${Math.round(item.periodNet).toLocaleString('id-ID')}`
+                          : Math.round(item.periodNet).toLocaleString('id-ID')}
+                      </span>
+                    </td>
                     <td
                       className={`py-2.5 px-3 text-right font-mono font-black bg-amber-50/30 ${
                         item.remainingStock <= 0
@@ -588,7 +703,7 @@ export default function LiveInventoryStockPanel({
                     </td>
                     <td className="py-2.5 px-3 text-center">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black border ${badge.cls}`}
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black border ${badge.cls}`}
                       >
                         {badge.label}
                       </span>

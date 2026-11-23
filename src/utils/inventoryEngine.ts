@@ -11,8 +11,11 @@ export type InventorySettingsMap = Record<string, IngredientStockSetting>;
 
 export type StockStatusType = 'habis' | 'kritis' | 'menipis' | 'aman';
 
+export type InventoryFilterMode = 'all' | 'bulanan' | 'harian' | 'tahunan';
+
 export interface InventoryFilterPeriod {
-  mode?: 'all' | 'bulanan' | 'harian';
+  mode?: InventoryFilterMode;
+  selectedYear?: string;  // e.g. "2026" or "ALL"
   selectedMonth?: string; // e.g. "2026-11" or "ALL"
   selectedDate?: string;  // e.g. "2026-11-23"
 }
@@ -32,13 +35,15 @@ export interface LiveIngredientStockItem {
   daysRemaining: number | null;
   status: StockStatusType;
 
-  // Period-specific breakdown (Bulanan / Harian)
+  // Period-specific breakdown (Harian / Bulanan / Tahunan / All)
   periodIncoming: number;
   periodUsed: number;
   periodSalesUsage: number;
   periodJatahUsage: number;
   periodPorsiTerjual: number;
   periodPorsiJatah: number;
+  periodNet: number;            // periodIncoming - periodUsed
+  periodRemainingStock: number; // initialStock + periodIncoming - periodUsed
 }
 
 export interface LiveInventorySummary {
@@ -53,6 +58,7 @@ export interface LiveInventorySummary {
   filterPeriod: InventoryFilterPeriod;
   totalPeriodIncoming: number;
   totalPeriodUsed: number;
+  totalPeriodNet: number;
   totalPeriodPorsiTerjual: number;
   totalPeriodPorsiJatah: number;
 }
@@ -158,7 +164,7 @@ function normalizeNameKey(name?: string): string {
  * - Incoming Goods Batches (Barang Masuk)
  * - Daily Sales & Barista Jatah multiplied by Menu Recipes
  * - Custom initial stock & min threshold settings
- * - Optional Filter Period (All time, Bulanan, Harian)
+ * - Filter Period (Harian, Bulanan, Tahunan, All Time)
  */
 export function computeLiveInventoryStock(params: {
   ingredients: Array<{
@@ -194,10 +200,11 @@ export function computeLiveInventoryStock(params: {
     menuItems = [],
     settings = getInventorySettings(),
     todayStr = new Date().toISOString().split('T')[0],
-    filterPeriod = { mode: 'all' },
+    filterPeriod = { mode: 'bulanan' },
   } = params;
 
-  const currentMode = filterPeriod.mode || 'all';
+  const currentMode: InventoryFilterMode = filterPeriod.mode || 'bulanan';
+  const filterYear = filterPeriod.selectedYear;
   const filterMonth = filterPeriod.selectedMonth;
   const filterDate = filterPeriod.selectedDate;
 
@@ -242,17 +249,21 @@ export function computeLiveInventoryStock(params: {
     return undefined;
   };
 
-  // Helper to check if record date matches the filter period
+  // Helper to check if record date matches the filter period (Harian / Bulanan / Tahunan / All)
   const isDateInPeriod = (dateStr?: string): boolean => {
     if (!dateStr) return false;
     if (currentMode === 'all') return true;
+    if (currentMode === 'tahunan') {
+      if (!filterYear || filterYear === 'ALL') return true;
+      return dateStr.startsWith(filterYear); // e.g. "2026"
+    }
     if (currentMode === 'bulanan') {
       if (!filterMonth || filterMonth === 'ALL') return true;
-      return dateStr.startsWith(filterMonth);
+      return dateStr.startsWith(filterMonth); // e.g. "2026-11"
     }
     if (currentMode === 'harian') {
       if (!filterDate) return true;
-      return dateStr === filterDate;
+      return dateStr === filterDate; // e.g. "2026-11-23"
     }
     return true;
   };
@@ -317,7 +328,7 @@ export function computeLiveInventoryStock(params: {
       }
       if (!menu) return;
 
-      // Crucial fix: Support both menu.recipe and menu.resep
+      // Crucial: Support both menu.recipe and menu.resep
       const recipeList = (menu as any).recipe || (menu as any).resep || [];
       if (!Array.isArray(recipeList) || recipeList.length === 0) return;
 
@@ -374,7 +385,7 @@ export function computeLiveInventoryStock(params: {
     const usedToday = usedTodayMap.get(ing.id) || 0;
     const avgDailyUsage = totalUsed > 0 ? totalUsed / activeDayCount : 0;
 
-    // Remaining physical stock right now
+    // Remaining physical stock right now (All-time balance)
     const remainingStock = initialStock + totalIncoming - totalUsed;
 
     // Period specific
@@ -384,6 +395,8 @@ export function computeLiveInventoryStock(params: {
     const periodJatahUsage = usedJatahPeriodMap.get(ing.id) || 0;
     const periodPorsiTerjual = porsiTerjualPeriodMap.get(ing.id) || 0;
     const periodPorsiJatah = porsiJatahPeriodMap.get(ing.id) || 0;
+    const periodNet = periodIncoming - periodUsed;
+    const periodRemainingStock = initialStock + periodIncoming - periodUsed;
 
     totalPeriodIncoming += periodIncoming;
     totalPeriodUsed += periodUsed;
@@ -437,6 +450,8 @@ export function computeLiveInventoryStock(params: {
       periodJatahUsage,
       periodPorsiTerjual,
       periodPorsiJatah,
+      periodNet,
+      periodRemainingStock,
     };
   });
 
@@ -462,11 +477,13 @@ export function computeLiveInventoryStock(params: {
     alertCount: habisCount + kritisCount + menipisCount,
     filterPeriod: {
       mode: currentMode,
+      selectedYear: filterYear,
       selectedMonth: filterMonth,
       selectedDate: filterDate,
     },
     totalPeriodIncoming,
     totalPeriodUsed,
+    totalPeriodNet: totalPeriodIncoming - totalPeriodUsed,
     totalPeriodPorsiTerjual,
     totalPeriodPorsiJatah,
   };

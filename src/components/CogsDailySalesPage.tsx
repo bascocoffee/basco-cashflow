@@ -610,9 +610,10 @@ export default function CogsDailySalesPage({
   const [aiMarginAnalysisError, setAiMarginAnalysisError] = useState<string | null>(null);
 
   // States for Analysis Penggunaan Bahan Baku
-  const [ingredientFilterTimeframe, setIngredientFilterTimeframe] = useState<'harian' | 'bulanan'>('harian');
+  const [ingredientFilterTimeframe, setIngredientFilterTimeframe] = useState<'harian' | 'bulanan' | 'tahunan'>('bulanan');
   const [ingredientSelectedDate, setIngredientSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [ingredientSelectedMonth, setIngredientSelectedMonth] = useState<string>('ALL');
+  const [ingredientSelectedYear, setIngredientSelectedYear] = useState<string>(() => new Date().getFullYear().toString());
   const [ingredientSearchQuery, setIngredientSearchQuery] = useState<string>('');
   const [ingredientViewMode, setIngredientViewMode] = useState<'bahan' | 'menu'>('bahan');
   const [expandedIngredientId, setExpandedIngredientId] = useState<string | null>(null);
@@ -2122,6 +2123,23 @@ export default function CogsDailySalesPage({
     return Array.from(setMonths).sort((a, b) => b.localeCompare(a));
   }, [dailySales, incomingBatches]);
 
+  // Available Years (YYYY) from both dailySales & incomingBatches
+  const availableYears = useMemo(() => {
+    const setYears = new Set<string>();
+    dailySales.forEach(rec => {
+      if (rec.tanggal && rec.tanggal.length >= 4) {
+        setYears.add(rec.tanggal.slice(0, 4));
+      }
+    });
+    incomingBatches.forEach(b => {
+      if (b.tanggal && b.tanggal.length >= 4) {
+        setYears.add(b.tanggal.slice(0, 4));
+      }
+    });
+    setYears.add(new Date().getFullYear().toString());
+    return Array.from(setYears).sort((a, b) => b.localeCompare(a));
+  }, [dailySales, incomingBatches]);
+
   const formatMonthLabel = (ymStr: string) => {
     if (ymStr === 'ALL') return 'Semua Bulan';
     const [year, month] = ymStr.split('-');
@@ -2654,6 +2672,17 @@ export default function CogsDailySalesPage({
         tanggal: normTargetDate,
         menuSales: currentMenuSales
       }];
+    } else if (ingredientFilterTimeframe === 'tahunan') {
+      // Tahunan Mode
+      const filteredRecs = dailySales.filter(d => {
+        if (ingredientSelectedYear === 'ALL') return true;
+        return d.tanggal.startsWith(ingredientSelectedYear);
+      });
+
+      recordsToProcess = filteredRecs.map(d => ({
+        tanggal: d.tanggal,
+        menuSales: d.menuSales || []
+      }));
     } else {
       // Bulanan Mode
       const filteredRecs = dailySales.filter(d => {
@@ -2886,6 +2915,7 @@ export default function CogsDailySalesPage({
     ingredientFilterTimeframe, 
     ingredientSelectedDate, 
     ingredientSelectedMonth, 
+    ingredientSelectedYear,
     dailySales, 
     selectedDate, 
     itemizedInputs, 
@@ -2897,7 +2927,13 @@ export default function CogsDailySalesPage({
     const report = ingredientUsageReport;
     let csvContent = "data:text/csv;charset=utf-8,";
     csvContent += "Laporan Penggunaan Bahan Baku (Sales & Jatah Barista)\n";
-    csvContent += `Periode,${ingredientFilterTimeframe === 'harian' ? ingredientSelectedDate : ingredientSelectedMonth}\n\n`;
+    csvContent += `Periode,${
+      ingredientFilterTimeframe === 'harian'
+        ? ingredientSelectedDate
+        : ingredientFilterTimeframe === 'tahunan'
+        ? ingredientSelectedYear
+        : ingredientSelectedMonth
+    }\n\n`;
     csvContent += "Nama Bahan Baku,Satuan Takaran,Volume Sales,Volume Jatah Barista,Total Volume Terpakai,Cost Sales (Rp),Cost Jatah Barista (Rp),Total Cost (Rp)\n";
 
     report.ingredientList.forEach(item => {
@@ -8391,10 +8427,13 @@ export default function CogsDailySalesPage({
             menuItems={menuItems}
             onNavigateToIncomingGoods={() => setActiveSubTab('barang_masuk')}
             filterTimeframe={ingredientFilterTimeframe}
+            selectedYear={ingredientSelectedYear}
             selectedMonth={ingredientSelectedMonth}
             selectedDate={ingredientSelectedDate}
+            availableYears={availableYears}
             availableMonths={availableMonths}
             onChangeTimeframe={(tf) => setIngredientFilterTimeframe(tf === 'all' ? 'bulanan' : tf)}
+            onChangeYear={setIngredientSelectedYear}
             onChangeMonth={setIngredientSelectedMonth}
             onChangeDate={setIngredientSelectedDate}
           />
@@ -8473,6 +8512,17 @@ export default function CogsDailySalesPage({
                       >
                         🗓️ Bulanan
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setIngredientFilterTimeframe('tahunan')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                          ingredientFilterTimeframe === 'tahunan'
+                            ? 'bg-amber-500 text-slate-950 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        📆 Tahunan
+                      </button>
                     </div>
 
                     {/* Dynamic Picker based on Timeframe */}
@@ -8492,6 +8542,22 @@ export default function CogsDailySalesPage({
                         >
                           Hari Ini ({formatDateDDMMYYYY(selectedDate)})
                         </button>
+                      </div>
+                    ) : ingredientFilterTimeframe === 'tahunan' ? (
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-slate-600">Pilih Tahun:</span>
+                        <select
+                          value={ingredientSelectedYear}
+                          onChange={(e) => setIngredientSelectedYear(e.target.value)}
+                          className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer shadow-2xs"
+                        >
+                          <option value="ALL">Semua Tahun Terdata</option>
+                          {availableYears.map(yr => (
+                            <option key={yr} value={yr}>
+                              📆 Tahun {yr}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     ) : (
                       <div className="flex items-center space-x-2">
@@ -8603,12 +8669,16 @@ export default function CogsDailySalesPage({
                     <p className="text-base font-black text-indigo-950 mt-1">
                       {ingredientFilterTimeframe === 'harian' 
                         ? formatDateDDMMYYYY(ingredientSelectedDate)
+                        : ingredientFilterTimeframe === 'tahunan'
+                        ? ingredientSelectedYear === 'ALL'
+                          ? `Semua Tahun (${ingredientUsageReport.recordsProcessedCount} Hari)`
+                          : `Tahun ${ingredientSelectedYear}`
                         : ingredientSelectedMonth === 'ALL'
                         ? `Semua Data (${ingredientUsageReport.recordsProcessedCount} Hari)`
                         : formatMonthLabel(ingredientSelectedMonth)}
                     </p>
                     <span className="text-[10.5px] text-indigo-700 font-semibold block mt-0.5">
-                      Mode: {ingredientFilterTimeframe === 'harian' ? 'Pencatatan Harian' : 'Akumulasi Bulanan'}
+                      Mode: {ingredientFilterTimeframe === 'harian' ? 'Pencatatan Harian' : ingredientFilterTimeframe === 'tahunan' ? 'Akumulasi Tahunan' : 'Akumulasi Bulanan'}
                     </span>
                   </div>
                 </div>
