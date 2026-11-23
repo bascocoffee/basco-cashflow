@@ -4495,3 +4495,98 @@ export async function fetchGlobalPerformanceFromSheet(
 }
 
 
+
+// ============================================================================
+// READ-ONLY REPORT: SHEET "JATAH HARIAN" (ABSENSI & JATAH BARISTA/STAF)
+// ============================================================================
+export interface JatahHarianRecord {
+  id: string;
+  timestamp: string;
+  tanggal: string;       // Normalized YYYY-MM-DD
+  tanggalRaw: string;    // Original DD/MM/YYYY
+  nama: string;
+  shift: string;         // Shift Pagi, Shift Sore, Manajemen, Tamu / Orang Lain, dll.
+  ambilJatah: boolean;
+  jatahMenu: string;     // Comma separated menu names or '-'
+  jumlahPorsi: number;
+  keterangan: string;
+}
+
+export async function fetchJatahHarianReportFromSheet(
+  spreadsheetId: string,
+  accessToken?: string | null
+): Promise<JatahHarianRecord[]> {
+  if (!spreadsheetId || spreadsheetId.startsWith('local_')) return [];
+
+  try {
+    const tabName = 'JATAH HARIAN';
+    const rows = await fetchSheetRowsWithFallback(
+      spreadsheetId,
+      tabName,
+      `'${tabName}'!A1:I3000`,
+      accessToken
+    );
+
+    if (!rows || rows.length <= 1) return [];
+
+    const headerRow = rows[0] || [];
+    let idIdx = 0;
+    let tsIdx = 1;
+    let dateIdx = 2;
+    let namaIdx = 3;
+    let shiftIdx = 4;
+    let ambilIdx = 5;
+    let jatahIdx = 6;
+    let porsiIdx = 7;
+    let ketIdx = 8;
+
+    headerRow.forEach((h: string, idx: number) => {
+      const hl = (h || '').toLowerCase().trim();
+      if (hl === 'id') idIdx = idx;
+      else if (hl.includes('timestamp') || hl.includes('waktu')) tsIdx = idx;
+      else if (hl.includes('tanggal') || hl.includes('date') || hl === 'tgl') dateIdx = idx;
+      else if (hl.includes('nama') || hl.includes('barista')) namaIdx = idx;
+      else if (hl.includes('shift') || hl.includes('absensi') || hl.includes('status')) shiftIdx = idx;
+      else if (hl.includes('ambil')) ambilIdx = idx;
+      else if (hl === 'jatah' || hl.includes('menu')) jatahIdx = idx;
+      else if (hl.includes('jumlah') || hl.includes('porsi') || hl.includes('qty')) porsiIdx = idx;
+      else if (hl.includes('keterangan') || hl.includes('catatan') || hl.includes('note')) ketIdx = idx;
+    });
+
+    const records: JatahHarianRecord[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || r.length === 0) continue;
+
+      const tanggalRaw = (r[dateIdx] || '').trim();
+      const nama = (r[namaIdx] || '').trim();
+      if (!tanggalRaw && !nama) continue;
+
+      const tanggal = normalizeDateString(tanggalRaw) || tanggalRaw;
+      const ambilRaw = String(r[ambilIdx] || '').trim().toLowerCase();
+      const ambilJatah = ambilRaw === 'true' || ambilRaw === 'ya' || ambilRaw === '1' || ambilRaw === 'yes';
+
+      const jatahMenu = (r[jatahIdx] || '').trim();
+      const jumlahPorsi = ambilJatah ? (Number(r[porsiIdx]) || (jatahMenu ? 1 : 0)) : 0;
+
+      records.push({
+        id: (r[idIdx] || `jh-${i}`).trim(),
+        timestamp: (r[tsIdx] || '').trim(),
+        tanggal,
+        tanggalRaw,
+        nama: nama || 'Tanpa Nama',
+        shift: (r[shiftIdx] || '-').trim(),
+        ambilJatah,
+        jatahMenu: jatahMenu || (ambilJatah ? '-' : 'Tidak Ambil'),
+        jumlahPorsi,
+        keterangan: (r[ketIdx] || '').trim(),
+      });
+    }
+
+    return records;
+  } catch (error) {
+    console.error('Error fetching JATAH HARIAN report from sheet:', error);
+    return [];
+  }
+}

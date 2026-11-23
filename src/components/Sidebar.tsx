@@ -38,7 +38,7 @@ import { SHOPPING_LIST_STORAGE_KEY, DEFAULT_SHOPPING_ITEMS, computeShoppingMetri
 import { AppRole } from '../types';
 import { fetchMySqlStatus, retryMySqlConnection, MySqlStatusInfo } from '../utils/mysqlSync';
 
-export type TabType = 'dashboard' | 'employee_tasks' | 'calendar_notes' | 'barista_schedule' | 'omset_cogs' | 'cogs' | 'shopping_report' | 'categories' | 'fixed_cost' | 'debt_tracker' | 'ai_chat' | 'usage_history';
+export type TabType = 'dashboard' | 'employee_tasks' | 'calendar_notes' | 'barista_schedule' | 'jatah_absensi' | 'omset_cogs' | 'cogs' | 'shopping_report' | 'categories' | 'fixed_cost' | 'debt_tracker' | 'ai_chat' | 'usage_history';
 
 interface SidebarProps {
   user: User;
@@ -235,6 +235,14 @@ export default function Sidebar({
               description: 'Roster & shift Basco Coffee'
             },
             { 
+              id: 'jatah_absensi' as TabType, 
+              label: 'Jatah & Absensi Staf', 
+              icon: FileSpreadsheet, 
+              badge: 'Read-Only',
+              badgeColor: 'amber' as const,
+              description: 'Laporan Sheet JATAH HARIAN'
+            },
+            { 
               id: 'omset_cogs' as TabType, 
               label: 'Analisis COGS & Sales', 
               icon: Coffee, 
@@ -298,6 +306,14 @@ export default function Sidebar({
             icon: Users, 
             badge: 'Basco',
             description: 'Roster & shift Basco Coffee'
+          },
+          { 
+            id: 'jatah_absensi' as TabType, 
+            label: 'Jatah & Absensi Staf', 
+            icon: FileSpreadsheet, 
+            badge: 'Read-Only',
+            badgeColor: 'amber' as const,
+            description: 'Laporan Sheet JATAH HARIAN'
           },
           { 
             id: 'omset_cogs' as TabType, 

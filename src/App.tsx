@@ -64,6 +64,7 @@ const FixedCostSimulator = lazy(() => import("./components/FixedCostSimulator"))
 const CogsDailySalesPage = lazy(() => import("./components/CogsDailySalesPage"));
 const StockOpnamePage = lazy(() => import("./components/StockOpnamePage"));
 const BaristaSchedulePage = lazy(() => import("./components/BaristaSchedulePage"));
+const JatahAbsensiReportPage = lazy(() => import("./components/JatahAbsensiReportPage"));
 const CalendarNotesPage = lazy(() => import("./components/CalendarNotesPage"));
 const DebtTrackerPage = lazy(() => import("./components/DebtTrackerPage"));
 const ShoppingReportPage = lazy(() => import("./components/ShoppingReportPage"));
@@ -580,6 +581,7 @@ export default function App() {
       const allowedManagerTabs: TabType[] = [
         "employee_tasks",
         "barista_schedule",
+        "jatah_absensi",
         "omset_cogs",
         "shopping_report",
         "cogs",
@@ -600,7 +602,7 @@ export default function App() {
     if (userRole === "barista" && activeTab !== "omset_cogs") return;
     if (
       userRole === "manager" &&
-      !["employee_tasks", "barista_schedule", "omset_cogs", "shopping_report", "cogs"].includes(activeTab)
+      !["employee_tasks", "barista_schedule", "jatah_absensi", "omset_cogs", "shopping_report", "cogs"].includes(activeTab)
     ) {
       return;
     }
@@ -613,6 +615,7 @@ export default function App() {
       employee_tasks: userRole === "barista" ? "Tugas & SOP Barista" : userRole === "manager" ? "Tugas Karyawan" : "Pencatatan Tugas Karyawan",
       calendar_notes: "Catatan & Agenda Kalender",
       barista_schedule: userRole === "barista" ? "Jadwal Shift & Slip Gaji" : "Jadwal Operasional",
+      jatah_absensi: "Laporan Jatah & Absensi Staf (Read-Only)",
       omset_cogs: userRole === "barista" ? "Pencatatan Penjualan & Jatah Harian" : userRole === "manager" ? "Penjualan Menu" : "Analisis COGS & Sales",
       cogs: userRole === "barista" ? "Stok Opname & Resep" : "Stok Opname Bulanan",
       shopping_report: "Bahan yang Harus Dibelanjakan",
@@ -2156,6 +2159,11 @@ export default function App() {
           ? "Roster jam kerja, shift bar & unduh slip gaji"
           : "Manajemen roster mingguan, pembagian shift bar & estimasi gaji tim",
     },
+    jatah_absensi: {
+      title: "Laporan Jatah & Absensi Staf (Read-Only)",
+      subtitle:
+        "Laporan harian & bulanan pengambilan jatah dan absensi shift bersumber langsung dari Google Sheet JATAH HARIAN",
+    },
     omset_cogs: {
       title:
         userRole === "barista"
@@ -2531,6 +2539,12 @@ export default function App() {
               categories={categories}
               spreadsheetId={spreadsheetId}
               token={token}
+            />
+          ) : activeTab === "jatah_absensi" ? (
+            <JatahAbsensiReportPage
+              spreadsheetId={spreadsheetId}
+              token={token}
+              spreadsheetUrl={spreadsheetUrl}
             />
           ) : activeTab === "cogs" ? (
             <StockOpnamePage
