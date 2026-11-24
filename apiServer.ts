@@ -23,6 +23,11 @@ import {
   getDebtsFromMySql,
   saveGlobalEvaluationToMySql
 } from "./src/server/mysqlService.js";
+import {
+  getSupabaseStatus,
+  saveSlotToSupabase,
+  loadSlotFromSupabase
+} from "./src/server/supabaseService.js";
 
 dotenv.config();
 
@@ -987,9 +992,14 @@ const serverSlotMemory: Record<string, any> = {};
 
 async function saveServerCloudSlot(slotName: string, data: any, existingPasteKey?: string): Promise<void> {
   serverSlotMemory[slotName] = data;
+
+  // 1. Primary persistent database: Supabase PostgreSQL
+  const supaSaved = await saveSlotToSupabase(slotName, data).catch(() => false);
+
+  // 2. Mirror to external KV/Paste fallback (only if needed or as secondary backup)
   try {
     let pasteKey = existingPasteKey || "";
-    if (!pasteKey) {
+    if (!pasteKey && !supaSaved) {
       const postRes = await fetch(`${PASTE_BASE_URL}/post`, {
         method: "POST",
         headers: {
@@ -1010,11 +1020,27 @@ async function saveServerCloudSlot(slotName: string, data: any, existingPasteKey
       );
     }
   } catch (err) {
-    console.warn(`[CloudSync] Failed saving slot ${slotName}:`, err);
+    console.warn(`[CloudSync] Fallback mirror failed for slot ${slotName}:`, err);
   }
 }
 
 async function loadServerCloudSlot(slotName: string): Promise<any | null> {
+  // 1. Primary persistent database: Supabase PostgreSQL
+  try {
+    const supaData = await loadSlotFromSupabase(slotName);
+    if (supaData) {
+      const memData = serverSlotMemory[slotName];
+      if (!memData || (supaData?.updatedAt || 0) >= (memData?.updatedAt || 0)) {
+        serverSlotMemory[slotName] = supaData;
+        return supaData;
+      }
+      return memData;
+    }
+  } catch {
+    // fallback below
+  }
+
+  // 2. Fallback to external KV/Paste
   try {
     const ptrRes = await fetch(
       `${KV_BASE_URL}/GetValue/${KV_APP_KEY}/basco_v2_${slotName}?_t=${Date.now()}`
@@ -1030,6 +1056,8 @@ async function loadServerCloudSlot(slotName: string): Promise<any | null> {
           const memData = serverSlotMemory[slotName];
           if (!memData || (remoteData?.updatedAt || 0) >= (memData?.updatedAt || 0)) {
             serverSlotMemory[slotName] = remoteData;
+            // Auto-migrate to Supabase if Supabase is enabled
+            saveSlotToSupabase(slotName, remoteData).catch(() => {});
             return remoteData;
           }
         }
@@ -1040,6 +1068,11 @@ async function loadServerCloudSlot(slotName: string): Promise<any | null> {
   }
   return serverSlotMemory[slotName] || null;
 }
+
+app.get("/api/supabase/status", async (_req, res) => {
+  const status = await getSupabaseStatus();
+  res.json(status);
+});
 
 app.get("/api/cloud-sync/:slot", async (req, res) => {
   const slot = req.params.slot;
