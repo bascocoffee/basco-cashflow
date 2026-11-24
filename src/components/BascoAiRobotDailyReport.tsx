@@ -19,7 +19,11 @@ import {
   HelpCircle,
   ExternalLink,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  Calculator,
+  Delete,
+  Copy,
+  Check
 } from 'lucide-react';
 import { Transaction, AppRole, DebtItem } from '../types';
 import { getStoredDebts, getDueDateStatus } from '../utils/debtUtils';
@@ -246,6 +250,99 @@ export default function BascoAiRobotDailyReport({
   });
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'briefing' | 'chat'>('briefing');
+
+  // Simple Calculator Pop-up State
+  const [showCalculator, setShowCalculator] = useState<boolean>(false);
+  const [calcDisplay, setCalcDisplay] = useState<string>('0');
+  const [calcPrevValue, setCalcPrevValue] = useState<number | null>(null);
+  const [calcOperator, setCalcOperator] = useState<string | null>(null);
+  const [calcWaitingForOperand, setCalcWaitingForOperand] = useState<boolean>(false);
+  const [calcExpression, setCalcExpression] = useState<string>('');
+  const [calcCopied, setCalcCopied] = useState<boolean>(false);
+
+  const performCalcOperation = (left: number, right: number, op: string): number => {
+    switch (op) {
+      case '+': return left + right;
+      case '-': return left - right;
+      case '×': return left * right;
+      case '÷': return right !== 0 ? left / right : 0;
+      default: return right;
+    }
+  };
+
+  const handleCalcDigit = (digit: string) => {
+    if (calcWaitingForOperand) {
+      setCalcDisplay(digit === '.' ? '0.' : digit === '000' ? '0' : digit);
+      setCalcWaitingForOperand(false);
+    } else {
+      if (digit === '.' && calcDisplay.includes('.')) return;
+      if (calcDisplay === '0' && digit !== '.') {
+        setCalcDisplay(digit === '000' ? '0' : digit);
+      } else {
+        setCalcDisplay(calcDisplay + digit);
+      }
+    }
+  };
+
+  const handleCalcOperator = (nextOp: string) => {
+    const inputValue = parseFloat(calcDisplay) || 0;
+    if (calcPrevValue === null) {
+      setCalcPrevValue(inputValue);
+      setCalcExpression(`${inputValue.toLocaleString('id-ID')} ${nextOp}`);
+    } else if (calcOperator && !calcWaitingForOperand) {
+      const result = performCalcOperation(calcPrevValue, inputValue, calcOperator);
+      const rounded = Math.round(result * 10000) / 10000;
+      setCalcPrevValue(rounded);
+      setCalcDisplay(String(rounded));
+      setCalcExpression(`${rounded.toLocaleString('id-ID')} ${nextOp}`);
+    } else {
+      setCalcExpression(`${calcPrevValue.toLocaleString('id-ID')} ${nextOp}`);
+    }
+    setCalcWaitingForOperand(true);
+    setCalcOperator(nextOp);
+  };
+
+  const handleCalcEquals = () => {
+    if (calcOperator === null || calcPrevValue === null) return;
+    const inputValue = parseFloat(calcDisplay) || 0;
+    const result = performCalcOperation(calcPrevValue, inputValue, calcOperator);
+    const rounded = Math.round(result * 10000) / 10000;
+    setCalcExpression(`${calcPrevValue.toLocaleString('id-ID')} ${calcOperator} ${inputValue.toLocaleString('id-ID')} =`);
+    setCalcDisplay(String(rounded));
+    setCalcPrevValue(null);
+    setCalcOperator(null);
+    setCalcWaitingForOperand(true);
+  };
+
+  const handleCalcPercent = () => {
+    const val = parseFloat(calcDisplay) || 0;
+    const res = val / 100;
+    setCalcDisplay(String(res));
+    setCalcWaitingForOperand(true);
+  };
+
+  const handleCalcBackspace = () => {
+    if (calcWaitingForOperand) return;
+    if (calcDisplay.length <= 1) {
+      setCalcDisplay('0');
+    } else {
+      setCalcDisplay(calcDisplay.slice(0, -1));
+    }
+  };
+
+  const handleCalcClear = () => {
+    setCalcDisplay('0');
+    setCalcPrevValue(null);
+    setCalcOperator(null);
+    setCalcWaitingForOperand(false);
+    setCalcExpression('');
+  };
+
+  const handleCalcCopy = () => {
+    navigator.clipboard.writeText(calcDisplay);
+    setCalcCopied(true);
+    setTimeout(() => setCalcCopied(false), 1500);
+  };
 
   // Floating draggable position (coordinates)
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
@@ -728,6 +825,23 @@ Sajikan dengan format ringkas & menarik:
           <div className="flex items-center space-x-1 shrink-0">
             <button
               type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isMinimized) setIsMinimized(false);
+                setShowCalculator(prev => !prev);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${
+                showCalculator
+                  ? 'bg-amber-500 text-slate-950'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+              title="Buka / Tutup Kalkulator Simple"
+            >
+              <Calculator className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
               onClick={() => setIsMinimized(prev => !prev)}
               className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
               title={isMinimized ? 'Perluas Pop-up' : 'Kecilkan Pop-up'}
@@ -744,6 +858,167 @@ Sajikan dengan format ringkas & menarik:
             </button>
           </div>
         </div>
+
+        {/* SIMPLE CALCULATOR POP-UP OVERLAY */}
+        {!isMinimized && showCalculator && (
+          <div className="p-3.5 bg-slate-900 text-white border-b border-slate-800 space-y-2.5 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-1.5">
+                <Calculator className="h-3.5 w-3.5 text-amber-400" />
+                <span className="text-[11px] font-bold text-slate-200">Kalkulator Simple</span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <button
+                  type="button"
+                  onClick={handleCalcCopy}
+                  className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-semibold flex items-center space-x-1 transition cursor-pointer"
+                  title="Salin angka hasil"
+                >
+                  {calcCopied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                  <span>{calcCopied ? 'Tersalin' : 'Salin'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCalculator(false)}
+                  className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition cursor-pointer"
+                  title="Tutup Kalkulator"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Display Screen */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-right">
+              <div className="text-[10px] text-slate-400 font-mono min-h-[14px] truncate">
+                {calcExpression || '\u00A0'}
+              </div>
+              <div className="text-xl font-bold font-mono text-white truncate">
+                {isNaN(Number(calcDisplay))
+                  ? calcDisplay
+                  : calcDisplay.endsWith('.')
+                  ? calcDisplay
+                  : Number(calcDisplay).toLocaleString('id-ID', { maximumFractionDigits: 6 })}
+              </div>
+            </div>
+
+            {/* Keypad Grid */}
+            <div className="grid grid-cols-4 gap-1.5 text-xs font-bold">
+              <button
+                type="button"
+                onClick={handleCalcClear}
+                className="py-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 transition cursor-pointer"
+              >
+                C
+              </button>
+              <button
+                type="button"
+                onClick={handleCalcBackspace}
+                className="py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition cursor-pointer"
+                title="Hapus 1 digit"
+              >
+                <Delete className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleCalcPercent}
+                className="py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition cursor-pointer"
+              >
+                %
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCalcOperator('÷')}
+                className="py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm transition cursor-pointer"
+              >
+                ÷
+              </button>
+
+              {['7', '8', '9'].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => handleCalcDigit(n)}
+                  className="py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition cursor-pointer"
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => handleCalcOperator('×')}
+                className="py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm transition cursor-pointer"
+              >
+                ×
+              </button>
+
+              {['4', '5', '6'].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => handleCalcDigit(n)}
+                  className="py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition cursor-pointer"
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => handleCalcOperator('-')}
+                className="py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm transition cursor-pointer"
+              >
+                −
+              </button>
+
+              {['1', '2', '3'].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => handleCalcDigit(n)}
+                  className="py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition cursor-pointer"
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => handleCalcOperator('+')}
+                className="py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-sm transition cursor-pointer"
+              >
+                +
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCalcDigit('000')}
+                className="py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-[11px] transition cursor-pointer"
+              >
+                000
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCalcDigit('0')}
+                className="py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition cursor-pointer"
+              >
+                0
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCalcDigit('.')}
+                className="py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition cursor-pointer"
+              >
+                .
+              </button>
+              <button
+                type="button"
+                onClick={handleCalcEquals}
+                className="py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition cursor-pointer"
+              >
+                =
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* BODY (COLLAPSIBLE WHEN MINIMIZED) */}
         {!isMinimized && (
