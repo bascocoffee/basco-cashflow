@@ -232,9 +232,14 @@ export default function LiveInventoryStockPanel({
 
   const handleUpdateSetting = (
     ingredientId: string,
-    field: 'initialStock' | 'minThreshold',
+    field: 'initialStock' | 'minThreshold' | 'manualLiveStock',
     rawVal: string
   ) => {
+    if (field === 'manualLiveStock' && rawVal === '') {
+      const updated = saveInventorySetting(ingredientId, { manualLiveStock: undefined });
+      setSettings({ ...updated });
+      return;
+    }
     const val = Math.max(0, Number(rawVal) || 0);
     const updated = saveInventorySetting(ingredientId, { [field]: val });
     setSettings({ ...updated });
@@ -302,7 +307,7 @@ export default function LiveInventoryStockPanel({
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Logika: Barang masuk periode terpilih dikurangi otomatis bahan baku terpakai (sales menu & jatah barista) dari Laporan Penggunaan Bahan Baku.
+              Rumus: <strong>Net = Stok Awal + Masuk - Dipakai</strong> • <strong>Selisih = Net - Sisa Stok Live (Input Manual)</strong>.
             </p>
           </div>
         </div>
@@ -606,7 +611,9 @@ export default function LiveInventoryStockPanel({
               <th className="py-2.5 px-3 text-right font-black bg-amber-100/40">
                 Sisa Stok Live
               </th>
-              <th className="py-2.5 px-3 text-center">Ketahanan</th>
+              <th className="py-2.5 px-3 text-right bg-indigo-50/50 text-indigo-900">
+                Selisih
+              </th>
               <th className="py-2.5 px-3 text-right">Batas Min</th>
               <th className="py-2.5 px-3 text-center">Status</th>
             </tr>
@@ -622,6 +629,7 @@ export default function LiveInventoryStockPanel({
               filteredItems.map((item) => {
                 const badge = STATUS_BADGE[item.status];
                 const isNetPositive = item.periodNet >= 0;
+                const selisihVal = Math.round(item.selisih);
 
                 return (
                   <tr key={item.id} className="hover:bg-slate-50/90 transition-colors">
@@ -671,25 +679,36 @@ export default function LiveInventoryStockPanel({
                           : Math.round(item.periodNet).toLocaleString('id-ID')}
                       </span>
                     </td>
-                    <td
-                      className={`py-2.5 px-3 text-right font-mono font-black bg-amber-50/30 ${
-                        item.remainingStock <= 0
-                          ? 'text-rose-700'
-                          : item.status === 'kritis'
-                          ? 'text-orange-700'
-                          : item.status === 'menipis'
-                          ? 'text-amber-700'
-                          : 'text-slate-900'
-                      }`}
-                    >
-                      {Math.round(item.remainingStock).toLocaleString('id-ID')} {item.satuanTakaran}
+                    <td className="py-2 px-3 text-right bg-amber-50/30">
+                      <div className="inline-flex items-center justify-end space-x-1">
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.hasManualLiveStock ? item.manualLiveStock : ''}
+                          placeholder="0"
+                          onChange={(e) => handleUpdateSetting(item.id, 'manualLiveStock', e.target.value)}
+                          className="w-20 text-right px-2 py-1 bg-white border border-amber-300 rounded-lg font-mono text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs"
+                          title="Input Manual Sisa Stok Live (Fisik)"
+                        />
+                        <span className="text-[10px] font-semibold text-slate-500">{item.satuanTakaran}</span>
+                      </div>
                     </td>
-                    <td className="py-2.5 px-3 text-center font-mono text-[11px] font-bold text-slate-600">
-                      {item.daysRemaining !== null
-                        ? item.remainingStock <= 0
-                          ? '0 hari'
-                          : `~${item.daysRemaining.toFixed(1)} hari`
-                        : '-'}
+                    <td className="py-2.5 px-3 text-right font-mono font-black bg-indigo-50/20">
+                      <span
+                        className={
+                          selisihVal === 0
+                            ? 'text-emerald-700'
+                            : selisihVal > 0
+                            ? 'text-amber-700'
+                            : 'text-rose-700'
+                        }
+                        title="Rumus: Net - Sisa Stok Live"
+                      >
+                        {selisihVal > 0
+                          ? `+${selisihVal.toLocaleString('id-ID')}`
+                          : selisihVal.toLocaleString('id-ID')}{' '}
+                        {item.satuanTakaran}
+                      </span>
                     </td>
                     <td className="py-2 px-3 text-right">
                       <input

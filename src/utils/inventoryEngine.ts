@@ -5,6 +5,7 @@ export const INVENTORY_SETTINGS_KEY = 'aruskas_inventory_settings';
 export interface IngredientStockSetting {
   initialStock?: number;
   minThreshold?: number;
+  manualLiveStock?: number;
 }
 
 export type InventorySettingsMap = Record<string, IngredientStockSetting>;
@@ -42,8 +43,11 @@ export interface LiveIngredientStockItem {
   periodJatahUsage: number;
   periodPorsiTerjual: number;
   periodPorsiJatah: number;
-  periodNet: number;            // periodIncoming - periodUsed
+  periodNet: number;            // initialStock + periodIncoming - periodUsed
   periodRemainingStock: number; // initialStock + periodIncoming - periodUsed
+  manualLiveStock: number;      // Input manual Sisa Stok Live
+  hasManualLiveStock: boolean;
+  selisih: number;              // periodNet - manualLiveStock
 }
 
 export interface LiveInventorySummary {
@@ -372,6 +376,7 @@ export function computeLiveInventoryStock(params: {
   let menipisCount = 0;
   let amanCount = 0;
 
+  let totalInitialStock = 0;
   let totalPeriodIncoming = 0;
   let totalPeriodUsed = 0;
   let totalPeriodPorsiTerjual = 0;
@@ -380,24 +385,31 @@ export function computeLiveInventoryStock(params: {
   const items: LiveIngredientStockItem[] = ingredients.map((ing) => {
     const st = settings[ing.id] || {};
     const initialStock = Number(st.initialStock) || 0;
+    const hasManualLiveStock = st.manualLiveStock !== undefined && st.manualLiveStock !== null;
+    const manualLiveStock = hasManualLiveStock ? Number(st.manualLiveStock) || 0 : 0;
+
     const totalIncoming = incomingMapTotal.get(ing.id) || 0;
     const totalUsed = usedTotalMap.get(ing.id) || 0;
     const usedToday = usedTodayMap.get(ing.id) || 0;
     const avgDailyUsage = totalUsed > 0 ? totalUsed / activeDayCount : 0;
 
-    // Remaining physical stock right now (All-time balance)
-    const remainingStock = initialStock + totalIncoming - totalUsed;
-
-    // Period specific
+    // Period specific: Stok Awal + Masuk (Periode) - Dipakai (Periode) = Net Periode
     const periodIncoming = incomingMapPeriod.get(ing.id) || 0;
     const periodUsed = usedPeriodMap.get(ing.id) || 0;
     const periodSalesUsage = usedSalesPeriodMap.get(ing.id) || 0;
     const periodJatahUsage = usedJatahPeriodMap.get(ing.id) || 0;
     const periodPorsiTerjual = porsiTerjualPeriodMap.get(ing.id) || 0;
     const periodPorsiJatah = porsiJatahPeriodMap.get(ing.id) || 0;
-    const periodNet = periodIncoming - periodUsed;
-    const periodRemainingStock = initialStock + periodIncoming - periodUsed;
+    const periodNet = initialStock + periodIncoming - periodUsed;
+    const periodRemainingStock = periodNet;
 
+    // Selisih = Net Periode - Sisa Stok Live (manual)
+    const selisih = periodNet - manualLiveStock;
+
+    // Reference stock for status checks (use manualLiveStock if entered, otherwise periodNet)
+    const remainingStock = hasManualLiveStock ? manualLiveStock : periodNet;
+
+    totalInitialStock += initialStock;
     totalPeriodIncoming += periodIncoming;
     totalPeriodUsed += periodUsed;
     totalPeriodPorsiTerjual += periodPorsiTerjual;
@@ -419,10 +431,10 @@ export function computeLiveInventoryStock(params: {
     if (remainingStock <= 0) {
       status = 'habis';
       habisCount++;
-    } else if (remainingStock <= minThreshold || (daysRemaining !== null && daysRemaining <= 2)) {
+    } else if (remainingStock <= minThreshold) {
       status = 'kritis';
       kritisCount++;
-    } else if (remainingStock <= minThreshold * 1.8 || (daysRemaining !== null && daysRemaining <= 5)) {
+    } else if (remainingStock <= minThreshold * 1.8) {
       status = 'menipis';
       menipisCount++;
     } else {
@@ -452,6 +464,9 @@ export function computeLiveInventoryStock(params: {
       periodPorsiJatah,
       periodNet,
       periodRemainingStock,
+      manualLiveStock,
+      hasManualLiveStock,
+      selisih,
     };
   });
 
@@ -483,7 +498,7 @@ export function computeLiveInventoryStock(params: {
     },
     totalPeriodIncoming,
     totalPeriodUsed,
-    totalPeriodNet: totalPeriodIncoming - totalPeriodUsed,
+    totalPeriodNet: totalInitialStock + totalPeriodIncoming - totalPeriodUsed,
     totalPeriodPorsiTerjual,
     totalPeriodPorsiJatah,
   };
