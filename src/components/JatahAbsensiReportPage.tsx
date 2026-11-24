@@ -279,10 +279,10 @@ export default function JatahAbsensiReportPage({
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-black text-slate-900 tracking-tight">
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
                 Laporan Jatah & Absensi Staf
               </h2>
-              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-slate-900 text-amber-300 text-[10px] font-black uppercase rounded-full tracking-wider">
+              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-semibold rounded-full">
                 <Lock className="h-2.5 w-2.5" />
                 <span>Read-Only • Sheet JATAH HARIAN</span>
               </span>
@@ -335,8 +335,8 @@ export default function JatahAbsensiReportPage({
       </div>
 
       {errorMsg && (
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 font-bold">
-          ⚠️ {errorMsg}
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold">
+          {errorMsg}
         </div>
       )}
 
@@ -345,33 +345,33 @@ export default function JatahAbsensiReportPage({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Periode Selector */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-              <Calendar className="h-4 w-4 text-amber-600" />
-              <span>Mode Laporan:</span>
+            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 text-slate-500" />
+              <span>Periode:</span>
             </span>
 
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
               <button
                 type="button"
                 onClick={() => setTimeframe('harian')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                   timeframe === 'harian'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    ? 'bg-slate-900 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                📅 Harian
+                Harian
               </button>
               <button
                 type="button"
                 onClick={() => setTimeframe('bulanan')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                   timeframe === 'bulanan'
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
+                    ? 'bg-slate-900 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🗓️ Bulanan
+                Bulanan
               </button>
             </div>
 
@@ -381,12 +381,12 @@ export default function JatahAbsensiReportPage({
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                  className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
                 />
                 <button
                   type="button"
                   onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-xl transition cursor-pointer"
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
                 >
                   Hari Ini
                 </button>
@@ -394,9 +394,9 @@ export default function JatahAbsensiReportPage({
                   <button
                     type="button"
                     onClick={() => setSelectedDate(latestDataDate)}
-                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[11px] font-bold rounded-xl transition cursor-pointer"
+                    className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-lg transition cursor-pointer"
                   >
-                    Data Terbaru ({formatDateIndo(latestDataDate)})
+                    Terbaru ({formatDateIndo(latestDataDate)})
                   </button>
                 )}
               </div>
@@ -405,12 +405,12 @@ export default function JatahAbsensiReportPage({
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                  className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
                 >
                   <option value="ALL">Semua Bulan Terdata</option>
                   {availableMonths.map((ym) => (
                     <option key={ym} value={ym}>
-                      🗓️ {formatMonthLabel(ym)}
+                      {formatMonthLabel(ym)}
                     </option>
                   ))}
                 </select>
@@ -467,56 +467,56 @@ export default function JatahAbsensiReportPage({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+            <span className="text-[11px] font-semibold text-slate-500">
               Total Absensi Tercatat
             </span>
-            <Users className="h-4 w-4 text-sky-600" />
+            <Users className="h-4 w-4 text-slate-400" />
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-1.5">{summaryStats.totalEntri}x</p>
-          <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+          <p className="text-2xl font-bold text-slate-900 mt-1.5">{summaryStats.totalEntri}x</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             {summaryStats.uniqueStaffCount} staf/pihak • {summaryStats.uniqueDaysCount} hari aktif
           </p>
         </div>
 
-        <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-2xs">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-wider text-amber-900">
+            <span className="text-[11px] font-semibold text-slate-500">
               Total Jatah Diambil
             </span>
-            <Coffee className="h-4 w-4 text-amber-700" />
+            <Coffee className="h-4 w-4 text-amber-600" />
           </div>
-          <p className="text-2xl font-black text-amber-950 mt-1.5">{summaryStats.totalPorsi} Porsi</p>
-          <p className="text-[11px] text-amber-800 font-medium mt-0.5">
+          <p className="text-2xl font-bold text-amber-700 mt-1.5">{summaryStats.totalPorsi} Porsi</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">
             Periode: {timeframe === 'harian' ? formatDateIndo(selectedDate) : formatMonthLabel(selectedMonth)}
           </p>
         </div>
 
-        <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-200 shadow-2xs">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+            <span className="text-[11px] font-semibold text-slate-500">
               Status Pengambilan
             </span>
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           </div>
-          <p className="text-2xl font-black text-emerald-950 mt-1.5">
-            {summaryStats.ambilCount} <span className="text-sm font-bold text-emerald-700">Ambil</span>
+          <p className="text-2xl font-bold text-slate-900 mt-1.5">
+            {summaryStats.ambilCount} <span className="text-sm font-semibold text-emerald-700">Ambil</span>
           </p>
-          <p className="text-[11px] text-emerald-800 font-medium mt-0.5">
+          <p className="text-[11px] text-slate-500 mt-0.5">
             {summaryStats.tidakAmbilCount} catatan tidak mengambil jatah
           </p>
         </div>
 
-        <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-200 shadow-2xs">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-wider text-indigo-800">
+            <span className="text-[11px] font-semibold text-slate-500">
               Menu Jatah Terbanyak
             </span>
-            <Award className="h-4 w-4 text-indigo-600" />
+            <Award className="h-4 w-4 text-slate-400" />
           </div>
-          <p className="text-base font-black text-indigo-950 mt-2 truncate">
+          <p className="text-base font-bold text-slate-900 mt-2 truncate">
             {summaryStats.topMenu ? summaryStats.topMenu[0] : '-'}
           </p>
-          <p className="text-[11px] text-indigo-700 font-medium mt-1">
+          <p className="text-[11px] text-slate-500 mt-1">
             {summaryStats.topMenu ? `Diambil ${summaryStats.topMenu[1]} kali` : 'Belum ada data'}
           </p>
         </div>
@@ -525,28 +525,28 @@ export default function JatahAbsensiReportPage({
       {/* View Switcher & Main Data Table */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 self-start">
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 self-start">
             <button
               type="button"
               onClick={() => setActiveViewTab('rekap_staf')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                 activeViewTab === 'rekap_staf'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              👥 Rekap Per Staf ({summaryStats.staffList.length})
+              Rekap Per Staf ({summaryStats.staffList.length})
             </button>
             <button
               type="button"
               onClick={() => setActiveViewTab('log_detail')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                 activeViewTab === 'log_detail'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              📋 Log Detail Absensi & Jatah ({filteredRecords.length})
+              Log Detail Absensi & Jatah ({filteredRecords.length})
             </button>
           </div>
 

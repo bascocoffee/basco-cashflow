@@ -1634,25 +1634,24 @@ export default function Dashboard({
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 shrink-0 w-full sm:w-auto">
           {onSwitchRole && (
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/90 shadow-2xs">
-              <span className="text-[10px] font-bold text-slate-500 px-1.5 hidden lg:inline">Akses Role:</span>
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
               <button
                 type="button"
                 onClick={() => onSwitchRole('barista')}
-                className="px-3 py-2 bg-white hover:bg-sky-50 text-sky-800 hover:text-sky-950 border border-slate-200/80 hover:border-sky-300 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs cursor-pointer group"
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/80 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
                 title="Beralih langsung ke tampilan Barista tanpa login ulang"
               >
-                <Coffee className="h-3.5 w-3.5 text-sky-600 group-hover:scale-110 transition-transform" />
-                <span>☕ Ke Barista</span>
+                <Coffee className="h-3.5 w-3.5 text-slate-500" />
+                <span>Barista</span>
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchRole('manager')}
-                className="px-3 py-2 bg-white hover:bg-amber-50 text-amber-900 hover:text-amber-950 border border-slate-200/80 hover:border-amber-300 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 shadow-2xs cursor-pointer group"
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/80 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
                 title="Beralih langsung ke tampilan Manajer tanpa login ulang"
               >
-                <UserCheck className="h-3.5 w-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
-                <span>👔 Ke Manajer</span>
+                <UserCheck className="h-3.5 w-3.5 text-slate-500" />
+                <span>Manajer</span>
               </button>
             </div>
           )}
@@ -1690,23 +1689,23 @@ export default function Dashboard({
 
       {/* QUICK ROLE ACCESS BANNER (Owner Multi-Role Switcher) */}
       {onSwitchRole && (
-        <div className="bg-linear-to-r from-purple-900/5 via-indigo-900/5 to-amber-900/5 border border-purple-200/80 rounded-2xl p-4 sm:p-5 shadow-xs">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start space-x-3.5 min-w-0">
-              <div className="p-2.5 bg-linear-to-br from-purple-600 to-indigo-700 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+              <div className="p-2.5 bg-slate-100 text-slate-700 rounded-xl shrink-0 mt-0.5">
                 <ArrowRightLeft className="h-5 w-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center space-x-2 flex-wrap">
                   <h3 className="text-sm font-bold text-slate-900">
-                    Akses Cepat Mode Staf (Barista & Manajer)
+                    Akses Cepat Mode Staf
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-300">
-                    👑 Hak Akses Owner
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    Hak Akses Owner
                   </span>
                 </div>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Beralih langsung ke tampilan dan hak akses Barista atau Manajer untuk meninjau formulir kasir, cek jatah menu, atur shift, atau cek tugas tanpa harus keluar ke layar login. Anda dapat kembali ke Dashboard Owner kapan saja dengan 1 klik.
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Beralih langsung ke tampilan Barista atau Manajer untuk meninjau kasir, cek jatah menu, atau atur shift tanpa keluar dari sesi Owner.
                 </p>
               </div>
             </div>
@@ -1715,35 +1714,35 @@ export default function Dashboard({
               <button
                 type="button"
                 onClick={() => onSwitchRole('barista')}
-                className="px-4 py-2.5 bg-linear-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-between gap-3 cursor-pointer group"
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition flex items-center justify-between gap-3 cursor-pointer group"
               >
                 <div className="flex items-center space-x-2.5">
-                  <div className="p-1.5 bg-white/20 rounded-lg">
-                    <Coffee className="h-4 w-4 text-white group-hover:rotate-12 transition-transform" />
+                  <div className="p-1.5 bg-white/10 rounded-lg">
+                    <Coffee className="h-4 w-4 text-amber-400" />
                   </div>
                   <div className="text-left">
-                    <div className="leading-tight font-extrabold">Akses Barista</div>
-                    <div className="text-[10.5px] text-sky-100 font-normal">Omset Menu & Jatah Bar</div>
+                    <div className="leading-tight font-bold">Mode Barista</div>
+                    <div className="text-[10.5px] text-slate-400 font-normal">Omset Menu & Jatah Bar</div>
                   </div>
                 </div>
-                <ArrowRight className="h-4 w-4 text-sky-200 group-hover:translate-x-1 transition-transform shrink-0" />
+                <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
               </button>
 
               <button
                 type="button"
                 onClick={() => onSwitchRole('manager')}
-                className="px-4 py-2.5 bg-linear-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-between gap-3 cursor-pointer group"
+                className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-between gap-3 cursor-pointer group"
               >
                 <div className="flex items-center space-x-2.5">
-                  <div className="p-1.5 bg-white/20 rounded-lg">
-                    <UserCheck className="h-4 w-4 text-white group-hover:scale-110 transition-transform" />
+                  <div className="p-1.5 bg-slate-100 rounded-lg">
+                    <UserCheck className="h-4 w-4 text-slate-700" />
                   </div>
                   <div className="text-left">
-                    <div className="leading-tight font-extrabold">Akses Manajer</div>
-                    <div className="text-[10.5px] text-amber-100 font-normal">Tugas Staf & Roster Shift</div>
+                    <div className="leading-tight font-bold">Mode Manajer</div>
+                    <div className="text-[10.5px] text-slate-500 font-normal">Tugas Staf & Roster Shift</div>
                   </div>
                 </div>
-                <ArrowRight className="h-4 w-4 text-amber-200 group-hover:translate-x-1 transition-transform shrink-0" />
+                <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
               </button>
             </div>
           </div>
@@ -2005,13 +2004,16 @@ export default function Dashboard({
         </div>
 
         {/* STATUS REAL-TIME (SLATE CARD) */}
-        <div className="bg-slate-900 p-4 rounded flex flex-col justify-center items-center text-center min-h-[120px] border border-slate-800">
-          <p className="text-white text-center font-bold text-xs leading-tight uppercase tracking-widest">
-            STATUS REAL-TIME:<br/>
-            <span className="text-emerald-400 text-[10px] font-black tracking-widest animate-pulse mt-1.5 inline-block">● SYNCED WITH SPREADSHEET</span>
+        <div className="bg-slate-900 p-4 rounded-xl flex flex-col justify-center items-center text-center min-h-[120px] border border-slate-800">
+          <p className="text-slate-300 text-center font-semibold text-[11px] leading-tight uppercase tracking-wider">
+            Status Sinkronisasi
           </p>
-          <span className="text-slate-400 text-[10px] font-mono mt-1.5">
-            {filteredTransactions.length} Transaksi Terpilih
+          <span className="text-emerald-400 text-xs font-semibold mt-1.5 inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block" />
+            <span>Synced with Spreadsheet</span>
+          </span>
+          <span className="text-slate-400 text-[11px] font-mono mt-1.5">
+            {filteredTransactions.length} Transaksi
           </span>
         </div>
 
@@ -2156,10 +2158,7 @@ export default function Dashboard({
                       : 'bg-gradient-to-r from-indigo-600 to-indigo-400'
               }`}
               style={{ width: `${Math.min(monthlyOmsetMetrics.progressPercent, 100)}%` }}
-            >
-              {/* Shimmer light effect inside progress bar */}
-              <div className="absolute inset-0 bg-white/20 animate-pulse" />
-            </div>
+            />
           </div>
 
           {/* Sub-markers under progress bar */}

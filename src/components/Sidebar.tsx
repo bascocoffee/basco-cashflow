@@ -223,15 +223,12 @@ export default function Sidebar({
               id: 'employee_tasks' as TabType, 
               label: 'Tugas Karyawan', 
               icon: UserCheck, 
-              badge: 'Baru',
-              badgeColor: 'amber' as const,
               description: 'Jobdesk, upah & tugas staf'
             },
             { 
               id: 'barista_schedule' as TabType, 
               label: 'Jadwal Operasional', 
               icon: Users, 
-              badge: 'Basco',
               description: 'Roster & shift Basco Coffee'
             },
             { 
@@ -246,7 +243,6 @@ export default function Sidebar({
               id: 'omset_cogs' as TabType, 
               label: 'Analisis COGS & Sales', 
               icon: Coffee, 
-              badge: 'Aplikasi 2', 
               highlight: true,
               description: 'Penjualan menu & laba kotor'
             },
@@ -288,8 +284,6 @@ export default function Sidebar({
             id: 'employee_tasks' as TabType, 
             label: 'Tugas Karyawan', 
             icon: UserCheck, 
-            badge: 'Baru',
-            badgeColor: 'amber' as const,
             description: 'Jobdesk, upah & tugas staf'
           },
           { 
@@ -304,7 +298,6 @@ export default function Sidebar({
             id: 'barista_schedule' as TabType, 
             label: 'Jadwal Operasional', 
             icon: Users, 
-            badge: 'Basco',
             description: 'Roster & shift Basco Coffee'
           },
           { 
@@ -319,7 +312,6 @@ export default function Sidebar({
             id: 'omset_cogs' as TabType, 
             label: 'Analisis COGS & Sales', 
             icon: Coffee, 
-            badge: 'Aplikasi 2', 
             highlight: true,
             description: 'Penjualan menu & laba kotor'
           },
@@ -350,43 +342,33 @@ export default function Sidebar({
           },
           { 
             id: 'debt_tracker' as TabType, 
-            label: 'Pencatatan Hutang & AI', 
+            label: 'Pencatatan Hutang', 
             icon: CreditCard,
-            badge: debtAlertCount > 0 ? `${debtAlertCount} Tempo` : 'Owner',
-            badgeColor: debtAlertCount > 0 ? ('rose' as const) : ('amber' as const),
+            badge: debtAlertCount > 0 ? `${debtAlertCount} Tempo` : undefined,
+            badgeColor: debtAlertCount > 0 ? ('rose' as const) : undefined,
             description: 'Hutang bulanan, tahunan & AI'
           },
           { 
             id: 'fixed_cost' as TabType, 
             label: 'Kinerja Global & Fixed Cost', 
             icon: Calculator,
-            badge: 'AI',
-            badgeColor: 'emerald' as const,
             description: 'Evaluasi harian, bulanan & tahunan'
           },
         ]
       },
       {
-        groupTitle: 'Kecerdasan Buatan (AI)',
+        groupTitle: 'Asisten & Audit',
         items: [
           { 
             id: 'ai_chat' as TabType, 
             label: 'Tanya AI Analyst', 
             icon: Bot, 
-            badge: 'AI',
             description: 'Konsultasi finansial cafe cerdas'
-          }
-        ]
-      },
-      {
-        groupTitle: 'Audit & Riwayat (Owner)',
-        items: [
+          },
           {
             id: 'usage_history' as TabType,
             label: 'Riwayat Penggunaan',
             icon: History,
-            badge: 'Owner',
-            badgeColor: 'amber' as const,
             description: 'Log aktivitas 3 role (Owner, Manajer, Barista)'
           }
         ]
@@ -765,23 +747,23 @@ export default function Sidebar({
 
         {/* Quick Return to Owner Banner if in Simulation Mode */}
         {isOwnerOrigin && userRole !== 'owner' && (
-          <div className="border-t border-purple-800/50 bg-gradient-to-r from-purple-950 to-slate-900 p-2.5">
+          <div className="border-t border-slate-800 bg-slate-900 p-2.5">
             {isCollapsed ? (
               <button
                 type="button"
                 onClick={() => onSwitchRole?.('owner')}
-                className="w-full p-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl transition flex items-center justify-center shadow-xs cursor-pointer"
+                className="w-full p-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl transition flex items-center justify-center shadow-xs cursor-pointer"
                 title="Kembali ke Dashboard Owner"
               >
-                <span className="text-sm">👑</span>
+                <ShieldCheck className="h-4 w-4" />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => onSwitchRole?.('owner')}
-                className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                className="w-full py-2 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
               >
-                <span>👑</span>
+                <ShieldCheck className="h-3.5 w-3.5" />
                 <span>Kembali ke Owner</span>
               </button>
             )}
@@ -791,23 +773,23 @@ export default function Sidebar({
         {/* Quick Switcher for Owner Role */}
         {userRole === 'owner' && onSwitchRole && !isCollapsed && (
           <div className="px-3.5 py-2 bg-slate-900/60 border-t border-slate-800 flex items-center justify-between text-[10px]">
-            <span className="text-slate-400 font-bold">Simulasi Role:</span>
+            <span className="text-slate-400 font-semibold">Tampilan:</span>
             <div className="flex items-center space-x-1">
               <button
                 type="button"
                 onClick={() => onSwitchRole('barista')}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-sky-950/60 text-slate-300 hover:text-sky-300 rounded font-bold border border-slate-700/80 transition cursor-pointer"
+                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded font-semibold border border-slate-700/80 transition cursor-pointer"
                 title="Beralih ke tampilan Barista"
               >
-                ☕ Barista
+                Barista
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchRole('manager')}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-amber-950/60 text-slate-300 hover:text-amber-300 rounded font-bold border border-slate-700/80 transition cursor-pointer"
+                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded font-semibold border border-slate-700/80 transition cursor-pointer"
                 title="Beralih ke tampilan Manajer"
               >
-                👔 Manajer
+                Manajer
               </button>
             </div>
           </div>

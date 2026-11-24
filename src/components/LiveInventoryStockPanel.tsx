@@ -299,15 +299,12 @@ export default function LiveInventoryStockPanel({
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h4 className="text-sm sm:text-base font-black uppercase tracking-wider text-slate-900">
-                Stok Bahan Baku Live (Pemotongan Otomatis Resep)
+              <h4 className="text-sm sm:text-base font-bold text-slate-900">
+                Stok Bahan Baku Live (Pemotongan Resep)
               </h4>
-              <span className="px-2 py-0.5 bg-cyan-100 text-cyan-800 font-black text-[10px] rounded-full uppercase">
-                Auto-Deduct Resep
-              </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Rumus: <strong>Net = Stok Awal + Masuk - Dipakai</strong> • <strong>Selisih = Net - Sisa Stok Live (Input Manual)</strong>.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Rumus: <span className="font-semibold text-slate-700">Net = Stok Awal + Masuk - Dipakai</span> • <span className="font-semibold text-slate-700">Selisih = Net - Sisa Stok Live (Input Manual)</span>
             </p>
           </div>
         </div>
@@ -337,75 +334,74 @@ export default function LiveInventoryStockPanel({
       </div>
 
       {/* OPSI CEK: HARIAN, BULANAN, TAHUNAN, SEMUA WAKTU */}
-      <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      <div className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-            <Calendar className="h-4 w-4 text-amber-600" />
-            <span>Pilihan Cek Stok:</span>
+          <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-slate-500" />
+            <span>Periode:</span>
           </span>
 
           {/* Mode Selector Buttons: Harian, Bulanan, Tahunan, Semua Waktu */}
-          <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="flex items-center bg-white p-1 rounded-lg border border-slate-200">
             <button
               type="button"
               onClick={() => handleSetTimeframe('harian')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                 activeTimeframe === 'harian'
-                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              📅 Harian
+              Harian
             </button>
             <button
               type="button"
               onClick={() => handleSetTimeframe('bulanan')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                 activeTimeframe === 'bulanan'
-                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              🗓️ Bulanan
+              Bulanan
             </button>
             <button
               type="button"
               onClick={() => handleSetTimeframe('tahunan')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                 activeTimeframe === 'tahunan'
-                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              📆 Tahunan
+              Tahunan
             </button>
             <button
               type="button"
               onClick={() => handleSetTimeframe('all')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                 activeTimeframe === 'all'
-                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  ? 'bg-slate-900 text-white shadow-2xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              🌐 Semua Waktu
+              Semua Waktu
             </button>
           </div>
 
           {/* Conditional Pickers based on activeTimeframe */}
           {activeTimeframe === 'harian' && (
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-slate-600">Pilih Tanggal:</span>
               <input
                 type="date"
                 value={activeDate}
                 onChange={(e) => handleSetDate(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
               />
               <button
                 type="button"
                 onClick={() => handleSetDate(new Date().toISOString().split('T')[0])}
-                className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-[11px] font-bold rounded-xl transition cursor-pointer"
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
               >
                 Hari Ini
               </button>
@@ -414,16 +410,15 @@ export default function LiveInventoryStockPanel({
 
           {activeTimeframe === 'bulanan' && (
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-slate-600">Pilih Bulan:</span>
               <select
                 value={activeMonth}
                 onChange={(e) => handleSetMonth(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
               >
                 <option value="ALL">Semua Bulan Terdata</option>
                 {derivedAvailableMonths.map((ym) => (
                   <option key={ym} value={ym}>
-                    🗓️ {formatMonthName(ym)}
+                    {formatMonthName(ym)}
                   </option>
                 ))}
               </select>
@@ -432,16 +427,15 @@ export default function LiveInventoryStockPanel({
 
           {activeTimeframe === 'tahunan' && (
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-slate-600">Pilih Tahun:</span>
               <select
                 value={activeYear}
                 onChange={(e) => handleSetYear(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs cursor-pointer"
+                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
               >
                 <option value="ALL">Semua Tahun Terdata</option>
                 {derivedAvailableYears.map((yr) => (
                   <option key={yr} value={yr}>
-                    📆 Tahun {yr}
+                    Tahun {yr}
                   </option>
                 ))}
               </select>
@@ -449,9 +443,9 @@ export default function LiveInventoryStockPanel({
           )}
         </div>
 
-        <div className="text-xs text-slate-500 font-medium flex items-center space-x-1.5 self-end lg:self-center">
-          <span>Periode Terpilih:</span>
-          <span className="font-extrabold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+        <div className="text-xs text-slate-500 flex items-center space-x-1.5 self-end lg:self-center">
+          <span>Periode:</span>
+          <span className="font-semibold text-slate-800 bg-white px-2.5 py-1 rounded-md border border-slate-200">
             {periodLabelText}
           </span>
         </div>
@@ -459,14 +453,14 @@ export default function LiveInventoryStockPanel({
 
       {/* Low Stock Alert Banner */}
       {summary.alertCount > 0 ? (
-        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-50 via-amber-50 to-orange-50 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-start space-x-2.5">
-            <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5 animate-pulse" />
+            <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
             <div className="text-xs">
-              <p className="font-black text-rose-900">
-                Peringatan Stok: {summary.alertCount} bahan baku perlu segera diperhatikan!
+              <p className="font-semibold text-rose-900">
+                Peringatan Stok: {summary.alertCount} bahan baku perlu diperhatikan
               </p>
-              <p className="text-rose-800 font-medium mt-0.5">
+              <p className="text-rose-800/90 mt-0.5">
                 {urgentItems
                   .slice(0, 4)
                   .map(
@@ -481,74 +475,66 @@ export default function LiveInventoryStockPanel({
           <button
             type="button"
             onClick={() => setFilterMode(filterMode === 'alerts' ? 'all' : 'alerts')}
-            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black rounded-xl shrink-0 transition cursor-pointer"
+            className="px-3 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-lg shrink-0 transition cursor-pointer"
           >
-            {filterMode === 'alerts' ? 'Tampilkan Semua' : `Filter ${summary.alertCount} Bahan Menipis`}
+            {filterMode === 'alerts' ? 'Tampilkan Semua' : `Filter ${summary.alertCount} Menipis`}
           </button>
         </div>
       ) : (
-        <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center space-x-2 text-xs text-emerald-900 font-bold">
+        <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center space-x-2 text-xs text-emerald-900 font-medium">
           <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
           <span>Seluruh stok bahan baku dalam kondisi aman dan mencukupi.</span>
         </div>
       )}
 
-      {/* Summary KPIs: Masuk Periode vs Dipakai Periode vs Net Periode vs Sisa */}
+      {/* Summary KPIs: Clean Minimalist Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 shadow-2xs">
-          <p className="text-[10px] font-black uppercase text-slate-500">Bahan Terpantau</p>
-          <p className="text-xl font-black text-slate-900 mt-1">{summary.items.length}</p>
-          <span className="text-[10px] text-slate-400 font-medium">Master Bahan Baku</span>
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+          <p className="text-[11px] font-semibold text-slate-500">Bahan Terpantau</p>
+          <p className="text-xl font-bold text-slate-900 mt-1">{summary.items.length}</p>
+          <span className="text-[11px] text-slate-400">Master Bahan Baku</span>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-2xs">
-          <p className="text-[10px] font-black uppercase text-emerald-800 flex items-center gap-1">
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+          <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
             <ArrowDownLeft className="h-3.5 w-3.5 text-emerald-600" />
             <span>Barang Masuk ({periodBadgeTitle})</span>
           </p>
-          <p className="text-xl font-black text-emerald-950 mt-1">
+          <p className="text-xl font-bold text-emerald-700 mt-1">
             +{Math.round(summary.totalPeriodIncoming).toLocaleString('id-ID')}
           </p>
-          <span className="text-[10px] text-emerald-700 font-medium">
-            Kuantitas barang masuk {periodBadgeTitle.toLowerCase()}
+          <span className="text-[11px] text-slate-400">
+            Total masuk {periodBadgeTitle.toLowerCase()}
           </span>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 shadow-2xs">
-          <p className="text-[10px] font-black uppercase text-amber-900 flex items-center gap-1">
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+          <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
             <ArrowUpRight className="h-3.5 w-3.5 text-amber-600" />
             <span>Dipakai ({periodBadgeTitle})</span>
           </p>
-          <p className="text-xl font-black text-amber-950 mt-1">
+          <p className="text-xl font-bold text-slate-900 mt-1">
             -{Math.round(summary.totalPeriodUsed).toLocaleString('id-ID')}
           </p>
-          <span className="text-[10px] text-amber-800 font-medium">
-            {summary.totalPeriodPorsiTerjual} sales + {summary.totalPeriodPorsiJatah} jatah barista
+          <span className="text-[11px] text-slate-400">
+            {summary.totalPeriodPorsiTerjual} sales + {summary.totalPeriodPorsiJatah} jatah
           </span>
         </div>
 
-        <div className={`p-3.5 rounded-2xl border shadow-2xs ${
-          summary.totalPeriodNet >= 0
-            ? 'bg-indigo-50 border-indigo-200'
-            : 'bg-rose-50 border-rose-200'
-        }`}>
-          <p className={`text-[10px] font-black uppercase flex items-center gap-1 ${
-            summary.totalPeriodNet >= 0 ? 'text-indigo-800' : 'text-rose-800'
-          }`}>
-            <Scale className="h-3.5 w-3.5" />
+        <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+          <p className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+            <Scale className="h-3.5 w-3.5 text-slate-500" />
             <span>Net ({periodBadgeTitle})</span>
           </p>
-          <p className={`text-xl font-black mt-1 ${
-            summary.totalPeriodNet >= 0 ? 'text-indigo-950' : 'text-rose-950'
+          <p className={`text-xl font-bold mt-1 ${
+            summary.totalPeriodNet >= 0 ? 'text-emerald-700' : 'text-rose-700'
           }`}>
             {summary.totalPeriodNet >= 0
               ? `+${Math.round(summary.totalPeriodNet).toLocaleString('id-ID')}`
               : Math.round(summary.totalPeriodNet).toLocaleString('id-ID')}
           </p>
-          <span className={`text-[10px] font-bold ${
-            summary.totalPeriodNet >= 0 ? 'text-indigo-700' : 'text-rose-700'
-          }`}>
-            {summary.totalPeriodNet >= 0 ? 'Surplus (Masuk > Pakai)' : 'Defisit (Pakai > Masuk)'}
+          <span className="text-[11px] text-slate-400">
+            {summary.totalPeriodNet >= 0 ? 'Surplus (Stok Awal + Masuk > Pakai)' : 'Defisit (Pakai > Stok Awal + Masuk)'}
           </span>
         </div>
       </div>
