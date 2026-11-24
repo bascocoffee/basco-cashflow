@@ -561,7 +561,7 @@ export function calculateBaristaPayroll(
 
   let totalDaysPresent = 0;
   let totalHoursWorked = 0;
-  let totalOvertimeHours = adjustment?.overtimeHours || 0;
+  let scheduleOvertimeHours = 0;
   let totalDaysOff = 0;
   let totalLeaveDays = 0;
 
@@ -586,10 +586,15 @@ export function calculateBaristaPayroll(
       totalHoursWorked += duration;
 
       if (s.status === 'lembur') {
-        totalOvertimeHours += Math.max(0, duration - 8);
+        scheduleOvertimeHours += duration > 8 ? (duration - 8) : duration;
       }
     }
   });
+
+  // Use manual adjustment override if provided, otherwise use schedule-calculated overtime
+  const totalOvertimeHours = adjustment?.overtimeHours !== undefined
+    ? adjustment.overtimeHours
+    : scheduleOvertimeHours;
 
   // Uang Kehadiran Harian / Shift (misal Part Time dibayar per shift, Full Time uang makan/transport per hadir)
   const attendanceAllowance = totalDaysPresent * dailyAllowanceRate;

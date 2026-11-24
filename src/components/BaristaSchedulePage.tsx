@@ -68,7 +68,7 @@ import {
   fetchShiftsFromSheet,
   fetchFullBaristaDataFromSheet
 } from '../sheetsService';
-import { loadCloudSlot } from '../utils/cloudSync';
+import { loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
 
 import { 
   STORAGE_KEYS, 
@@ -239,18 +239,30 @@ export default function BaristaSchedulePage({
     setIsLoadingCloud(true);
     try {
       const localUpdatedAt = Number(localStorage.getItem(BARISTA_UPDATED_AT_KEY) || '0');
-      const cloudSlot = await loadCloudSlot<{ items?: BaristaScheduleEntry[]; updatedAt?: number }>('barista_schedule');
-      const remoteUpdatedAt = Number(cloudSlot?.updatedAt || 0);
+      const [cloudSlot, roleSalSlot, payrollAdjSlot] = await Promise.all([
+        loadCloudSlot<{ items?: BaristaScheduleEntry[]; updatedAt?: number }>('barista_schedule'),
+        loadCloudSlot<{ items?: RoleSalaryStandard[]; updatedAt?: number }>('barista_role_salaries'),
+        loadCloudSlot<{ items?: Record<string, SalaryAdjustment>; updatedAt?: number }>('barista_payroll_adjustments')
+      ]);
+      const remoteUpdatedAt = Math.max(
+        Number(cloudSlot?.updatedAt || 0),
+        Number(roleSalSlot?.updatedAt || 0),
+        Number(payrollAdjSlot?.updatedAt || 0)
+      );
 
       // If local edits are newer than cloud/remote, keep local data & push it up!
       if (!isManual && localUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
-        await saveFullBaristaDataToSheet(
-          spreadsheetId || '',
-          latestSchedulesRef.current,
-          latestBaristasRef.current,
-          latestShiftsRef.current,
-          token || ''
-        );
+        await Promise.all([
+          saveFullBaristaDataToSheet(
+            spreadsheetId || '',
+            latestSchedulesRef.current,
+            latestBaristasRef.current,
+            latestShiftsRef.current,
+            token || ''
+          ),
+          saveCloudSlot('barista_role_salaries', { items: roleStandards, updatedAt: localUpdatedAt }),
+          saveCloudSlot('barista_payroll_adjustments', { items: payrollAdjustments, updatedAt: localUpdatedAt })
+        ]);
         setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
         return;
       }
@@ -278,6 +290,18 @@ export default function BaristaSchedulePage({
         const sanitized = sanitizeScheduleEntries(remoteSchedules, validBars);
         setSchedules(sanitized);
         localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(sanitized));
+        hasNewData = true;
+      }
+
+      if (roleSalSlot?.items && Array.isArray(roleSalSlot.items) && roleSalSlot.items.length > 0) {
+        setRoleStandards(roleSalSlot.items);
+        localStorage.setItem(STORAGE_KEYS.ROLE_SALARIES, JSON.stringify(roleSalSlot.items));
+        hasNewData = true;
+      }
+
+      if (payrollAdjSlot?.items && typeof payrollAdjSlot.items === 'object') {
+        setPayrollAdjustments(payrollAdjSlot.items);
+        localStorage.setItem(STORAGE_KEYS.PAYROLL_ADJUSTMENTS, JSON.stringify(payrollAdjSlot.items));
         hasNewData = true;
       }
 
@@ -688,10 +712,20 @@ export default function BaristaSchedulePage({
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ROLE_SALARIES, JSON.stringify(roleStandards));
+    if (isInitialMountDoneRef.current && !isApplyingRemoteRef.current) {
+      const now = Date.now();
+      localStorage.setItem(BARISTA_UPDATED_AT_KEY, String(now));
+      saveCloudSlot('barista_role_salaries', { items: roleStandards, updatedAt: now }).catch(() => {});
+    }
   }, [roleStandards]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PAYROLL_ADJUSTMENTS, JSON.stringify(payrollAdjustments));
+    if (isInitialMountDoneRef.current && !isApplyingRemoteRef.current) {
+      const now = Date.now();
+      localStorage.setItem(BARISTA_UPDATED_AT_KEY, String(now));
+      saveCloudSlot('barista_payroll_adjustments', { items: payrollAdjustments, updatedAt: now }).catch(() => {});
+    }
   }, [payrollAdjustments]);
 
   // Payroll Handlers
