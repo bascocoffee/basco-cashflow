@@ -285,11 +285,34 @@ export default function BaristaSchedulePage({
         hasNewData = true;
       }
 
-      if (remoteSchedules && remoteSchedules.length > 0) {
+      const hasCloudSchedules = Boolean(cloudSlot?.items && cloudSlot.items.length > 0);
+      const effectiveRemoteSchedules = hasCloudSchedules ? cloudSlot!.items! : remoteSchedules;
+      const cloudSchedUpdatedAt = Number(cloudSlot?.updatedAt || 0);
+
+      if (effectiveRemoteSchedules && effectiveRemoteSchedules.length > 0) {
         const validBars = (remoteBaristas && remoteBaristas.length > 0) ? remoteBaristas : latestBaristasRef.current;
-        const sanitized = sanitizeScheduleEntries(remoteSchedules, validBars);
-        setSchedules(sanitized);
-        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(sanitized));
+        setSchedules(prev => {
+          // If cloudSlot failed (fell back to older Google Sheet) OR local is newer,
+          // MERGE so local entries (e.g. current week) are NEVER wiped out by older Sheet rows!
+          const shouldMergeSafe = !hasCloudSchedules || (!isManual && localUpdatedAt > cloudSchedUpdatedAt);
+          let combined: BaristaScheduleEntry[];
+          if (shouldMergeSafe && prev.length > 0) {
+            const map = new Map<string, BaristaScheduleEntry>();
+            effectiveRemoteSchedules.forEach(s => {
+              if (s && s.baristaId && s.date) map.set(`${s.baristaId}_${s.date}`, s);
+            });
+            // Local entries take precedence when merging safe
+            prev.forEach(s => {
+              if (s && s.baristaId && s.date) map.set(`${s.baristaId}_${s.date}`, s);
+            });
+            combined = Array.from(map.values());
+          } else {
+            combined = effectiveRemoteSchedules;
+          }
+          const sanitized = sanitizeScheduleEntries(combined, validBars);
+          localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(sanitized));
+          return sanitized;
+        });
         hasNewData = true;
       }
 
@@ -305,10 +328,10 @@ export default function BaristaSchedulePage({
         hasNewData = true;
       }
 
-      if (hasNewData && remoteUpdatedAt > 0) {
+      if (hasNewData && remoteUpdatedAt > 0 && remoteUpdatedAt > localUpdatedAt) {
         localStorage.setItem(BARISTA_UPDATED_AT_KEY, String(remoteUpdatedAt));
       }
-      setTimeout(() => { isApplyingRemoteRef.current = false; }, 100);
+      setTimeout(() => { isApplyingRemoteRef.current = false; }, 300);
 
       const syncTimeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
       setLastSyncTime(syncTimeStr);
@@ -696,18 +719,27 @@ export default function BaristaSchedulePage({
 
   // Sync to LocalStorage & Realtime Cloud Sync
   useEffect(() => {
+    latestBaristasRef.current = baristas;
     localStorage.setItem(STORAGE_KEYS.BARISTAS, JSON.stringify(baristas));
-    triggerCloudSync(schedules, baristas, shifts);
+    if (isInitialMountDoneRef.current && !isApplyingRemoteRef.current) {
+      triggerCloudSync(latestSchedulesRef.current, baristas, latestShiftsRef.current);
+    }
   }, [baristas]);
 
   useEffect(() => {
+    latestShiftsRef.current = shifts;
     localStorage.setItem(STORAGE_KEYS.SHIFTS, JSON.stringify(shifts));
-    triggerCloudSync(schedules, baristas, shifts);
+    if (isInitialMountDoneRef.current && !isApplyingRemoteRef.current) {
+      triggerCloudSync(latestSchedulesRef.current, latestBaristasRef.current, shifts);
+    }
   }, [shifts]);
 
   useEffect(() => {
+    latestSchedulesRef.current = schedules;
     localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
-    triggerCloudSync(schedules, baristas, shifts);
+    if (isInitialMountDoneRef.current && !isApplyingRemoteRef.current) {
+      triggerCloudSync(schedules, latestBaristasRef.current, latestShiftsRef.current);
+    }
   }, [schedules]);
 
   useEffect(() => {
