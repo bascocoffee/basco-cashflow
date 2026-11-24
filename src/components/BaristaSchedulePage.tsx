@@ -67,6 +67,7 @@ import {
   fetchShiftsFromSheet,
   fetchFullBaristaDataFromSheet
 } from '../sheetsService';
+import { loadCloudSlot } from '../utils/cloudSync';
 
 import { 
   STORAGE_KEYS, 
@@ -163,30 +164,43 @@ export default function BaristaSchedulePage({
   });
 
   // Realtime Cloud Sync & Persistence State
+  const BARISTA_UPDATED_AT_KEY = 'aruskas_barista_schedule_updated_at';
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const syncTimeoutRef = useRef<any>(null);
   const isInitialMountDoneRef = useRef(false);
+  const isApplyingRemoteRef = useRef(false);
+  const hasPendingSyncRef = useRef(false);
 
-  // Auto-sync debounced trigger for changes
+  const latestSchedulesRef = useRef(schedules);
+  latestSchedulesRef.current = schedules;
+  const latestBaristasRef = useRef(baristas);
+  latestBaristasRef.current = baristas;
+  const latestShiftsRef = useRef(shifts);
+  latestShiftsRef.current = shifts;
+
+  // Auto-sync debounced trigger for changes (works even without Google OAuth token)
   const triggerCloudSync = useCallback((
-    currentSchedules = schedules,
-    currentBaristas = baristas,
-    currentShifts = shifts
+    currentSchedules = latestSchedulesRef.current,
+    currentBaristas = latestBaristasRef.current,
+    currentShifts = latestShiftsRef.current
   ) => {
-    if (!spreadsheetId || !token || !isInitialMountDoneRef.current) return;
+    if (!isInitialMountDoneRef.current || isApplyingRemoteRef.current) return;
+    localStorage.setItem(BARISTA_UPDATED_AT_KEY, String(Date.now()));
+    hasPendingSyncRef.current = true;
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
 
     syncTimeoutRef.current = setTimeout(async () => {
+      hasPendingSyncRef.current = false;
       setIsSyncingCloud(true);
       try {
-        await saveBaristaScheduleToSheet(
-          spreadsheetId,
+        await saveFullBaristaDataToSheet(
+          spreadsheetId || '',
           currentSchedules,
           currentBaristas,
           currentShifts,
-          token
+          token || ''
         );
         setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
       } catch (err) {
@@ -194,18 +208,57 @@ export default function BaristaSchedulePage({
       } finally {
         setIsSyncingCloud(false);
       }
-    }, 1500);
-  }, [spreadsheetId, token, schedules, baristas, shifts]);
+    }, 350);
+  }, [spreadsheetId, token]);
 
-  // Load Schedule, Barista Team & Shifts from Google Sheets
+  // Flush pending sync on unmount or browser refresh
+  useEffect(() => {
+    const flushPending = () => {
+      if (hasPendingSyncRef.current) {
+        hasPendingSyncRef.current = false;
+        saveFullBaristaDataToSheet(
+          spreadsheetId || '',
+          latestSchedulesRef.current,
+          latestBaristasRef.current,
+          latestShiftsRef.current,
+          token || ''
+        ).catch(() => {});
+      }
+    };
+    window.addEventListener('beforeunload', flushPending);
+    return () => {
+      window.removeEventListener('beforeunload', flushPending);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      flushPending();
+    };
+  }, [spreadsheetId, token]);
+
+  // Load Schedule, Barista Team & Shifts from Cloud & Google Sheets with timestamp guard
   const loadBaristaDataFromCloud = useCallback(async (isManual = false) => {
-    if (!spreadsheetId || !token) return;
     setIsLoadingCloud(true);
     try {
+      const localUpdatedAt = Number(localStorage.getItem(BARISTA_UPDATED_AT_KEY) || '0');
+      const cloudSlot = await loadCloudSlot<{ items?: BaristaScheduleEntry[]; updatedAt?: number }>('barista_schedule');
+      const remoteUpdatedAt = Number(cloudSlot?.updatedAt || 0);
+
+      // If local edits are newer than cloud/remote, keep local data & push it up!
+      if (!isManual && localUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
+        await saveFullBaristaDataToSheet(
+          spreadsheetId || '',
+          latestSchedulesRef.current,
+          latestBaristasRef.current,
+          latestShiftsRef.current,
+          token || ''
+        );
+        setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+        return;
+      }
+
       const { schedules: remoteSchedules, baristas: remoteBaristas, shifts: remoteShifts } = 
-        await fetchFullBaristaDataFromSheet(spreadsheetId, token);
+        await fetchFullBaristaDataFromSheet(spreadsheetId || '', token || '');
 
       let hasNewData = false;
+      isApplyingRemoteRef.current = true;
 
       if (remoteBaristas && remoteBaristas.length > 0) {
         setBaristas(remoteBaristas);
@@ -220,41 +273,42 @@ export default function BaristaSchedulePage({
       }
 
       if (remoteSchedules && remoteSchedules.length > 0) {
-        const validBars = (remoteBaristas && remoteBaristas.length > 0) ? remoteBaristas : baristas;
+        const validBars = (remoteBaristas && remoteBaristas.length > 0) ? remoteBaristas : latestBaristasRef.current;
         const sanitized = sanitizeScheduleEntries(remoteSchedules, validBars);
         setSchedules(sanitized);
         localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(sanitized));
         hasNewData = true;
       }
 
+      if (hasNewData && remoteUpdatedAt > 0) {
+        localStorage.setItem(BARISTA_UPDATED_AT_KEY, String(remoteUpdatedAt));
+      }
+      setTimeout(() => { isApplyingRemoteRef.current = false; }, 100);
+
       const syncTimeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
       setLastSyncTime(syncTimeStr);
 
       if (isManual) {
         if (hasNewData) {
-          showToast('✅ Data jadwal operasional & tim barista berhasil dimuat dari Google Sheets!');
+          showToast('Data jadwal operasional & tim barista berhasil dimuat dari Cloud / Google Sheets!');
         } else {
-          showToast('ℹ️ Google Sheets terhubung. Tidak ada data baru yang ditemukan di Sheet.');
+          showToast('Google Sheets terhubung. Tidak ada data baru yang ditemukan di Sheet.');
         }
       }
     } catch (err: any) {
       console.error('Error fetching barista data from sheet:', err);
       if (isManual) {
-        showToast('❌ Gagal memuat data dari Google Sheets. Periksa koneksi akun Google.');
+        showToast('Gagal memuat data dari Google Sheets. Periksa koneksi internet.');
       }
     } finally {
       setIsLoadingCloud(false);
       isInitialMountDoneRef.current = true;
     }
-  }, [spreadsheetId, token, baristas]);
+  }, [spreadsheetId, token]);
 
-  // Automatic Load from Google Sheets when connected / on app start / update
+  // Automatic Load from Cloud & Google Sheets when connected / on app start / update
   useEffect(() => {
-    if (spreadsheetId && token) {
-      loadBaristaDataFromCloud(false);
-    } else {
-      isInitialMountDoneRef.current = true;
-    }
+    loadBaristaDataFromCloud(false);
   }, [spreadsheetId, token]);
 
   // Manual Save Handler to persist all schedule, baristas, and shifts into Google Sheets

@@ -14,6 +14,7 @@ import {
   fetchCalendarNotesFromSheet, 
   saveCalendarNotesToSheet 
 } from '../sheetsService';
+import { loadCloudSlot } from '../utils/cloudSync';
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -116,10 +117,18 @@ export default function CalendarNotesPage({
     return DEFAULT_CALENDAR_ACTIVITIES;
   });
 
+  const CALENDAR_NOTES_UPDATED_AT_KEY = 'basco_calendar_notes_updated_at';
+  const isApplyingRemoteRef = useRef(false);
+  const latestActivitiesRef = useRef(activities);
+  latestActivitiesRef.current = activities;
+
   // Save changes to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(CALENDAR_NOTES_STORAGE_KEY, JSON.stringify(activities));
+      if (isInitialMountDoneRef.current && !isApplyingRemoteRef.current) {
+        localStorage.setItem(CALENDAR_NOTES_UPDATED_AT_KEY, String(Date.now()));
+      }
     } catch (e) {
       console.error('Error saving calendar activities', e);
     }
@@ -132,6 +141,7 @@ export default function CalendarNotesPage({
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const syncTimeoutRef = useRef<any>(null);
   const isInitialMountDoneRef = useRef(false);
+  const hasPendingSyncRef = useRef(false);
 
   const showSyncToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setSyncFeedback({ message, type });
@@ -140,15 +150,18 @@ export default function CalendarNotesPage({
     }, 4500);
   };
 
-  // Debounced auto-save to Google Sheets
-  const triggerCloudSync = useCallback((currentActivities = activities) => {
-    if (!spreadsheetId || !token || !isInitialMountDoneRef.current) return;
+  // Debounced auto-save to Cloud & Google Sheets (works even without Google OAuth token)
+  const triggerCloudSync = useCallback((currentActivities = latestActivitiesRef.current) => {
+    if (!isInitialMountDoneRef.current) return;
+    localStorage.setItem(CALENDAR_NOTES_UPDATED_AT_KEY, String(Date.now()));
+    hasPendingSyncRef.current = true;
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
 
     syncTimeoutRef.current = setTimeout(async () => {
+      hasPendingSyncRef.current = false;
       setIsSyncingCloud(true);
       try {
-        await saveCalendarNotesToSheet(spreadsheetId, currentActivities, token);
+        await saveCalendarNotesToSheet(spreadsheetId || '', currentActivities, token || '');
         const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         setLastSyncTime(timeStr);
       } catch (err: any) {
@@ -156,36 +169,65 @@ export default function CalendarNotesPage({
       } finally {
         setIsSyncingCloud(false);
       }
-    }, 1200);
-  }, [spreadsheetId, token, activities]);
+    }, 350);
+  }, [spreadsheetId, token]);
 
-  // Load from Google Sheets
-  const loadCalendarNotesFromCloud = useCallback(async (isManual = false) => {
-    if (!spreadsheetId || !token) {
-      if (isManual) {
-        showSyncToast('Spreadsheet Google Sheets belum terhubung. Silakan login akun Google terlebih dahulu.', 'info');
+  // Flush pending sync on unmount or browser refresh
+  useEffect(() => {
+    const flushPending = () => {
+      if (hasPendingSyncRef.current) {
+        hasPendingSyncRef.current = false;
+        saveCalendarNotesToSheet(spreadsheetId || '', latestActivitiesRef.current, token || '').catch(() => {});
       }
-      return;
-    }
+    };
+    window.addEventListener('beforeunload', flushPending);
+    return () => {
+      window.removeEventListener('beforeunload', flushPending);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      flushPending();
+    };
+  }, [spreadsheetId, token]);
 
+  // Load from Cloud & Google Sheets with timestamp guard
+  const loadCalendarNotesFromCloud = useCallback(async (isManual = false) => {
     setIsLoadingCloud(true);
     try {
-      const remoteData = await fetchCalendarNotesFromSheet(spreadsheetId, token);
+      const localUpdatedAt = Number(localStorage.getItem(CALENDAR_NOTES_UPDATED_AT_KEY) || '0');
+      const cloudSlot = await loadCloudSlot<{ items?: CalendarNoteActivity[]; updatedAt?: number }>('calendar_notes');
+      const remoteUpdatedAt = Number(cloudSlot?.updatedAt || 0);
+
+      // If local data was modified more recently than cloud/remote, keep local & push it up!
+      if (!isManual && localUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
+        await saveCalendarNotesToSheet(spreadsheetId || '', latestActivitiesRef.current, token || '');
+        const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        setLastSyncTime(timeStr);
+        return;
+      }
+
+      const remoteData = (cloudSlot?.items && cloudSlot.items.length > 0)
+        ? cloudSlot.items
+        : (spreadsheetId ? await fetchCalendarNotesFromSheet(spreadsheetId, token || '') : null);
+
       if (remoteData && remoteData.length > 0) {
+        isApplyingRemoteRef.current = true;
         setActivities(remoteData);
         localStorage.setItem(CALENDAR_NOTES_STORAGE_KEY, JSON.stringify(remoteData));
+        if (remoteUpdatedAt > 0) {
+          localStorage.setItem(CALENDAR_NOTES_UPDATED_AT_KEY, String(remoteUpdatedAt));
+        }
+        setTimeout(() => { isApplyingRemoteRef.current = false; }, 100);
         const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
         setLastSyncTime(timeStr);
         if (isManual) {
-          showSyncToast(`✅ Berhasil memuat ${remoteData.length} data agenda kalender dari Google Sheets!`, 'success');
+          showSyncToast(`Berhasil memuat ${remoteData.length} data agenda kalender dari Cloud / Google Sheets!`, 'success');
         }
       } else if (isManual) {
-        showSyncToast('ℹ️ Terhubung ke Google Sheets. Belum ada catatan agenda yang tersimpan di spreadsheet.', 'info');
+        showSyncToast('Terhubung ke Google Sheets. Belum ada catatan agenda yang tersimpan di spreadsheet.', 'info');
       }
     } catch (err: any) {
       console.warn('Could not load calendar notes from cloud:', err);
       if (isManual) {
-        showSyncToast('❌ Gagal memuat data dari Google Sheets. Pastikan akun Google memiliki izin akses.', 'error');
+        showSyncToast('Gagal memuat data dari Google Sheets. Pastikan koneksi internet aktif.', 'error');
       }
     } finally {
       setIsLoadingCloud(false);
@@ -195,31 +237,24 @@ export default function CalendarNotesPage({
 
   // Force Save to Google Sheets
   const handleForceSaveToCloud = async () => {
-    if (!spreadsheetId || !token) {
-      showSyncToast('Spreadsheet Google Sheets belum terhubung.', 'info');
-      return;
-    }
     setIsSyncingCloud(true);
     try {
-      await saveCalendarNotesToSheet(spreadsheetId, activities, token);
+      localStorage.setItem(CALENDAR_NOTES_UPDATED_AT_KEY, String(Date.now()));
+      await saveCalendarNotesToSheet(spreadsheetId || '', activities, token || '');
       const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
       setLastSyncTime(timeStr);
-      showSyncToast(`✅ ${activities.length} catatan & agenda kalender berhasil disimpan ke tab Google Sheets!`, 'success');
+      showSyncToast(`${activities.length} catatan & agenda kalender berhasil disimpan ke Cloud & Google Sheets!`, 'success');
     } catch (err: any) {
       console.error('Gagal menyimpan ke Google Sheets:', err);
-      showSyncToast('❌ Gagal menyimpan ke Google Sheets. Silakan periksa koneksi internet.', 'error');
+      showSyncToast('Gagal menyimpan ke Google Sheets. Silakan periksa koneksi internet.', 'error');
     } finally {
       setIsSyncingCloud(false);
     }
   };
 
-  // Mount effect to fetch from cloud
+  // Mount effect to fetch from cloud/sheets
   useEffect(() => {
-    if (spreadsheetId && token) {
-      loadCalendarNotesFromCloud(false);
-    } else {
-      isInitialMountDoneRef.current = true;
-    }
+    loadCalendarNotesFromCloud(false);
   }, [spreadsheetId, token]);
 
   // Current Calendar Month State (Year & Month)
