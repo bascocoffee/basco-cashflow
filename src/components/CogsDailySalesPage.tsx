@@ -23,6 +23,7 @@ import {
   RotateCcw, 
   Calendar, 
   CheckCircle, 
+  AlertCircle,
   Award, 
   ArrowUpRight, 
   HelpCircle,
@@ -1490,6 +1491,26 @@ export default function CogsDailySalesPage({
   // State for daily itemized inputs (menuId -> { jatah, terjual })
   const [itemizedInputs, setItemizedInputs] = useState<Record<string, { jatah: number; terjual: number }>>({});
 
+  const getCatalogMenuItemHpp = (item: MenuItem): number => {
+    return (item.recipe && item.recipe.length > 0)
+      ? (calculateMenuItemHppFromRecipe(item, ingredients) || item.hpp)
+      : item.hpp;
+  };
+
+  const findMatchingMenuSale = (
+    record: DailySalesRecord | undefined,
+    item: MenuItem
+  ): DailyMenuItemSale | undefined => {
+    if (!record || !Array.isArray(record.menuSales) || record.menuSales.length === 0) return undefined;
+    const itemNamaLower = (item.nama || '').trim().toLowerCase();
+    const aliasSet = new Set(
+      [itemNamaLower, ...(Array.isArray(item.aliases) ? item.aliases.map(a => a.trim().toLowerCase()) : [])].filter(Boolean)
+    );
+    return record.menuSales.find(
+      ms => ms.menuId === item.id || (ms.nama && aliasSet.has(ms.nama.trim().toLowerCase()))
+    );
+  };
+
   // Helper to immediately persist any form input changes into dailySales & shared storage so Owner/Manager sees Barista inputs automatically
   const commitItemizedInputsLive = (
     nextInputs: Record<string, { jatah: number; terjual: number }>,
@@ -1499,25 +1520,29 @@ export default function CogsDailySalesPage({
     const normSelected = normalizeDateString(dateStr) || dateStr;
     localStorage.setItem('aruskas_cogs_selected_date', normSelected);
 
-    const menuSalesList: DailyMenuItemSale[] = menuItems.map(item => {
-      const input = nextInputs[item.id] || { jatah: item.defaultJatah, terjual: 0 };
-      return {
-        menuId: item.id,
-        nama: item.nama,
-        kategori: item.kategori,
-        hargaJual: item.hargaJual,
-        hpp: item.hpp,
-        jatah: Number(input.jatah) || 0,
-        terjual: Number(input.terjual) || 0
-      };
-    });
-
-    const cups = menuSalesList.reduce((s, ms) => s + (ms.terjual || 0), 0);
-    const omset = menuSalesList.reduce((s, ms) => s + ((ms.terjual || 0) * (ms.hargaJual || 0)), 0);
-    const hppTotal = menuSalesList.reduce((s, ms) => s + (((ms.terjual || 0) + (ms.jatah || 0)) * (ms.hpp || 0)), 0);
-
     setDailySales(prev => {
       const existingIndex = prev.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
+      const existingRecord = existingIndex >= 0 ? prev[existingIndex] : undefined;
+
+      const menuSalesList: DailyMenuItemSale[] = menuItems.map(item => {
+        const input = nextInputs[item.id] || { jatah: item.defaultJatah, terjual: 0 };
+        const matched = findMatchingMenuSale(existingRecord, item);
+        const catalogHpp = Math.round(getCatalogMenuItemHpp(item));
+        return {
+          menuId: item.id,
+          nama: item.nama,
+          kategori: item.kategori,
+          hargaJual: matched ? matched.hargaJual : item.hargaJual,
+          hpp: matched ? matched.hpp : catalogHpp,
+          jatah: Number(input.jatah) || 0,
+          terjual: Number(input.terjual) || 0
+        };
+      });
+
+      const cups = menuSalesList.reduce((s, ms) => s + (ms.terjual || 0), 0);
+      const omset = menuSalesList.reduce((s, ms) => s + ((ms.terjual || 0) * (ms.hargaJual || 0)), 0);
+      const hppTotal = menuSalesList.reduce((s, ms) => s + (((ms.terjual || 0) + (ms.jatah || 0)) * (ms.hpp || 0)), 0);
+
       const newRecord: DailySalesRecord & { updatedAt?: number } = {
         id: existingIndex >= 0 ? prev[existingIndex].id : `ds-${Date.now()}`,
         tanggal: normSelected,
@@ -2337,29 +2362,54 @@ export default function CogsDailySalesPage({
     let totalJatah = 0;
     let totalOmset = 0;
     let totalHpp = 0;
+    let catalogOmset = 0;
+    let catalogHpp = 0;
+
+    const normSelected = normalizeDateString(selectedDate);
+    const existingRecord = dailySales.find(d => normalizeDateString(d.tanggal) === normSelected);
+    const hasSavedMenuSnapshot = Boolean(existingRecord && Array.isArray(existingRecord.menuSales) && existingRecord.menuSales.length > 0);
 
     menuItems.forEach(item => {
       const input = itemizedInputs[item.id] || { jatah: item.defaultJatah, terjual: 0 };
+      const matched = hasSavedMenuSnapshot ? findMatchingMenuSale(existingRecord, item) : undefined;
+      const itemCatalogHpp = getCatalogMenuItemHpp(item);
+      const effectiveHargaJual = matched ? matched.hargaJual : item.hargaJual;
+      const effectiveHpp = matched ? matched.hpp : itemCatalogHpp;
+
       totalCups += input.terjual;
       totalJatah += input.jatah;
-      totalOmset += input.terjual * item.hargaJual;
-      const itemHpp = (item.recipe && item.recipe.length > 0) ? (calculateMenuItemHppFromRecipe(item, ingredients) || item.hpp) : item.hpp;
+      totalOmset += input.terjual * effectiveHargaJual;
       // HPP Harian adalah total jumlah dari jatah barista dan penjualan
-      totalHpp += (input.terjual + input.jatah) * itemHpp;
+      totalHpp += (input.terjual + input.jatah) * effectiveHpp;
+
+      catalogOmset += input.terjual * item.hargaJual;
+      catalogHpp += (input.terjual + input.jatah) * itemCatalogHpp;
     });
 
     const grossProfit = totalOmset - totalHpp;
     const fulfillmentPct = totalJatah > 0 ? (totalCups / totalJatah) * 100 : 0;
+    const hasCatalogDiff =
+      hasSavedMenuSnapshot &&
+      (Math.round(catalogOmset) !== Math.round(totalOmset) ||
+        Math.round(catalogHpp) !== Math.round(totalHpp));
+    const hasRecordDiff =
+      Boolean(existingRecord) &&
+      (Math.round(existingRecord!.omset) !== Math.round(totalOmset) ||
+        Math.round(existingRecord!.hppTotal || 0) !== Math.round(totalHpp));
 
     return {
       totalCups,
       totalJatah,
       totalOmset,
       totalHpp,
+      catalogOmset,
+      catalogHpp,
+      hasCatalogDiff,
+      hasRecordDiff,
       grossProfit,
       fulfillmentPct
     };
-  }, [menuItems, itemizedInputs, ingredients]);
+  }, [menuItems, itemizedInputs, ingredients, dailySales, selectedDate]);
 
   // Active Comparison Data Metrics for Daily Sales vs Total HPP & Gross Margin %
   const activeCompData = useMemo(() => {
@@ -2966,19 +3016,74 @@ export default function CogsDailySalesPage({
   const grossProfit = useMemo(() => omsetBulanan - totalEstimasiHPP, [omsetBulanan, totalEstimasiHPP]);
   const netProfit = useMemo(() => grossProfit - totalBiayaBulanan, [grossProfit, totalBiayaBulanan]);
 
-  // Save Itemized Daily Entry
-  const handleSaveItemizedDaily = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  // Explicitly recalculate & overwrite the selected date using current Catalog Menu prices & recipes
+  const handleRecalculateDailyWithCatalog = async () => {
+    const normSelected = normalizeDateString(selectedDate) || selectedDate;
     const menuSalesList: DailyMenuItemSale[] = menuItems.map(item => {
       const input = itemizedInputs[item.id] || { jatah: item.defaultJatah, terjual: 0 };
-      const itemHpp = (item.recipe && item.recipe.length > 0) ? (calculateMenuItemHppFromRecipe(item, ingredients) || item.hpp) : item.hpp;
+      const itemHpp = getCatalogMenuItemHpp(item);
       return {
         menuId: item.id,
         nama: item.nama,
         kategori: item.kategori,
         hargaJual: item.hargaJual,
         hpp: Math.round(itemHpp),
+        jatah: Number(input.jatah) || 0,
+        terjual: Number(input.terjual) || 0
+      };
+    });
+
+    const cups = menuSalesList.reduce((s, ms) => s + (ms.terjual || 0), 0);
+    const omset = menuSalesList.reduce((s, ms) => s + ((ms.terjual || 0) * (ms.hargaJual || 0)), 0);
+    const hppTotal = menuSalesList.reduce((s, ms) => s + (((ms.terjual || 0) + (ms.jatah || 0)) * (ms.hpp || 0)), 0);
+
+    const existingIndex = dailySales.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
+    const newRecord: DailySalesRecord & { updatedAt?: number } = {
+      id: existingIndex >= 0 ? dailySales[existingIndex].id : `ds-${Date.now()}`,
+      tanggal: normSelected,
+      cups,
+      omset,
+      hppTotal,
+      notes: dailyNotes.trim(),
+      menuSales: menuSalesList,
+      updatedAt: Date.now()
+    };
+
+    const nextDailySales =
+      existingIndex >= 0
+        ? dailySales.map((d, idx) => (idx === existingIndex ? newRecord : d))
+        : [...dailySales, newRecord].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+
+    setDailySales(nextDailySales);
+    localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(nextDailySales));
+    lastRemoteUpdatedAtRef.current = newRecord.updatedAt || Date.now();
+    await pushDailySalesToCloud({
+      record: newRecord,
+      records: nextDailySales.filter(r => r && r.id !== 'ds-1' && r.id !== 'ds-2' && r.id !== 'ds-3'),
+      selectedDate: normSelected,
+      immediate: true
+    });
+    syncDataToCloud(menuItems, nextDailySales, ingredients, biayaList, incomingBatches, normSelected);
+  };
+
+  // Save Itemized Daily Entry (preserves existing snapshot prices if already saved; use handleRecalculateDailyWithCatalog to update to latest Catalog)
+  const handleSaveItemizedDaily = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const normSelected = normalizeDateString(selectedDate) || selectedDate;
+    const existingRecord = dailySales.find(d => normalizeDateString(d.tanggal) === normSelected);
+    const hasSavedMenuSnapshot = Boolean(existingRecord && Array.isArray(existingRecord.menuSales) && existingRecord.menuSales.length > 0);
+
+    const menuSalesList: DailyMenuItemSale[] = menuItems.map(item => {
+      const input = itemizedInputs[item.id] || { jatah: item.defaultJatah, terjual: 0 };
+      const matched = hasSavedMenuSnapshot ? findMatchingMenuSale(existingRecord, item) : undefined;
+      const itemHpp = getCatalogMenuItemHpp(item);
+      return {
+        menuId: item.id,
+        nama: item.nama,
+        kategori: item.kategori,
+        hargaJual: matched ? matched.hargaJual : item.hargaJual,
+        hpp: matched ? matched.hpp : Math.round(itemHpp),
         jatah: Number(input.jatah) || 0,
         terjual: Number(input.terjual) || 0
       };
@@ -2994,7 +3099,6 @@ export default function CogsDailySalesPage({
       }
     }
 
-    const normSelected = normalizeDateString(selectedDate) || selectedDate;
     localStorage.setItem('aruskas_cogs_selected_date', normSelected);
 
     const existingIndex = dailySales.findIndex(d => normalizeDateString(d.tanggal) === normSelected);
@@ -5114,6 +5218,32 @@ export default function CogsDailySalesPage({
                 </div>
               )}
             </div>
+
+            {entryMode === 'itemized' && (itemizedCalculations.hasCatalogDiff || itemizedCalculations.hasRecordDiff) && (
+              <div className="bg-amber-50/90 border border-amber-200 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900">
+                <div className="flex items-start sm:items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+                  <span>
+                    {itemizedCalculations.hasCatalogDiff ? (
+                      <>
+                        Harga/HPP <strong>Catalog Menu</strong> saat ini ({formatRupiah(itemizedCalculations.catalogOmset)} / HPP {formatRupiah(Math.round(itemizedCalculations.catalogHpp))}) berbeda dengan snapshot historis tanggal ini.
+                      </>
+                    ) : (
+                      <>
+                        Nominal tersimpan di Riwayat berbeda dengan rincian menu saat ini. Klik tombol di kanan untuk menyinkronkan dengan Catalog terbaru.
+                      </>
+                    )}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRecalculateDailyWithCatalog}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] whitespace-nowrap transition-colors shadow-2xs self-start sm:self-auto"
+                >
+                  Hitung Ulang Pakai Harga Catalog
+                </button>
+              </div>
+            )}
 
             {/* EXCEL IMPORT / DOWNLOAD TEMPLATE BANNER */}
             <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/70 p-4 rounded-xl border border-emerald-200/90 shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
