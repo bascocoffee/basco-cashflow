@@ -44,7 +44,9 @@ import {
   fetchAllStockOpnameReportsFromSheet,
   saveStockOpnameToSheet, 
   fetchIngredientsFromSheet, 
-  saveIngredientsToSheet 
+  saveIngredientsToSheet,
+  fetchMenuCatalogFromSheet,
+  fetchDailySalesFromSheet
 } from '../sheetsService';
 
 export interface StockItemMaster {
@@ -341,35 +343,99 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
   const [isSavingReport, setIsSavingReport] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const syncTimeoutRef = useRef<any>(null);
+  const hasPendingSyncRef = useRef(false);
+  const latestEntriesRef = useRef(opnameEntries);
+  latestEntriesRef.current = opnameEntries;
+  const latestItemsRef = useRef(masterItems);
+  latestItemsRef.current = masterItems;
+  const latestPetugasRef = useRef(petugas);
+  latestPetugasRef.current = petugas;
+  const latestMonthRef = useRef(selectedMonth);
+  latestMonthRef.current = selectedMonth;
 
-  // Dedicated Cloud Loader: Pulls both full history and active month opname from Google Sheets
+  // Flush pending sync on unmount or browser refresh
+  useEffect(() => {
+    const flushPending = () => {
+      if (hasPendingSyncRef.current) {
+        hasPendingSyncRef.current = false;
+        saveStockOpnameToSheet(
+          spreadsheetId || '',
+          latestMonthRef.current,
+          latestEntriesRef.current,
+          latestItemsRef.current,
+          latestPetugasRef.current || 'Barista Leader',
+          token || ''
+        ).catch(() => {});
+      }
+    };
+    window.addEventListener('beforeunload', flushPending);
+    return () => {
+      window.removeEventListener('beforeunload', flushPending);
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+      flushPending();
+    };
+  }, [spreadsheetId, token]);
+
+  // Dedicated Cloud Loader: Pulls ingredients, menu catalog, daily sales, history & active month opname (works across all devices & roles)
   const loadCloudOpname = useCallback(async () => {
-    if (!spreadsheetId || !token) return;
     setIsSyncingSheet(true);
     try {
-      // 1. Sync remote ingredients
-      const remoteIngs = await fetchIngredientsFromSheet(spreadsheetId, token);
+      const sheetId = spreadsheetId || '';
+      const effectiveToken = token || '';
+
+      // 1. Sync remote ingredients, menu catalog, and daily sales in parallel so auto-usage & master items are always fresh on any device
+      const [remoteIngs, remoteMenu, allOpnameData, remoteData] = await Promise.all([
+        fetchIngredientsFromSheet(sheetId, effectiveToken).catch(() => null),
+        fetchMenuCatalogFromSheet(sheetId, effectiveToken).catch(() => null),
+        fetchAllStockOpnameReportsFromSheet(sheetId, effectiveToken).catch(() => null),
+        fetchStockOpnameFromSheet(sheetId, selectedMonth, effectiveToken).catch(() => null)
+      ]);
+
       if (remoteIngs && remoteIngs.length > 0) {
         setCogsIngredients(remoteIngs);
         localStorage.setItem('aruskas_cogs_ingredients', JSON.stringify(remoteIngs));
       }
 
-      // 2. Sync all reports history from Google Sheets
-      const allOpnameData = await fetchAllStockOpnameReportsFromSheet(spreadsheetId, token);
+      if (remoteMenu && remoteMenu.length > 0) {
+        setMenuCatalog(remoteMenu);
+        localStorage.setItem('aruskas_cogs_page_menu_catalog', JSON.stringify(remoteMenu));
+        // Also fetch dailySales using the fresh menu catalog
+        const remoteSales = await fetchDailySalesFromSheet(sheetId, effectiveToken, remoteMenu).catch(() => null);
+        if (remoteSales && remoteSales.length > 0) {
+          setDailySales(remoteSales);
+          localStorage.setItem('aruskas_cogs_page_daily_sales', JSON.stringify(remoteSales));
+        }
+      }
+
       if (allOpnameData && allOpnameData.reports.length > 0) {
         setReportsHistory(allOpnameData.reports);
         localStorage.setItem('basco_opname_reports_history', JSON.stringify(allOpnameData.reports));
       }
 
-      // 3. Sync specific month opname data
-      const remoteData = await fetchStockOpnameFromSheet(spreadsheetId, selectedMonth, token);
-      if (remoteData && remoteData.entries && Object.keys(remoteData.entries).length > 0) {
+      // 3. Sync specific month opname data with Timestamp Guard
+      const localUpdatedAt = Number(localStorage.getItem(`basco_opname_updated_at_${selectedMonth}`) || '0');
+      const remoteUpdatedAt = Number(remoteData?.updatedAt || 0);
+
+      if (localUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
+        // Local data is newer — keep local and push up to Cloud & Sheet
+        await saveStockOpnameToSheet(
+          sheetId,
+          selectedMonth,
+          latestEntriesRef.current,
+          latestItemsRef.current,
+          latestPetugasRef.current || 'Barista Leader',
+          effectiveToken
+        );
+      } else if (remoteData && remoteData.entries && Object.keys(remoteData.entries).length > 0) {
         if (remoteData.petugas) {
           setPetugas(remoteData.petugas);
         }
         setOpnameEntries(prev => {
           const merged = { ...prev, ...remoteData.entries };
           localStorage.setItem(`basco_opname_draft_${selectedMonth}`, JSON.stringify(merged));
+          if (remoteUpdatedAt > 0) {
+            localStorage.setItem(`basco_opname_updated_at_${selectedMonth}`, String(remoteUpdatedAt));
+          }
           return merged;
         });
       }
@@ -386,10 +452,10 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
     entriesToSync = opnameEntries,
     items = masterItems
   ) => {
-    if (!spreadsheetId || !token) return;
     setIsSyncingSheet(true);
     try {
-      await saveStockOpnameToSheet(spreadsheetId, selectedMonth, entriesToSync, items, petugas || 'Barista Leader', token);
+      localStorage.setItem(`basco_opname_updated_at_${selectedMonth}`, String(Date.now()));
+      await saveStockOpnameToSheet(spreadsheetId || '', selectedMonth, entriesToSync, items, petugas || 'Barista Leader', token || '');
       setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
       console.error('Error syncing Stock Opname to Google Sheets:', err);
@@ -398,7 +464,7 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
     }
   }, [spreadsheetId, token, selectedMonth, opnameEntries, masterItems, petugas]);
 
-  // Load entries whenever selectedMonth or masterItems changes, and pull from Google Sheets if connected
+  // Load local draft entries whenever selectedMonth or masterItems changes
   useEffect(() => {
     const savedDraft = localStorage.getItem(`basco_opname_draft_${selectedMonth}`);
     const savedReport = localStorage.getItem(`basco_opname_report_${selectedMonth}`);
@@ -439,12 +505,12 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
     });
 
     setOpnameEntries(updatedEntries);
+  }, [selectedMonth, masterItems]);
 
-    // If connected to Google Sheets, pull remote opname for this month & all history
-    if (spreadsheetId && token) {
-      loadCloudOpname();
-    }
-  }, [selectedMonth, masterItems, spreadsheetId, token, loadCloudOpname]);
+  // Pull from Cloud & Google Sheets when month or spreadsheet/token changes
+  useEffect(() => {
+    loadCloudOpname();
+  }, [selectedMonth, spreadsheetId, token, loadCloudOpname]);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -522,18 +588,19 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
       };
 
       localStorage.setItem(`basco_opname_draft_${selectedMonth}`, JSON.stringify(next));
+      localStorage.setItem(`basco_opname_updated_at_${selectedMonth}`, String(Date.now()));
+      hasPendingSyncRef.current = true;
 
-      // Realtime debounced auto-sync to Google Sheets
+      // Realtime debounced auto-sync to Cloud & Google Sheets (works across all devices & roles)
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
       syncTimeoutRef.current = setTimeout(() => {
-        if (spreadsheetId && token) {
-          saveStockOpnameToSheet(spreadsheetId, selectedMonth, next, masterItems, token)
-            .then(() => {
-              setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-            })
-            .catch(e => console.error("Cloud sync error:", e));
-        }
-      }, 1000);
+        hasPendingSyncRef.current = false;
+        saveStockOpnameToSheet(spreadsheetId || '', selectedMonth, next, masterItems, petugas || 'Barista Leader', token || '')
+          .then(() => {
+            setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+          })
+          .catch(e => console.error("Cloud sync error:", e));
+      }, 350);
 
       return next;
     });
@@ -575,16 +642,15 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
         alert(`Tidak ada kalkulasi resep dari penjualan untuk periode ${selectedMonth}. Pastikan Anda telah menginput Penjualan Harian dan Resep Menu di Kalkulator HPP.`);
       } else {
         localStorage.setItem(`basco_opname_draft_${selectedMonth}`, JSON.stringify(next));
-        if (spreadsheetId && token) {
-          setIsSyncingSheet(true);
-          saveStockOpnameToSheet(spreadsheetId, selectedMonth, next, masterItems, token)
-            .then(() => {
-              setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-            })
-            .catch(e => console.error("Cloud sync error:", e))
-            .finally(() => setIsSyncingSheet(false));
-        }
-        alert(`✅ Berhasil menyinkronkan ${countApplied} bahan terpakai otomatis & tersimpan realtime ke Google Sheets!`);
+        localStorage.setItem(`basco_opname_updated_at_${selectedMonth}`, String(Date.now()));
+        setIsSyncingSheet(true);
+        saveStockOpnameToSheet(spreadsheetId || '', selectedMonth, next, masterItems, petugas || 'Barista Leader', token || '')
+          .then(() => {
+            setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+          })
+          .catch(e => console.error("Cloud sync error:", e))
+          .finally(() => setIsSyncingSheet(false));
+        alert(`✅ Berhasil menyinkronkan ${countApplied} bahan terpakai otomatis & tersimpan realtime ke Cloud / Google Sheets!`);
       }
 
       return next;
@@ -694,6 +760,8 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
 
       localStorage.setItem(`basco_opname_report_${selectedMonth}`, JSON.stringify(newReport));
       localStorage.setItem(`basco_opname_draft_${selectedMonth}`, JSON.stringify(opnameEntries));
+      localStorage.setItem(`basco_opname_updated_at_${selectedMonth}`, String(Date.now()));
+      hasPendingSyncRef.current = false;
 
       // Update History List
       setReportsHistory(prev => {
@@ -703,33 +771,29 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
         return nextList;
       });
 
-      if (spreadsheetId && token) {
-        setIsSyncingSheet(true);
-        const success = await saveStockOpnameToSheet(
-          spreadsheetId, 
-          selectedMonth, 
-          opnameEntries, 
-          masterItems, 
-          petugas || 'Barista Leader', 
-          token
-        );
-        setIsSyncingSheet(false);
+      setIsSyncingSheet(true);
+      const success = await saveStockOpnameToSheet(
+        spreadsheetId || '', 
+        selectedMonth, 
+        opnameEntries, 
+        masterItems, 
+        petugas || 'Barista Leader', 
+        token || ''
+      );
+      setIsSyncingSheet(false);
 
-        if (success) {
-          const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-          setLastSyncTime(nowTime);
-          // Refresh reports history from sheet to guarantee data match
-          const allOpnameData = await fetchAllStockOpnameReportsFromSheet(spreadsheetId, token);
-          if (allOpnameData && allOpnameData.reports.length > 0) {
-            setReportsHistory(allOpnameData.reports);
-            localStorage.setItem('basco_opname_reports_history', JSON.stringify(allOpnameData.reports));
-          }
-          alert(`✅ Sukses! Data Form Stok Opname Bulan ${monthName} (${masterItems.length} bahan baku) berhasil disimpan & terinput langsung ke Google Sheets (Tab 'Laporan Stok Opname')!`);
-        } else {
-          alert(`⚠️ Data berhasil disimpan di penyimpanan lokal, namun gagal terinput ke Google Sheets. Silakan pastikan akun terhubung dan memiliki izin edit.`);
+      if (success) {
+        const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        setLastSyncTime(nowTime);
+        // Refresh reports history from Cloud/Sheet
+        const allOpnameData = await fetchAllStockOpnameReportsFromSheet(spreadsheetId || '', token || '');
+        if (allOpnameData && allOpnameData.reports.length > 0) {
+          setReportsHistory(allOpnameData.reports);
+          localStorage.setItem('basco_opname_reports_history', JSON.stringify(allOpnameData.reports));
         }
+        alert(`✅ Sukses! Data Form Stok Opname Bulan ${monthName} (${masterItems.length} bahan baku) berhasil disimpan ke Cloud${spreadsheetId && token ? " & Google Sheets (Tab 'Laporan Stok Opname')" : ''}!`);
       } else {
-        alert(`✅ Data Laporan Stok Opname Bulan ${monthName} berhasil disimpan di penyimpanan aplikasi lokal.`);
+        alert(`⚠️ Data berhasil disimpan di penyimpanan lokal, namun gagal sinkron ke Cloud/Sheets. Periksa koneksi internet Anda.`);
       }
     } catch (e: any) {
       console.error("Save opname error:", e);

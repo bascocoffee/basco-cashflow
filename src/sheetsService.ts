@@ -2643,17 +2643,18 @@ export async function fetchStockOpnameFromSheet(
   spreadsheetId: string, 
   month: string, 
   accessToken: string
-): Promise<{ entries: Record<string, StockOpnameEntry>; petugas?: string } | null> {
+): Promise<{ entries: Record<string, StockOpnameEntry>; petugas?: string; updatedAt?: number } | null> {
   try {
     const [cloudSlot, rows] = await Promise.all([
       loadCloudSlot<any>('stock_opname'),
-      fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", "'Laporan Stok Opname'!A1:L5000", accessToken)
+      spreadsheetId ? fetchSheetRowsWithFallback(spreadsheetId, "Laporan Stok Opname", "'Laporan Stok Opname'!A1:L5000", accessToken) : Promise.resolve(null)
     ]);
 
     if (cloudSlot?.monthlyMap && cloudSlot.monthlyMap[month]?.entries) {
       return {
         entries: cloudSlot.monthlyMap[month].entries,
-        petugas: cloudSlot.monthlyMap[month].petugas
+        petugas: cloudSlot.monthlyMap[month].petugas,
+        updatedAt: cloudSlot.monthlyMap[month].updatedAt || cloudSlot.updatedAt || 0
       };
     }
 
@@ -2822,14 +2823,17 @@ export async function saveStockOpnameToSheet(
     // Save to persistent cross-device cloud slot
     const existingCloud = (await loadCloudSlot<any>('stock_opname')) || { monthlyMap: {} };
     existingCloud.monthlyMap = existingCloud.monthlyMap || {};
+    const nowMs = Date.now();
+    existingCloud.updatedAt = nowMs;
     existingCloud.monthlyMap[month] = {
       entries,
       petugas: petugas || 'Barista Leader',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date(nowMs).toISOString(),
+      updatedAt: nowMs
     };
     await saveCloudSlot('stock_opname', existingCloud);
 
-    if (!accessToken || accessToken.endsWith('-local-token')) {
+    if (!spreadsheetId || !accessToken || accessToken.endsWith('-local-token')) {
       return true;
     }
 
