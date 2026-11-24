@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent } from 'react';
 import { 
   Barista, 
   ShiftMaster, 
@@ -52,7 +52,8 @@ import {
   RefreshCw,
   CalendarRange,
   FileSpreadsheet,
-  Printer
+  Printer,
+  Upload
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -337,6 +338,76 @@ export default function BaristaSchedulePage({
       alert('Gagal menyimpan ke Google Sheets: ' + (err?.message || 'Terjadi kesalahan jaringan'));
     } finally {
       setIsSyncingCloud(false);
+    }
+  };
+
+  // Upload JSON Jadwal Operasional
+  const jsonFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadJson = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      let nextBaristas = baristas;
+      let nextShifts = shifts;
+      let nextSchedules = schedules;
+      let importedSomething = false;
+
+      if (Array.isArray(parsed)) {
+        // Direct array of schedules
+        if (parsed.length > 0 && parsed[0]?.date && parsed[0]?.baristaId) {
+          nextSchedules = sanitizeScheduleEntries(parsed, nextBaristas);
+          importedSomething = true;
+        }
+      } else if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.baristas) && parsed.baristas.length > 0) {
+          nextBaristas = parsed.baristas;
+          importedSomething = true;
+        }
+        if (Array.isArray(parsed.shifts) && parsed.shifts.length > 0) {
+          nextShifts = parsed.shifts;
+          importedSomething = true;
+        }
+        const rawScheds = Array.isArray(parsed.schedules)
+          ? parsed.schedules
+          : Array.isArray(parsed.baristaSchedules)
+          ? parsed.baristaSchedules
+          : Array.isArray(parsed.items)
+          ? parsed.items
+          : Array.isArray(parsed.data?.items)
+          ? parsed.data.items
+          : null;
+
+        if (rawScheds && rawScheds.length > 0) {
+          nextSchedules = sanitizeScheduleEntries(rawScheds, nextBaristas);
+          importedSomething = true;
+        }
+      }
+
+      if (!importedSomething) {
+        alert('Format file JSON tidak dikenali atau tidak berisi data jadwal operasional.');
+        return;
+      }
+
+      setBaristas(nextBaristas);
+      setShifts(nextShifts);
+      setSchedules(nextSchedules);
+      localStorage.setItem(STORAGE_KEYS.BARISTAS, JSON.stringify(nextBaristas));
+      localStorage.setItem(STORAGE_KEYS.SHIFTS, JSON.stringify(nextShifts));
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(nextSchedules));
+      localStorage.setItem(BARISTA_UPDATED_AT_KEY, String(Date.now()));
+
+      triggerCloudSync(nextSchedules, nextBaristas, nextShifts);
+      showToast(`Berhasil mengimpor JSON: ${nextSchedules.length} jadwal, ${nextBaristas.length} barista, ${nextShifts.length} shift.`);
+    } catch (err: any) {
+      console.error('Error parsing uploaded JSON:', err);
+      alert('Gagal membaca file JSON: pastikan file berformat JSON yang valid.');
+    } finally {
+      if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
     }
   };
 
@@ -1955,6 +2026,23 @@ export default function BaristaSchedulePage({
               <span>Gambar</span>
             </button>
           </div>
+
+          <input
+            ref={jsonFileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleUploadJson}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => jsonFileInputRef.current?.click()}
+            className="px-3.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+            title="Upload file JSON untuk mengimpor jadwal operasional"
+          >
+            <Upload className="h-4 w-4" />
+            <span>Upload JSON</span>
+          </button>
 
           <button
             type="button"
