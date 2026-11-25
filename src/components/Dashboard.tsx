@@ -71,7 +71,25 @@ import {
   detectCategoryGroup
 } from '../utils/cafeKpiUtils';
 import { loadCloudSlot, saveCloudSlot, pullDailySalesFromCloud } from '../utils/cloudSync';
-import { getEffectiveRecordCups, type DailySalesRecord } from './CogsDailySalesPage';
+
+interface DashboardDailySaleRecord {
+  id?: string;
+  tanggal?: string;
+  cups?: number;
+  omset?: number;
+  hppTotal?: number;
+  menuSales?: { terjual?: number }[];
+}
+
+const getDashboardEffectiveCups = (rec?: DashboardDailySaleRecord | null): number => {
+  if (!rec) return 0;
+  if (Array.isArray(rec.menuSales) && rec.menuSales.length > 0) {
+    const calc = rec.menuSales.reduce((s, ms) => s + (Number(ms?.terjual) || 0), 0);
+    if (calc > 0) return calc;
+  }
+  const raw = Number(rec.cups) || 0;
+  return raw > 0 && raw < 50000 ? raw : 0;
+};
 import { 
   formatRupiah, 
   formatLocalDate, 
@@ -525,7 +543,7 @@ export default function Dashboard({
   const targetNetProfitPct = ratioConfig.targetNetProfitPct ?? 15;
 
   // Daily Menu Sales (from Pencatatan Harian / Cloud) for Total Menu Terjual & Margin card
-  const [dailySalesRecords, setDailySalesRecords] = useState<DailySalesRecord[]>(() => {
+  const [dailySalesRecords, setDailySalesRecords] = useState<DashboardDailySaleRecord[]>(() => {
     try {
       const raw = localStorage.getItem('aruskas_cogs_page_daily_sales');
       const parsed = raw ? JSON.parse(raw) : [];
@@ -541,7 +559,7 @@ export default function Dashboard({
       try {
         const remote = await pullDailySalesFromCloud();
         if (isMounted && remote?.recordsByDate && typeof remote.recordsByDate === 'object') {
-          const remoteList = Object.values(remote.recordsByDate) as DailySalesRecord[];
+          const remoteList = Object.values(remote.recordsByDate) as DashboardDailySaleRecord[];
           if (remoteList.length > 0) {
             setDailySalesRecords(remoteList);
           }
@@ -559,10 +577,14 @@ export default function Dashboard({
   }, [transactions.length]);
 
   const monthlyMenuSalesStats = useMemo(() => {
+    const monthNamesId = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
     let targetYm = '';
     if (selectedMonth && selectedMonth !== 'all') {
       const [mName, yStr] = selectedMonth.split(' ');
-      const mIdx = monthNamesList.indexOf(mName);
+      const mIdx = monthNamesId.indexOf(mName);
       if (mIdx >= 0 && yStr) {
         targetYm = `${yStr}-${String(mIdx + 1).padStart(2, '0')}`;
       }
@@ -577,7 +599,7 @@ export default function Dashboard({
       return true;
     });
 
-    const totalCups = filtered.reduce((sum, rec) => sum + getEffectiveRecordCups(rec), 0);
+    const totalCups = filtered.reduce((sum, rec) => sum + getDashboardEffectiveCups(rec), 0);
     const totalOmset = filtered.reduce((sum, rec) => sum + (Number(rec.omset) || 0), 0);
     const totalHpp = filtered.reduce((sum, rec) => sum + (Number(rec.hppTotal) || 0), 0);
     const grossMarginRp = totalOmset - totalHpp;
