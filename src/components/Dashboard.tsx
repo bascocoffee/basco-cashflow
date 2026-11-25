@@ -2825,6 +2825,78 @@ export default function Dashboard({
           </div>
         </div>
 
+        {/* RATIO EXCEEDANCE ACTIONABLE ALERTS */}
+        {(() => {
+          const alerts: { id: string; title: string; detail: string; action: string; severity: 'rose' | 'amber' }[] = [];
+          if (cafeMetrics.cogsRatio > targetCogsPct) {
+            const excessCogs = cafeMetrics.totalSales > 0
+              ? Math.max(0, Math.round(cafeMetrics.totalCOGS - (cafeMetrics.totalSales * targetCogsPct) / 100))
+              : 0;
+            alerts.push({
+              id: 'cogs',
+              title: `Rasio HPP (COGS) ${cafeMetrics.cogsRatio.toFixed(1)}% — melebihi batas ${targetCogsPct}%`,
+              detail: excessCogs > 0 ? `Kelebihan belanja/COGS sekitar ${formatRupiah(excessCogs)} dari target.` : 'Penggunaan/pembelian bahan baku melebihi porsi ideal.',
+              action: 'Saran: Kurangi belanja bahan baku minggu ini, habiskan stok gudang terlebih dahulu, dan cek ulang takaran resep.',
+              severity: cafeMetrics.cogsRatio > targetCogsPct + 5 ? 'rose' : 'amber',
+            });
+          }
+          if (cafeMetrics.wagesRatio > targetWagesPct) {
+            alerts.push({
+              id: 'wages',
+              title: `Rasio Gaji & Staff ${cafeMetrics.wagesRatio.toFixed(1)}% — melebihi batas ${targetWagesPct}%`,
+              detail: 'Beban gaji terlalu tinggi dibanding omset periode ini.',
+              action: 'Saran: Kurangi jam lembur dan rapikan jadwal shift barista di jam sepi.',
+              severity: cafeMetrics.wagesRatio > targetWagesPct + 5 ? 'rose' : 'amber',
+            });
+          }
+          if (cafeMetrics.operasionalRatio > targetOperasionalPct) {
+            alerts.push({
+              id: 'opex',
+              title: `Rasio Operasional & Sewa ${cafeMetrics.operasionalRatio.toFixed(1)}% — melebihi batas ${targetOperasionalPct}%`,
+              detail: 'Biaya operasional & utilitas melebihi ambang batas target.',
+              action: 'Saran: Tunda pembelian perlengkapan non-mendesak minggu ini dan kontrol biaya listrik/air/maintenance.',
+              severity: cafeMetrics.operasionalRatio > targetOperasionalPct + 5 ? 'rose' : 'amber',
+            });
+          }
+          if (cafeMetrics.totalSales > 0 && cafeMetrics.netProfitMargin < targetNetProfitPct) {
+            alerts.push({
+              id: 'netprofit',
+              title: `Nett Profit Margin ${cafeMetrics.netProfitMargin.toFixed(1)}% — di bawah target ${targetNetProfitPct}%`,
+              detail: cafeMetrics.netProfitMargin < 0 ? 'Saat ini kondisi rugi bersih.' : 'Laba bersih masih tipis.',
+              action: 'Saran: Tahan belanja bahan & biaya tambahan minggu ini, fokuskan promo pada menu margin tinggi.',
+              severity: cafeMetrics.netProfitMargin < 0 ? 'rose' : 'amber',
+            });
+          }
+
+          if (alerts.length === 0) return null;
+          return (
+            <div className="mt-4 bg-rose-50/90 border border-rose-200 rounded-xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-rose-900 text-xs font-black uppercase tracking-wider">
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                  <span>Notifikasi Peringatan Rasio ({alerts.length} Melebihi Target)</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {alerts.map(a => (
+                  <div
+                    key={a.id}
+                    className={`rounded-lg border p-2.5 text-[11px] ${
+                      a.severity === 'rose'
+                        ? 'bg-white/90 border-rose-200 text-rose-950'
+                        : 'bg-amber-50/90 border-amber-200 text-amber-950'
+                    }`}
+                  >
+                    <p className="font-bold">{a.title}</p>
+                    <p className="text-slate-600 mt-0.5">{a.detail}</p>
+                    <p className="font-semibold text-amber-800 mt-1">{a.action}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* FINANCIAL HEALTH NOTICE */}
         <div className="mt-4 bg-amber-100/50 rounded border border-amber-200/50 p-3 text-[11px] text-amber-900 flex items-start space-x-2">
           <span className="text-sm mt-0.5">💡</span>
