@@ -52,8 +52,11 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -2885,240 +2888,173 @@ export default function Dashboard({
       {/* CHARTS & CATEGORY ANALYTICS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* CHART: MONTHLY CASH FLOW (8 Cols) */}
-        <div className="lg:col-span-8 bg-white p-6 rounded border border-slate-200 flex flex-col">
+        {/* CHART: EXPENSE DIAGRAM (8 Cols) */}
+        <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4">
             <div>
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-900">
-                Visualisasi Arus Kas Bulanan
+                Diagram Pengeluaran
               </h3>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                Tren pemasukan vs pengeluaran
+                Distribusi pengeluaran per kategori ({selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth})
               </p>
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
               {/* Chart Toggle */}
-              <div className="flex bg-slate-100 p-0.5 rounded border border-slate-200">
+              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/80">
                 <button
-                  onClick={() => setChartView('line')}
-                  className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider rounded flex items-center gap-1 transition-all cursor-pointer ${
-                    chartView === 'line'
-                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                  title="Grafik Garis (Recharts)"
-                >
-                  <LineChartIcon className="h-3 w-3" />
-                  <span>Tren Garis</span>
-                </button>
-                <button
+                  type="button"
                   onClick={() => setChartView('bar')}
-                  className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider rounded flex items-center gap-1 transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md flex items-center gap-1 transition-all cursor-pointer ${
                     chartView === 'bar'
-                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50'
+                      ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-500 hover:text-slate-900'
                   }`}
-                  title="Grafik Batang (SVG)"
                 >
                   <BarChart2 className="h-3 w-3" />
                   <span>Batang</span>
                 </button>
-              </div>
-
-              {/* Legend */}
-              <div className="flex items-center space-x-3 text-[10px] font-bold text-slate-500 border-l border-slate-200 pl-3">
-                <div className="flex items-center space-x-1">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-sm"></span>
-                  <span>IN</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="w-2 h-2 bg-red-400 rounded-sm"></span>
-                  <span>OUT</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setChartView('line')}
+                  className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md flex items-center gap-1 transition-all cursor-pointer ${
+                    chartView === 'line'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <LineChartIcon className="h-3 w-3" />
+                  <span>Lingkaran</span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Interactive SVG / Recharts Graph */}
-          <div className="relative flex-grow h-[190px] mt-2 select-none">
-            {monthlyData.length === 0 ? (
+          {/* Expense Diagram (Recharts Bar / Donut) */}
+          <div className="relative flex-grow h-[210px] mt-1 select-none">
+            {categorySpend.length === 0 ? (
               <div className="h-full w-full flex items-center justify-center text-xs text-slate-400 italic">
-                Data tidak tersedia untuk visualisasi tren.
+                Tidak ada data pengeluaran (kredit) untuk ditampilkan.
               </div>
-            ) : chartView === 'line' ? (
+            ) : chartView === 'bar' ? (
               <div className="w-full h-full text-[10px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={monthlyData}
-                    margin={{ top: 15, right: 10, left: -20, bottom: 5 }}
+                  <BarChart
+                    data={categorySpend.slice(0, 10)}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 20 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis 
-                      dataKey="month" 
+                    <XAxis
+                      dataKey="category"
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fill: '#94a3b8', fontSize: 9, fontWeight: 'bold' }}
+                      interval={0}
+                      angle={-20}
+                      textAnchor="end"
+                      height={45}
+                      tick={{ fill: '#64748b', fontSize: 9, fontWeight: 600 }}
+                      tickFormatter={(val: string) => (val.length > 13 ? val.slice(0, 12) + '…' : val)}
                     />
-                    <YAxis 
+                    <YAxis
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fill: '#94a3b8', fontSize: 8, fontWeight: 'bold' }}
-                      tickFormatter={(val) => {
+                      width={52}
+                      tick={{ fill: '#94a3b8', fontSize: 9, fontWeight: 600 }}
+                      tickFormatter={(val: number) => {
                         if (val === 0) return '0';
-                        return formatRupiah(val).replace("Rp\u00A0", "").substring(0, 5) + "k";
+                        if (val >= 1000000) return `${(val / 1000000).toFixed(1)}jt`;
+                        if (val >= 1000) return `${Math.round(val / 1000)}rb`;
+                        return String(val);
                       }}
                     />
-                    <RechartsTooltip content={<CustomRechartsTooltip />} cursor={{ stroke: '#f1f5f9', strokeWidth: 1 }} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="debit" 
-                      stroke="#10b981" 
-                      strokeWidth={2.5}
-                      dot={{ r: 3, strokeWidth: 1, fill: '#fff' }}
-                      activeDot={{ r: 5, strokeWidth: 0, fill: '#10b981' }}
+                    <RechartsTooltip
+                      cursor={{ fill: '#f8fafc' }}
+                      formatter={(value: any) => [formatRupiah(Number(value) || 0), 'Pengeluaran']}
+                      contentStyle={{
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        fontSize: '11px',
+                        boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
+                      }}
                     />
-                    <Line 
-                      type="monotone" 
-                      dataKey="kredit" 
-                      stroke="#f87171" 
-                      strokeWidth={2.5}
-                      dot={{ r: 3, strokeWidth: 1, fill: '#fff' }}
-                      activeDot={{ r: 5, strokeWidth: 0, fill: '#f87171' }}
-                    />
-                  </LineChart>
+                    <Bar
+                      dataKey="amount"
+                      radius={[6, 6, 0, 0]}
+                      className="cursor-pointer"
+                      onClick={(data: any) => {
+                        if (data?.category) {
+                          handleFilterChange(() => setSelectedCategory(data.category));
+                        }
+                      }}
+                    >
+                      {categorySpend.slice(0, 10).map((entry, idx) => {
+                        const palette = ['#f59e0b', '#fb7185', '#6366f1', '#14b8a6', '#f97316', '#8b5cf6', '#ec4899', '#0ea5e9', '#84cc16', '#64748b'];
+                        return <Cell key={entry.category} fill={palette[idx % palette.length]} />;
+                      })}
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="w-full h-full flex flex-col justify-between">
-                <svg className="w-full h-full" viewBox={`0 0 500 ${chartHeight}`} preserveAspectRatio="none">
-                  {/* Grid Lines */}
-                  {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
-                    const y = ratio * (chartHeight - paddingBottom - paddingTop) + paddingTop;
+              <div className="w-full h-full flex flex-col sm:flex-row items-center gap-4">
+                <div className="w-full sm:w-1/2 h-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={categorySpend.slice(0, 8)}
+                        dataKey="amount"
+                        nameKey="category"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={48}
+                        outerRadius={78}
+                        paddingAngle={2}
+                      >
+                        {categorySpend.slice(0, 8).map((entry, idx) => {
+                          const palette = ['#f59e0b', '#fb7185', '#6366f1', '#14b8a6', '#f97316', '#8b5cf6', '#ec4899', '#0ea5e9'];
+                          return <Cell key={entry.category} fill={palette[idx % palette.length]} />;
+                        })}
+                      </Pie>
+                      <RechartsTooltip
+                        formatter={(value: any) => [formatRupiah(Number(value) || 0), 'Pengeluaran']}
+                        contentStyle={{
+                          borderRadius: '12px',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '11px',
+                        }}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="w-full sm:w-1/2 grid grid-cols-1 gap-1.5 max-h-[190px] overflow-y-auto pr-1 text-[11px]">
+                  {categorySpend.slice(0, 8).map((entry, idx) => {
+                    const palette = ['#f59e0b', '#fb7185', '#6366f1', '#14b8a6', '#f97316', '#8b5cf6', '#ec4899', '#0ea5e9'];
                     return (
-                      <g key={idx}>
-                        <line 
-                          x1="35" 
-                          y1={y} 
-                          x2="495" 
-                          y2={y} 
-                          stroke="#e2e8f0" 
-                          strokeWidth="1" 
-                          strokeDasharray="4,4" 
-                        />
-                        <text 
-                          x="30" 
-                          y={y + 3} 
-                          fontSize="8" 
-                          textAnchor="end" 
-                          fill="#94a3b8"
-                          className="font-mono font-bold"
-                        >
-                          {formatRupiah(maxChartValue * (1 - ratio)).replace("Rp\u00A0", "").substring(0, 5) + "k"}
-                        </text>
-                      </g>
+                      <button
+                        key={entry.category}
+                        type="button"
+                        onClick={() => handleFilterChange(() => setSelectedCategory(entry.category))}
+                        className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 text-left cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: palette[idx % palette.length] }} />
+                          <span className="truncate font-semibold text-slate-700">{entry.category}</span>
+                        </span>
+                        <span className="font-mono font-bold text-slate-800 shrink-0">
+                          {entry.percentage}%
+                        </span>
+                      </button>
                     );
                   })}
-
-                  {/* Render Columns for each Month */}
-                  {monthlyData.map((d, idx) => {
-                    const colCount = monthlyData.length;
-                    const spacing = 450 / colCount;
-                    const xCenter = 40 + idx * spacing + spacing / 2;
-                    
-                    // Column Heights
-                    const hDebit = ((d.debit) / maxChartValue) * (chartHeight - paddingBottom - paddingTop);
-                    const hKredit = ((d.kredit) / maxChartValue) * (chartHeight - paddingBottom - paddingTop);
-                    
-                    // Coordinates
-                    const yDebit = chartHeight - paddingBottom - hDebit;
-                    const yKredit = chartHeight - paddingBottom - hKredit;
-                    
-                    const barWidth = Math.max(4, Math.min(22, 110 / colCount));
-
-                    return (
-                      <g key={idx}>
-                        {/* Hover Overlay area */}
-                        <rect
-                          x={xCenter - spacing/2}
-                          y={0}
-                          width={spacing}
-                          height={chartHeight - paddingBottom}
-                          fill="transparent"
-                          className="cursor-pointer"
-                          onMouseEnter={() => setHoveredChartIndex(idx)}
-                          onMouseLeave={() => setHoveredChartIndex(null)}
-                        />
-
-                        {/* Debit Bar (Green) */}
-                        <rect
-                          x={xCenter - barWidth - 1}
-                          y={yDebit}
-                          width={barWidth}
-                          height={hDebit}
-                          fill="#10b981"
-                          className={`transition-all duration-200 ${
-                            hoveredChartIndex === idx ? 'opacity-100 filter brightness-105' : 'opacity-85'
-                          }`}
-                        />
-
-                        {/* Kredit Bar (Red) */}
-                        <rect
-                          x={xCenter + 1}
-                          y={yKredit}
-                          width={barWidth}
-                          height={hKredit}
-                          fill="#f87171"
-                          className={`transition-all duration-200 ${
-                            hoveredChartIndex === idx ? 'opacity-100 filter brightness-105' : 'opacity-85'
-                          }`}
-                        />
-
-                        {/* Month Label */}
-                        <text
-                          x={xCenter}
-                          y={chartHeight - 8}
-                          fontSize="8.5"
-                          textAnchor="middle"
-                          fill={hoveredChartIndex === idx ? '#334155' : '#94a3b8'}
-                          className={`font-bold transition-colors duration-200`}
-                        >
-                          {d.month}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
-
-                {/* Tooltip Overlay */}
-                {hoveredChartIndex !== null && monthlyData[hoveredChartIndex] && (
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-slate-900 text-white p-2 px-3 rounded shadow-xl border border-slate-800 text-[10px] space-y-0.5 z-20 transition-all pointer-events-none">
-                    <p className="font-bold border-b border-slate-800 pb-1 mb-1 text-slate-300">
-                      {monthlyData[hoveredChartIndex].monthLong}
-                    </p>
-                    <div className="flex justify-between space-x-4">
-                      <span className="text-slate-400">Debit:</span>
-                      <span className="font-bold text-emerald-400">{formatRupiah(monthlyData[hoveredChartIndex].debit)}</span>
-                    </div>
-                    <div className="flex justify-between space-x-4">
-                      <span className="text-slate-400">Kredit:</span>
-                      <span className="font-bold text-rose-400">{formatRupiah(monthlyData[hoveredChartIndex].kredit)}</span>
-                    </div>
-                    <div className="flex justify-between space-x-4 border-t border-slate-800 pt-1 mt-1 font-semibold">
-                      <span className="text-slate-400">Arus Bersih:</span>
-                      <span className={monthlyData[hoveredChartIndex].saldo >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                        {formatRupiah(monthlyData[hoveredChartIndex].saldo)}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {/* CATEGORIES: SPEND ANALYSIS (4 Cols) */}
-        <div className="lg:col-span-4 bg-white p-6 rounded border border-slate-200 flex flex-col justify-between">
+        <div className="lg:col-span-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
           <div>
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-900">
               Pengeluaran 1 (Kategori Biaya)
@@ -3232,15 +3168,6 @@ export default function Dashboard({
               )}
 
               <button
-                onClick={handleDownloadCSV}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition flex items-center space-x-1.5 shadow-sm cursor-pointer animate-fade-in"
-                title="Unduh data transaksi terfilter ke format CSV"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>Unduh CSV</span>
-              </button>
-
-              <button
                 type="button"
                 onClick={() => setIsPdfPreviewOpen(true)}
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-bold transition flex items-center space-x-1.5 shadow-sm cursor-pointer animate-fade-in"
@@ -3264,10 +3191,10 @@ export default function Dashboard({
           </div>
 
           {/* Interactive filter options */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-12 gap-3">
             
             {/* Search Input */}
-            <div className="relative rounded shadow-sm">
+            <div className="relative rounded-lg shadow-2xs xl:col-span-3">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search className="h-4 w-4 text-slate-400" />
               </div>
@@ -3289,7 +3216,7 @@ export default function Dashboard({
             </div>
 
             {/* Category select */}
-            <div className="relative rounded shadow-sm">
+            <div className="relative rounded-lg shadow-2xs xl:col-span-3">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Tag className="h-4 w-4 text-slate-400" />
               </div>
@@ -3306,7 +3233,7 @@ export default function Dashboard({
             </div>
 
             {/* Month Select dropdown */}
-            <div className="relative rounded shadow-sm">
+            <div className="relative rounded-lg shadow-2xs xl:col-span-3">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Calendar className="h-4 w-4 text-slate-400" />
               </div>
@@ -3323,7 +3250,7 @@ export default function Dashboard({
             </div>
 
             {/* Operasional & Manajemen select */}
-            <div className="relative rounded shadow-sm">
+            <div className="relative rounded-lg shadow-2xs xl:col-span-3">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Briefcase className="h-4 w-4 text-slate-400" />
               </div>
@@ -3340,13 +3267,13 @@ export default function Dashboard({
             </div>
 
             {/* Type selector */}
-            <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded">
+            <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg xl:col-span-4">
               {(['all', 'debit', 'kredit'] as const).map(type => (
                 <button
                   key={type}
                   type="button"
                   onClick={() => handleFilterChange(() => setFilterType(type))}
-                  className={`py-1 px-2 rounded text-[10px] font-black text-center uppercase tracking-wider transition-all ${
+                  className={`py-1.5 px-2 rounded-md text-[10px] font-black text-center uppercase tracking-wider transition-all ${
                     filterType === type
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'text-slate-500 hover:text-slate-855'
@@ -3358,7 +3285,7 @@ export default function Dashboard({
             </div>
 
             {/* Date Inputs Toggle/Inputs */}
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-5">
               <input
                 type="date"
                 value={startDate}
@@ -3366,10 +3293,10 @@ export default function Dashboard({
                   setStartDate(e.target.value);
                   setQuickFilter('all'); // Clear quick filter if manual date used
                 })}
-                className="block w-full px-2 py-1.5 text-[10px] font-bold rounded border border-slate-200 text-slate-800 bg-white focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950"
+                className="block w-full min-w-[130px] px-2.5 py-1.5 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-800 bg-white focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950"
                 title="Mulai Tanggal"
               />
-              <span className="text-slate-400 text-xs font-bold">s/d</span>
+              <span className="text-slate-400 text-xs font-bold shrink-0">s/d</span>
               <input
                 type="date"
                 value={endDate}
@@ -3377,7 +3304,7 @@ export default function Dashboard({
                   setEndDate(e.target.value);
                   setQuickFilter('all'); // Clear quick filter if manual date used
                 })}
-                className="block w-full px-2 py-1.5 text-[10px] font-bold rounded border border-slate-200 text-slate-800 bg-white focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950"
+                className="block w-full min-w-[130px] px-2.5 py-1.5 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-800 bg-white focus:border-slate-950 focus:outline-none focus:ring-1 focus:ring-slate-950"
                 title="Sampai Tanggal"
               />
             </div>
