@@ -1687,68 +1687,6 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* QUICK ROLE ACCESS BANNER (Owner Multi-Role Switcher) */}
-      {onSwitchRole && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-start space-x-3.5 min-w-0">
-              <div className="p-2.5 bg-slate-100 text-slate-700 rounded-xl shrink-0 mt-0.5">
-                <ArrowRightLeft className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center space-x-2 flex-wrap">
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Akses Cepat Mode Staf
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                    Hak Akses Owner
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Beralih langsung ke tampilan Barista atau Manajer untuk meninjau kasir, cek jatah menu, atau atur shift tanpa keluar dari sesi Owner.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0 w-full lg:w-auto">
-              <button
-                type="button"
-                onClick={() => onSwitchRole('barista')}
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition flex items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="flex items-center space-x-2.5">
-                  <div className="p-1.5 bg-white/10 rounded-lg">
-                    <Coffee className="h-4 w-4 text-amber-400" />
-                  </div>
-                  <div className="text-left">
-                    <div className="leading-tight font-bold">Mode Barista</div>
-                    <div className="text-[10.5px] text-slate-400 font-normal">Omset Menu & Jatah Bar</div>
-                  </div>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onSwitchRole('manager')}
-                className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 rounded-xl text-xs font-semibold transition flex items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="flex items-center space-x-2.5">
-                  <div className="p-1.5 bg-slate-100 rounded-lg">
-                    <UserCheck className="h-4 w-4 text-slate-700" />
-                  </div>
-                  <div className="text-left">
-                    <div className="leading-tight font-bold">Mode Manajer</div>
-                    <div className="text-[10.5px] text-slate-500 font-normal">Tugas Staf & Roster Shift</div>
-                  </div>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* PILIHAN TAMPILAN BULAN / MONTH SELECTOR BAR */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1880,23 +1818,15 @@ export default function Dashboard({
         </div>
 
         {/* Selected Month Summary Info */}
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 gap-2 font-medium">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
-            <span>
-              {selectedMonth === 'all' ? (
-                <>Menampilkan data kas <strong>seluruh bulan (kumulatif)</strong> ({filteredTransactions.length} baris transaksi).</>
-              ) : (
-                <>Data kas difokuskan untuk periode <strong>{selectedMonth}</strong> ({filteredTransactions.length} transaksi).</>
-              )}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3 text-[11px] font-mono">
-            <span className="text-emerald-700 font-bold">Debit: {formatRupiah(filteredStats.totalDebit)}</span>
-            <span className="text-slate-300">|</span>
-            <span className="text-rose-700 font-bold">Kredit: {formatRupiah(filteredStats.totalKredit)}</span>
-          </div>
+        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center text-xs text-slate-500 gap-2 font-medium">
+          <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+          <span>
+            {selectedMonth === 'all' ? (
+              <>Menampilkan data kas <strong>seluruh bulan (kumulatif)</strong> ({filteredTransactions.length} baris transaksi).</>
+            ) : (
+              <>Data kas difokuskan untuk periode <strong>{selectedMonth}</strong> ({filteredTransactions.length} transaksi).</>
+            )}
+          </span>
         </div>
       </div>
 
@@ -1934,59 +1864,59 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* CORE FINANCIALS GRID (GEOMETRIC FLAT CARDS STYLE) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* CORE FINANCIALS GRID (CLEAN MINIMAL CARDS) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         
         {/* TOTAL DEBIT (PEMASUKAN) */}
-        <div className="bg-white p-4 rounded border border-slate-200 flex flex-col justify-between min-h-[120px] transition-colors">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between min-h-[124px] transition-colors">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">
               Total Debit
             </span>
-            <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 truncate max-w-[110px]" title={selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}>
+            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/70 truncate max-w-[110px]" title={selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}>
               {selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}
             </span>
           </div>
           <h3 className="text-2xl font-black text-slate-900 truncate mt-2">
             {formatRupiah(filteredStats.totalDebit)}
           </h3>
-          <div className="w-full h-1 bg-emerald-100 mt-2">
-            <div className="w-3/4 h-full bg-emerald-500"></div>
+          <div className="w-full h-1.5 rounded-full bg-emerald-100/80 mt-3 overflow-hidden">
+            <div className="w-3/4 h-full rounded-full bg-emerald-500"></div>
           </div>
         </div>
 
         {/* TOTAL KREDIT (PENGELUARAN) */}
-        <div className="bg-white p-4 rounded border border-slate-200 flex flex-col justify-between min-h-[120px] transition-colors">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between min-h-[124px] transition-colors">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">
               Total Kredit
             </span>
-            <span className="text-[9px] font-bold text-red-800 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 truncate max-w-[110px]" title={selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}>
+            <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/70 truncate max-w-[110px]" title={selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}>
               {selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}
             </span>
           </div>
-          <h3 className="text-2xl font-black text-red-500 truncate mt-2">
+          <h3 className="text-2xl font-black text-rose-600 truncate mt-2">
             {formatRupiah(filteredStats.totalKredit)}
           </h3>
           {filteredColumnBreakdown.kreditColE > 0 && (
-            <div className="text-[10px] font-medium text-slate-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+            <div className="text-[10.5px] font-medium text-slate-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
               <span>Kol C: <strong className="text-slate-700">{formatRupiah(filteredColumnBreakdown.kreditColC)}</strong></span>
               <span>•</span>
               <span>Kol E: <strong className="text-slate-700">{formatRupiah(filteredColumnBreakdown.kreditColE)}</strong></span>
             </div>
           )}
-          <div className="w-full h-1 bg-red-100 mt-2">
-            <div className="w-1/2 h-full bg-red-500"></div>
+          <div className="w-full h-1.5 rounded-full bg-rose-100/80 mt-3 overflow-hidden">
+            <div className="w-1/2 h-full rounded-full bg-rose-500"></div>
           </div>
         </div>
 
         {/* SALDO BERSIH */}
-        <div className="bg-white p-4 rounded border border-slate-200 flex flex-col justify-between min-h-[120px] transition-colors">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between min-h-[124px] transition-colors">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">
               Saldo Bersih
             </span>
-            <span className="text-[9px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[110px]" title={selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}>
+            <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/70 truncate max-w-[110px]" title={selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}>
               {selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}
             </span>
           </div>
@@ -1994,45 +1924,39 @@ export default function Dashboard({
             {formatRupiah(filteredStats.saldo)}
           </h3>
           {filteredColumnBreakdown.kreditColE > 0 && (
-            <div className="text-[10px] font-medium text-slate-500 mt-1">
+            <div className="text-[10.5px] font-medium text-slate-500 mt-1">
               Debit − Kol C saja: <strong className="text-emerald-700">{formatRupiah(filteredColumnBreakdown.saldoColCOnly)}</strong>
             </div>
           )}
-          <div className="w-full h-1 bg-slate-100 mt-2">
-            <div className="w-1/4 h-full bg-slate-900"></div>
+          <div className="w-full h-1.5 rounded-full bg-slate-100 mt-3 overflow-hidden">
+            <div className="w-1/4 h-full rounded-full bg-amber-500"></div>
           </div>
         </div>
 
-        {/* STATUS REAL-TIME (SLATE CARD) */}
-        <div className="bg-slate-900 p-4 rounded-xl flex flex-col justify-center items-center text-center min-h-[120px] border border-slate-800">
-          <p className="text-slate-300 text-center font-semibold text-[11px] leading-tight uppercase tracking-wider">
-            Status Sinkronisasi
-          </p>
-          <span className="text-emerald-400 text-xs font-semibold mt-1.5 inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block" />
-            <span>Synced with Spreadsheet</span>
-          </span>
-          <span className="text-slate-400 text-[11px] font-mono mt-1.5">
-            {filteredTransactions.length} Transaksi
+        {/* STATUS REAL-TIME (CLEAN LIGHT CARD) */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between min-h-[124px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">
+              Status Sinkronisasi
+            </span>
+            <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
+          </div>
+          <div className="mt-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/70 text-xs font-semibold">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+              <span>Synced with Spreadsheet</span>
+            </span>
+          </div>
+          <span className="text-slate-500 text-xs font-medium mt-2">
+            {filteredTransactions.length} Transaksi tercatat
           </span>
         </div>
 
       </div>
 
       {/* TARGET OMSET BULANAN & PROGRESS BAR CARD */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6 shadow-xs relative overflow-hidden">
-        {/* Subtle Ambient Accent */}
-        <div 
-          className={`absolute top-0 left-0 right-0 h-1.5 ${
-            monthlyOmsetMetrics.isAchieved 
-              ? 'bg-emerald-500' 
-              : monthlyOmsetMetrics.progressPercent >= 75 
-                ? 'bg-amber-500' 
-                : 'bg-indigo-600'
-          }`}
-        />
-
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-200">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 md:p-6 shadow-2xs relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-start gap-3">
             <div className={`p-2.5 rounded-xl shrink-0 ${
               monthlyOmsetMetrics.isAchieved 
