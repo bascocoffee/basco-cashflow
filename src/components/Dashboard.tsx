@@ -70,7 +70,8 @@ import {
   DEFAULT_CAFE_RATIO_CONFIG,
   detectCategoryGroup
 } from '../utils/cafeKpiUtils';
-import { loadCloudSlot, saveCloudSlot } from '../utils/cloudSync';
+import { loadCloudSlot, saveCloudSlot, pullDailySalesFromCloud } from '../utils/cloudSync';
+import { getEffectiveRecordCups, type DailySalesRecord } from './CogsDailySalesPage';
 import { 
   formatRupiah, 
   formatLocalDate, 
@@ -522,6 +523,75 @@ export default function Dashboard({
   const targetWagesPct = ratioConfig.targetWagesPct ?? 25;
   const targetOperasionalPct = ratioConfig.targetOperasionalPct ?? 20;
   const targetNetProfitPct = ratioConfig.targetNetProfitPct ?? 15;
+
+  // Daily Menu Sales (from Pencatatan Harian / Cloud) for Total Menu Terjual & Margin card
+  const [dailySalesRecords, setDailySalesRecords] = useState<DailySalesRecord[]>(() => {
+    try {
+      const raw = localStorage.getItem('aruskas_cogs_page_daily_sales');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    const syncMenuSales = async () => {
+      try {
+        const remote = await pullDailySalesFromCloud();
+        if (isMounted && remote?.recordsByDate && typeof remote.recordsByDate === 'object') {
+          const remoteList = Object.values(remote.recordsByDate) as DailySalesRecord[];
+          if (remoteList.length > 0) {
+            setDailySalesRecords(remoteList);
+          }
+        }
+      } catch {
+        // ignore network errors
+      }
+    };
+    syncMenuSales();
+    window.addEventListener('focus', syncMenuSales);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', syncMenuSales);
+    };
+  }, [transactions.length]);
+
+  const monthlyMenuSalesStats = useMemo(() => {
+    let targetYm = '';
+    if (selectedMonth && selectedMonth !== 'all') {
+      const [mName, yStr] = selectedMonth.split(' ');
+      const mIdx = monthNamesList.indexOf(mName);
+      if (mIdx >= 0 && yStr) {
+        targetYm = `${yStr}-${String(mIdx + 1).padStart(2, '0')}`;
+      }
+    }
+
+    const filtered = (dailySalesRecords || []).filter(rec => {
+      if (!rec || !rec.tanggal || rec.id === 'ds-1' || rec.id === 'ds-2' || rec.id === 'ds-3') return false;
+      const tgl = String(rec.tanggal).slice(0, 10);
+      if (targetYm && !tgl.startsWith(targetYm)) return false;
+      if (startDate && tgl < startDate) return false;
+      if (endDate && tgl > endDate) return false;
+      return true;
+    });
+
+    const totalCups = filtered.reduce((sum, rec) => sum + getEffectiveRecordCups(rec), 0);
+    const totalOmset = filtered.reduce((sum, rec) => sum + (Number(rec.omset) || 0), 0);
+    const totalHpp = filtered.reduce((sum, rec) => sum + (Number(rec.hppTotal) || 0), 0);
+    const grossMarginRp = totalOmset - totalHpp;
+    const grossMarginPct = totalOmset > 0 ? (grossMarginRp / totalOmset) * 100 : 0;
+
+    return {
+      totalCups,
+      totalOmset,
+      totalHpp,
+      grossMarginRp,
+      grossMarginPct,
+      daysCount: filtered.length,
+    };
+  }, [dailySalesRecords, selectedMonth, startDate, endDate]);
 
   // Target Omset Bulanan State (Persisted in localStorage & Cloud with editable input)
   const [targetOmsetBulanan, setTargetOmsetBulanan] = useState<number>(() => {
@@ -1834,7 +1904,7 @@ export default function Dashboard({
       )}
 
       {/* CORE FINANCIALS GRID (CLEAN MINIMAL CARDS) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
         
         {/* TOTAL DEBIT (PEMASUKAN) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between min-h-[124px] transition-colors">
@@ -1887,6 +1957,41 @@ export default function Dashboard({
           </h3>
           <div className="w-full h-1.5 rounded-full bg-slate-100 mt-3 overflow-hidden">
             <div className="w-1/4 h-full rounded-full bg-amber-500"></div>
+          </div>
+        </div>
+
+        {/* TOTAL MENU TERJUAL & MARGIN */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between min-h-[124px] transition-colors">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest">
+              Menu Terjual
+            </span>
+            <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/70 truncate max-w-[110px]" title={selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}>
+              {selectedMonth === 'all' ? 'Semua Waktu' : selectedMonth}
+            </span>
+          </div>
+          <div className="mt-2">
+            <h3 className="text-2xl font-black text-slate-900 truncate">
+              {monthlyMenuSalesStats.totalCups.toLocaleString('id-ID')} <span className="text-sm font-bold text-slate-500">Porsi</span>
+            </h3>
+            <div className="mt-1 flex items-center justify-between gap-1.5 text-[11px]">
+              <span className="text-slate-500 font-medium truncate">
+                Margin: <strong className="text-emerald-700">{formatRupiah(monthlyMenuSalesStats.grossMarginRp)}</strong>
+              </span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                monthlyMenuSalesStats.grossMarginPct >= 50
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
+                  : 'bg-amber-50 text-amber-800 border border-amber-200/70'
+              }`}>
+                {monthlyMenuSalesStats.grossMarginPct.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+          <div className="w-full h-1.5 rounded-full bg-amber-100/80 mt-3 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-amber-500 transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(0, monthlyMenuSalesStats.grossMarginPct))}%` }}
+            />
           </div>
         </div>
 
