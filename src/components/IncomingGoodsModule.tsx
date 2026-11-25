@@ -1866,7 +1866,7 @@ export default function IncomingGoodsModule({
             </div>
 
             {/* Main Table */}
-            <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-200 rounded-2xl shadow-2xs">
+            <div className="overflow-x-auto max-h-[920px] overflow-y-auto border border-slate-200 rounded-2xl shadow-2xs">
               <table className="w-full text-left border-collapse text-xs">
                 <thead className="sticky top-0 z-10 bg-slate-100 shadow-xs">
                   <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-700">
