@@ -4798,24 +4798,19 @@ export default function CogsDailySalesPage({
   return (
     <div className="w-full max-w-[1680px] mx-auto px-2 sm:px-3 lg:px-4 py-6 space-y-8 font-sans">
       
-      {/* App Header Banner */}
-      <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-lg relative overflow-hidden">
-        <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex items-center space-x-2 text-amber-400 mb-2">
+      {/* App Header Card (Minimalist) */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-2xs">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
               <Coffee className="h-5 w-5" />
-              <span className="text-xs font-black uppercase tracking-widest">Aplikasi 2: Analisis Arus Kas Cafe</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
-              COGS & Penjualan Harian
+            <h2 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
+              COGS &amp; Penjualan Harian
             </h2>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed font-medium">
-              Sistem pencatatan harian sales &amp; jatah menu, pengolahan katalog harga jual &amp; HPP, serta kalkulator resep COGS.
-            </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => {
@@ -4832,49 +4827,49 @@ export default function CogsDailySalesPage({
                 }
               }}
               disabled={isSyncingSheet}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
               title="Sinkronkan seluruh data menu, HPP, & penjualan harian ke Google Sheets"
             >
-              <Cloud className={`h-4 w-4 ${isSyncingSheet ? 'animate-spin' : ''}`} />
-              <span>{isSyncingSheet ? 'Menyinkronkan...' : 'Sinkronkan Spreadsheet (Semua Data)'}</span>
+              <Cloud className={`h-3.5 w-3.5 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+              <span>{isSyncingSheet ? 'Menyinkronkan...' : 'Sinkronkan'}</span>
             </button>
             <button
               onClick={() => setShowSalesCogsReportPdfModal(true)}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-md transition flex items-center space-x-2 cursor-pointer"
+              className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center space-x-1.5 cursor-pointer"
               title="Ekspor PDF Laporan Penjualan Menu, Pemakaian Bahan Baku & Barang Masuk"
             >
-              <FileText className="h-4 w-4" />
-              <span>Export PDF Laporan</span>
+              <FileText className="h-3.5 w-3.5 text-rose-600" />
+              <span>Export PDF</span>
             </button>
             <button
               onClick={handleDownloadCSV}
-              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md transition flex items-center space-x-2 cursor-pointer"
+              className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center space-x-1.5 cursor-pointer"
             >
-              <Download className="h-4 w-4" />
-              <span>Export Sheet CSV</span>
+              <Download className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Export CSV</span>
             </button>
             <button
               onClick={handleResetToDefault}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 font-extrabold text-xs rounded-xl transition flex items-center space-x-2 cursor-pointer"
+              className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200 font-bold text-xs rounded-xl transition flex items-center space-x-1.5 cursor-pointer"
             >
-              <RotateCcw className="h-4 w-4" />
-              <span>Reset Benchmark</span>
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Reset</span>
             </button>
           </div>
         </div>
 
-        {/* SUB-NAVIGATION TABS (Aplikasi 2) */}
-        <div className="mt-6 pt-4 border-t border-slate-800 flex flex-wrap gap-2">
+        {/* SUB-NAVIGATION TABS */}
+        <div className="mt-4 pt-3.5 border-t border-slate-100 flex flex-wrap gap-1.5">
           <button
             onClick={() => setActiveSubTab('all')}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
               activeSubTab === 'all'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200/70'
             }`}
           >
-            <Sliders className="h-4 w-4" />
-            <span>Gabung Semua Modul</span>
+            <Sliders className="h-3.5 w-3.5" />
+            <span>Semua Modul</span>
           </button>
 
           <button
@@ -4885,13 +4880,13 @@ export default function CogsDailySalesPage({
                 setActiveSubTab('pencatatan_harian');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
               activeSubTab === 'pencatatan_harian'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200/70'
             }`}
           >
-            <Calendar className="h-4 w-4" />
+            <Calendar className="h-3.5 w-3.5" />
             <span>1. Pencatatan Harian</span>
           </button>
 
@@ -4903,13 +4898,13 @@ export default function CogsDailySalesPage({
                 setActiveSubTab('penjualan_menu');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
               activeSubTab === 'penjualan_menu'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200/70'
             }`}
           >
-            <BookOpen className="h-4 w-4" />
+            <BookOpen className="h-3.5 w-3.5" />
             <span>2. Penjualan Menu</span>
           </button>
 
@@ -4921,13 +4916,13 @@ export default function CogsDailySalesPage({
                 setActiveSubTab('kalkulator_cogs');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
               activeSubTab === 'kalkulator_cogs'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200/70'
             }`}
           >
-            <Calculator className="h-4 w-4" />
+            <Calculator className="h-3.5 w-3.5" />
             <span>3. Kalkulator COGS</span>
           </button>
 
@@ -4939,16 +4934,16 @@ export default function CogsDailySalesPage({
                 setActiveSubTab('penggunaan_bahan');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
               activeSubTab === 'penggunaan_bahan'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200/70'
             }`}
           >
-            <Layers className="h-4 w-4" />
-            <span>4. Penggunaan Bahan Baku</span>
+            <Layers className="h-3.5 w-3.5" />
+            <span>4. Bahan Baku</span>
             {liveInventoryAlertCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
                 {liveInventoryAlertCount}
               </span>
             )}
@@ -4962,15 +4957,15 @@ export default function CogsDailySalesPage({
                 setActiveSubTab('barang_masuk');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
               activeSubTab === 'barang_masuk'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200/70'
             }`}
           >
-            <PackagePlus className="h-4 w-4 text-emerald-400" />
+            <PackagePlus className="h-3.5 w-3.5" />
             <span>5. Barang Masuk</span>
-            <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 font-black text-[9px] rounded-full">{incomingBatches.length}</span>
+            <span className={`px-1.5 py-0.5 font-bold text-[10px] rounded-full ${activeSubTab === 'barang_masuk' ? 'bg-white/20 text-white' : 'bg-white text-slate-700'}`}>{incomingBatches.length}</span>
           </button>
 
           <button
@@ -4981,38 +4976,30 @@ export default function CogsDailySalesPage({
                 setActiveSubTab('forum_ai_hpp');
               }
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
               activeSubTab === 'forum_ai_hpp'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200/70'
             }`}
           >
-            <Bot className="h-4 w-4 text-amber-400" />
-            <span>6. Forum AI Database HPP</span>
-            <span className="px-1.5 py-0.5 bg-slate-950 text-amber-400 font-black text-[8px] rounded uppercase">AI</span>
+            <Bot className="h-3.5 w-3.5" />
+            <span>6. Forum AI</span>
           </button>
         </div>
       </div>
 
       {/* Pilihan Bulan untuk Omset & Summary Keuangan */}
-      <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-amber-100 text-amber-900 rounded-2xl">
-            <Calendar className="h-5 w-5" />
+      <div className="bg-white p-3.5 px-4 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+            <Calendar className="h-4 w-4" />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
-                Pilihan Bulan Omset & Keuangan
-              </h3>
-              <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 font-extrabold text-[10px] rounded-full uppercase tracking-wider">
-                {selectedOmsetMonth === 'ALL' ? 'Semua Bulan' : formatMonthLabel(selectedOmsetMonth)}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Pilih bulan untuk memfilter Omset, Total HPP, dan Ringkasan Laba Rugi
-            </p>
-          </div>
+          <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+            Periode Omset &amp; Keuangan
+          </h3>
+          <span className="px-2.5 py-0.5 bg-amber-50 text-amber-800 font-bold text-[10px] rounded-full border border-amber-200/70">
+            {selectedOmsetMonth === 'ALL' ? 'Semua Bulan' : formatMonthLabel(selectedOmsetMonth)}
+          </span>
         </div>
 
         <div className="flex items-center space-x-2">
