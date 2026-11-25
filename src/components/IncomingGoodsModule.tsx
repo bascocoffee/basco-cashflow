@@ -1816,6 +1816,55 @@ export default function IncomingGoodsModule({
               )}
             </div>
 
+            {/* Table Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/80 border border-slate-200 rounded-2xl px-3.5 py-2.5">
+              <div className="flex items-center gap-2 w-full sm:max-w-md">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input
+                    id="incoming-table-search"
+                    type="text"
+                    placeholder="Cari nama barang, kategori, supplier, no. nota..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      title="Hapus pencarian"
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('incoming-table-search')?.focus()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer shrink-0"
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  <span>Cari</span>
+                </button>
+              </div>
+              <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-2">
+                <span>
+                  Menampilkan <strong className="text-slate-800">{filteredBatches.length}</strong> data
+                </span>
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="text-amber-700 hover:text-amber-800 font-bold underline cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Main Table */}
             <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-200 rounded-2xl shadow-2xs">
               <table className="w-full text-left border-collapse text-xs">
