@@ -208,32 +208,129 @@ export default function DebtTrackerPage({
     });
   };
 
-  // Realtime sync from Google Spreadsheet ("Pencatatan Hutang")
+  const DEBT_DELETED_STORAGE_KEY = 'aruskas_debts_deleted_ids';
+
+  const readDeletedDebtTombstones = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem(DEBT_DELETED_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []);
+    } catch {
+      return new Set();
+    }
+  };
+
+  const addDeletedDebtTombstone = (id: string) => {
+    const set = readDeletedDebtTombstones();
+    set.add(id);
+    try {
+      localStorage.setItem(DEBT_DELETED_STORAGE_KEY, JSON.stringify(Array.from(set)));
+    } catch {
+      // ignore storage quota errors
+    }
+  };
+
+  const mergeDebtsList = (localList: DebtItem[], remoteList: DebtItem[]): DebtItem[] => {
+    const deletedSet = readDeletedDebtTombstones();
+    const mergedMap = new Map<string, DebtItem>();
+
+    for (const rItem of remoteList || []) {
+      if (!rItem || !rItem.id || deletedSet.has(rItem.id)) continue;
+      mergedMap.set(rItem.id, rItem);
+    }
+
+    for (const lItem of localList || []) {
+      if (!lItem || !lItem.id || deletedSet.has(lItem.id)) continue;
+      const existing = mergedMap.get(lItem.id);
+      if (!existing) {
+        mergedMap.set(lItem.id, lItem);
+      } else {
+        const localTime = lItem.updatedAt ? new Date(lItem.updatedAt).getTime() : 0;
+        const remoteTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+        const localLogs = Array.isArray(lItem.paymentLogs) ? lItem.paymentLogs.length : 0;
+        const remoteLogs = Array.isArray(existing.paymentLogs) ? existing.paymentLogs.length : 0;
+        const localPaid = Number(lItem.paidMonths) || 0;
+        const remotePaid = Number(existing.paidMonths) || 0;
+        if (
+          localTime > remoteTime ||
+          (localTime === remoteTime && (localLogs > remoteLogs || localPaid > remotePaid))
+        ) {
+          mergedMap.set(lItem.id, lItem);
+        }
+      }
+    }
+
+    return Array.from(mergedMap.values());
+  };
+
+  const getDebtListSignature = (list: DebtItem[]) =>
+    (list || [])
+      .map(
+        d =>
+          `${d.id}:${d.name}:${d.remainingAmount}:${d.monthlyInstallment}:${d.paidMonths}:${d.status}:${d.notes || ''}:${d.paymentLogs?.length || 0}:${d.updatedAt || ''}`
+      )
+      .join('|');
+
+  // Realtime sync from Cloud & Google Spreadsheet ("Pencatatan Hutang")
   const syncDebtsFromSpreadsheet = async (showSpinner = false) => {
-    if (!activeSpreadsheetId) return;
     if (showSpinner) setIsSyncingSheet(true);
     try {
+      // Flush any pending local write to Spreadsheet first
+      if (activeSpreadsheetId && localStorage.getItem('aruskas_debts_pending_sheet_sync') === '1') {
+        const localList = getStoredDebts();
+        if (localList.length > 0) {
+          await saveDebtsToSheet(
+            activeSpreadsheetId,
+            localList,
+            activeToken,
+            Array.from(readDeletedDebtTombstones())
+          ).catch(() => {});
+        }
+      }
+
       const [synced, tabStatus] = await Promise.all([
-        fetchDebtsFromSheet(activeSpreadsheetId, activeToken, transactions),
-        checkDebtSheetTabExists(activeSpreadsheetId, activeToken),
+        fetchDebtsFromSheet(activeSpreadsheetId || '', activeToken, transactions),
+        activeSpreadsheetId
+          ? checkDebtSheetTabExists(activeSpreadsheetId, activeToken)
+          : Promise.resolve({ exists: false, needsGoogleAuth: false, gid: null }),
       ]);
+
+      let mergedResult: DebtItem[] | null = null;
       if (Array.isArray(synced) && synced.length > 0) {
         setDebts(prev => {
-          const prevSig = prev.map(d => `${d.id}:${d.remainingAmount}:${d.status}`).join('|');
-          const nextSig = synced.map(d => `${d.id}:${d.remainingAmount}:${d.status}`).join('|');
-          if (prevSig === nextSig && prev.length === synced.length) return prev;
-          saveStoredDebts(synced);
-          return synced;
+          const merged = mergeDebtsList(prev, synced);
+          mergedResult = merged;
+          if (getDebtListSignature(prev) === getDebtListSignature(merged) && prev.length === merged.length) {
+            return prev;
+          }
+          saveStoredDebts(merged);
+          return merged;
         });
         setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
       }
-      setSheetTabExists(tabStatus.exists);
-      setNeedsGoogleWriteAuth(tabStatus.needsGoogleAuth);
-      if (tabStatus.gid !== null) {
-        setDebtSheetGid(tabStatus.gid);
-      } else {
-        const gid = await getDebtSheetGid(activeSpreadsheetId, activeToken);
-        if (gid !== null) setDebtSheetGid(gid);
+
+      if (showSpinner && activeSpreadsheetId && mergedResult && (mergedResult as DebtItem[]).length > 0) {
+        const syncedIds = new Set((synced || []).map((s: any) => s.id));
+        const hasLocalOnly = (mergedResult as DebtItem[]).some(m => !syncedIds.has(m.id));
+        if (hasLocalOnly) {
+          saveDebtsToSheet(
+            activeSpreadsheetId,
+            mergedResult,
+            activeToken,
+            Array.from(readDeletedDebtTombstones())
+          ).catch(() => {});
+        }
+      }
+
+      if (activeSpreadsheetId) {
+        setSheetTabExists(tabStatus.exists);
+        setNeedsGoogleWriteAuth(tabStatus.needsGoogleAuth);
+        if (tabStatus.gid !== null) {
+          setDebtSheetGid(tabStatus.gid);
+        } else {
+          const gid = await getDebtSheetGid(activeSpreadsheetId, activeToken);
+          if (gid !== null) setDebtSheetGid(gid);
+        }
       }
     } catch (err) {
       console.error('Error syncing debts from spreadsheet:', err);
@@ -313,6 +410,23 @@ export default function DebtTrackerPage({
   useEffect(() => {
     syncDebtsFromSpreadsheet(true);
   }, [activeSpreadsheetId, activeToken, transactions.length]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      syncDebtsFromSpreadsheet(false);
+    }, 30000);
+    const handleFocusOrOnline = () => {
+      syncDebtsFromSpreadsheet(false);
+    };
+    window.addEventListener('focus', handleFocusOrOnline);
+    window.addEventListener('online', handleFocusOrOnline);
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocusOrOnline);
+      window.removeEventListener('online', handleFocusOrOnline);
+    };
+  }, [activeSpreadsheetId, activeToken]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -520,10 +634,16 @@ export default function DebtTrackerPage({
   // Delete Debt (and sync deletion to Google Spreadsheet)
   const handleDeleteDebt = (id: string, name: string) => {
     if (window.confirm(`Apakah Anda yakin ingin menghapus catatan hutang: "${name}"?`)) {
+      addDeletedDebtTombstone(id);
       setDebts(prev => {
         const nextList = prev.filter(d => d.id !== id);
         saveStoredDebts(nextList);
-        saveDebtsToSheet(activeSpreadsheetId, nextList, activeToken, [id]).catch(() => {});
+        saveDebtsToSheet(
+          activeSpreadsheetId,
+          nextList,
+          activeToken,
+          Array.from(readDeletedDebtTombstones())
+        ).catch(() => {});
         return nextList;
       });
     }

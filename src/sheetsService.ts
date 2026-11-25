@@ -2285,12 +2285,14 @@ export async function fetchDebtsFromSheet(
   try {
     const [cloudSlot, debtTabRows] = await Promise.all([
       loadCloudSlot<{ items?: any[]; deletedIds?: string[]; updatedAt?: string }>('debts_records'),
-      fetchSheetRowsWithFallback(
-        spreadsheetId,
-        DEBT_SHEET_TAB_NAME,
-        `'${DEBT_SHEET_TAB_NAME}'!A1:Q1000`,
-        accessToken
-      ),
+      spreadsheetId
+        ? fetchSheetRowsWithFallback(
+            spreadsheetId,
+            DEBT_SHEET_TAB_NAME,
+            `'${DEBT_SHEET_TAB_NAME}'!A1:Q1000`,
+            accessToken
+          )
+        : Promise.resolve(null),
     ]);
 
     const deletedSet = new Set<string>(
@@ -2415,14 +2417,28 @@ export async function fetchDebtsFromSheet(
     let finalDebts: any[] = [];
 
     if (sheetItems.length > 0) {
-      // Sheet "Pencatatan Hutang" has data -> merge with cloudItems
+      // Sheet "Pencatatan Hutang" has data -> merge with cloudItems, preferring newer Cloud edits/payments
       const mergedMap = new Map<string, any>();
       for (const sItem of sheetItems) {
         mergedMap.set(sItem.id, sItem);
       }
       for (const cItem of cloudItems) {
-        if (!mergedMap.has(cItem.id)) {
+        const existing = mergedMap.get(cItem.id);
+        if (!existing) {
           mergedMap.set(cItem.id, cItem);
+        } else {
+          const cloudTime = cItem.updatedAt ? new Date(cItem.updatedAt).getTime() : 0;
+          const sheetTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+          const cloudLogs = Array.isArray(cItem.paymentLogs) ? cItem.paymentLogs.length : 0;
+          const sheetLogs = Array.isArray(existing.paymentLogs) ? existing.paymentLogs.length : 0;
+          const cloudPaid = Number(cItem.paidMonths) || 0;
+          const sheetPaid = Number(existing.paidMonths) || 0;
+          if (
+            cloudTime > sheetTime ||
+            (cloudTime === sheetTime && (cloudLogs > sheetLogs || cloudPaid > sheetPaid))
+          ) {
+            mergedMap.set(cItem.id, cItem);
+          }
         }
       }
       finalDebts = Array.from(mergedMap.values());
@@ -2437,7 +2453,7 @@ export async function fetchDebtsFromSheet(
 
     // If the "Pencatatan Hutang" tab does not exist yet or is empty in Google Sheets,
     // automatically create and populate it right away!
-    if ((!hasValidDebtSheetTab || sheetItems.length === 0) && finalDebts.length > 0) {
+    if (spreadsheetId && (!hasValidDebtSheetTab || sheetItems.length === 0) && finalDebts.length > 0) {
       saveDebtsToSheet(spreadsheetId, finalDebts, accessToken, Array.from(deletedSet)).catch((err) => {
         console.warn('Auto-initialize Pencatatan Hutang sheet deferred:', err);
       });
@@ -2450,6 +2466,8 @@ export async function fetchDebtsFromSheet(
   }
 }
 
+const DEBT_PENDING_SHEET_SYNC_KEY = 'aruskas_debts_pending_sheet_sync';
+
 export async function saveDebtsToSheet(
   spreadsheetId: string,
   debts: any[],
@@ -2461,6 +2479,21 @@ export async function saveDebtsToSheet(
   sheetGid?: number | null;
   needsGoogleAuth?: boolean;
 }> {
+  const markPending = () => {
+    try {
+      localStorage.setItem(DEBT_PENDING_SHEET_SYNC_KEY, '1');
+    } catch {
+      // ignore
+    }
+  };
+  const clearPending = () => {
+    try {
+      localStorage.removeItem(DEBT_PENDING_SHEET_SYNC_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
   try {
     const cleanDebts = (debts || [])
       .filter((d) => d && d.id && !isIgnoredAutoDebtId(String(d.id)))
@@ -2482,21 +2515,12 @@ export async function saveDebtsToSheet(
       const sharedToken = await getValidSharedAuthToken();
       if (sharedToken) effectiveToken = sharedToken;
     }
-    if (!effectiveToken || effectiveToken.endsWith('-local-token')) {
+    if (!spreadsheetId || !effectiveToken || effectiveToken.endsWith('-local-token')) {
+      markPending();
       return { syncedToCloud, syncedToSheet: false, needsGoogleAuth: true };
     }
 
     await createCustomSheetTab(spreadsheetId, DEBT_SHEET_TAB_NAME, effectiveToken);
-
-    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A1:Q1000:clear`;
-    const clearRes = await fetch(clearUrl, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${effectiveToken}` },
-    });
-
-    if (clearRes.status === 401 || clearRes.status === 403) {
-      return { syncedToCloud, syncedToSheet: false, needsGoogleAuth: true };
-    }
 
     const headers = [
       'ID Hutang',
@@ -2559,7 +2583,21 @@ export async function saveDebtsToSheet(
     });
 
     if (writeRes.status === 401 || writeRes.status === 403) {
+      markPending();
       return { syncedToCloud, syncedToSheet: false, needsGoogleAuth: true };
+    }
+
+    if (writeRes.ok) {
+      clearPending();
+      if (rows.length < 1000) {
+        const clearTrailingUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A${rows.length + 1}:Q1000:clear`;
+        await fetch(clearTrailingUrl, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${effectiveToken}` },
+        }).catch(() => {});
+      }
+    } else {
+      markPending();
     }
 
     const sheetGid = await getDebtSheetGid(spreadsheetId, effectiveToken);
@@ -2571,6 +2609,7 @@ export async function saveDebtsToSheet(
     };
   } catch (error) {
     console.error('Error saving debts to sheet:', error);
+    markPending();
     return { syncedToCloud: false, syncedToSheet: false };
   }
 }
