@@ -1986,66 +1986,38 @@ export default function BaristaSchedulePage({
         </div>
       )}
 
-      {/* TOP HERO & ACTIONS BAR */}
-      <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 rounded-3xl p-6 sm:p-7 text-white shadow-xl border border-amber-900/30 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
-        <div className="space-y-1.5">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-md">
-              <Coffee className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="text-[10px] bg-amber-400/20 text-amber-300 font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                Manajemen Tim & Jadwal Shift
-              </span>
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">
+      {/* TOP HEADER & PRIMARY ACTIONS (MINIMALIST) */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-2xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+            <Coffee className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
                 Jadwal Operasional Basco Coffee
               </h2>
+              {spreadsheetId && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[10px] font-bold">
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSyncingCloud || isLoadingCloud ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span>{isSyncingCloud ? 'Menyimpan...' : isLoadingCloud ? 'Memuat...' : lastSyncTime ? `Sinkron ${lastSyncTime}` : 'Cloud Aktif'}</span>
+                </span>
+              )}
             </div>
           </div>
-          <p className="text-xs sm:text-sm text-slate-300 font-medium max-w-2xl">
-            Atur jadwal shift mingguan, rotasi jam bar, rekap jam kerja tim barista, serta export laporan PDF & Gambar.
-          </p>
         </div>
 
-        {/* Action Buttons: Cloud Badge, Simpan ke Sheet, Muat Sheet, Tambah Barista, Jam Shift, Export PDF, Export Gambar, Backup JSON */}
-        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
-          {spreadsheetId && (
-            <div className="flex items-center space-x-2 bg-emerald-950/80 border border-emerald-500/40 px-3 py-2 rounded-xl text-xs">
-              <Cloud className={`h-4 w-4 ${isSyncingCloud ? 'text-amber-400 animate-spin' : 'text-emerald-400'}`} />
-              <div>
-                <span className="text-[9.5px] font-bold text-emerald-300 uppercase block tracking-wider">
-                  {isSyncingCloud ? 'Menyimpan...' : isLoadingCloud ? 'Memuat Sheet...' : 'Realtime Cloud'}
-                </span>
-                <span className="text-[9px] text-emerald-400/80">
-                  {lastSyncTime ? `Sinkron ${lastSyncTime}` : 'Terintegrasi Sheets'}
-                </span>
-              </div>
-            </div>
-          )}
-
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
           <button
             type="button"
             onClick={handleManualSaveToSheet}
             disabled={isSyncingCloud}
-            className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer active:scale-[0.98]"
-            title="Simpan data jadwal operasional, tim barista, & jam shift ke Google Sheets sekarang"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center space-x-1.5 cursor-pointer"
+            title="Simpan jadwal operasional, tim barista, & jam shift ke Google Sheets"
           >
-            <Save className={`h-4 w-4 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
-            <span>{isSyncingCloud ? 'Menyimpan...' : 'Simpan ke Sheet'}</span>
+            <Save className={`h-3.5 w-3.5 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
+            <span>{isSyncingCloud ? 'Menyimpan...' : 'Simpan'}</span>
           </button>
-
-          {spreadsheetId && (
-            <button
-              type="button"
-              onClick={() => loadBaristaDataFromCloud(true)}
-              disabled={isLoadingCloud || isSyncingCloud}
-              className="px-3 py-2.5 bg-white/10 hover:bg-white/20 disabled:opacity-60 text-white font-bold text-xs rounded-xl border border-white/20 transition flex items-center space-x-1.5 cursor-pointer"
-              title="Muat ulang data jadwal & tim barista dari Google Sheets"
-            >
-              <RefreshCw className={`h-4 w-4 text-amber-400 ${isLoadingCloud ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{isLoadingCloud ? 'Memuat...' : 'Muat Sheet'}</span>
-            </button>
-          )}
 
           <button
             type="button"
@@ -2053,45 +2025,33 @@ export default function BaristaSchedulePage({
               setEditingBarista(null);
               setIsBaristaModalOpen(true);
             }}
-            className="px-3.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer active:scale-[0.98]"
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center space-x-1.5 cursor-pointer"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             <span>Tambah Barista</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setIsShiftMasterModalOpen(true)}
-            className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/20 transition flex items-center space-x-1.5 cursor-pointer"
-            title="Edit pilihan jam shift bar"
+            onClick={handleExportPDF}
+            disabled={isExportingPdf}
+            className="px-3 py-2 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center space-x-1.5 cursor-pointer"
+            title="Export Laporan PDF Jadwal"
           >
-            <Settings2 className="h-4 w-4 text-amber-400" />
-            <span>Jam Shift Bar</span>
+            <FileText className="h-3.5 w-3.5 text-rose-600" />
+            <span>PDF</span>
           </button>
 
-          <div className="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
-            <button
-              type="button"
-              onClick={handleExportPDF}
-              disabled={isExportingPdf}
-              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition flex items-center space-x-1 cursor-pointer"
-              title="Export Laporan PDF Jadwal"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span>PDF</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportImage}
-              disabled={isExportingImage}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition flex items-center space-x-1 cursor-pointer"
-              title="Export Gambar PNG untuk WhatsApp"
-            >
-              <ImageIcon className="h-3.5 w-3.5" />
-              <span>Gambar</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleExportImage}
+            disabled={isExportingImage}
+            className="px-3 py-2 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center space-x-1.5 cursor-pointer"
+            title="Export Gambar PNG untuk WhatsApp"
+          >
+            <ImageIcon className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Gambar</span>
+          </button>
 
           <input
             ref={jsonFileInputRef}
@@ -2103,21 +2063,11 @@ export default function BaristaSchedulePage({
           <button
             type="button"
             onClick={() => jsonFileInputRef.current?.click()}
-            className="px-3.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
-            title="Upload file JSON untuk mengimpor jadwal operasional"
+            className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center space-x-1.5 cursor-pointer"
+            title="Impor jadwal operasional dari file JSON"
           >
-            <Upload className="h-4 w-4" />
-            <span>Upload JSON</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsBackupModalOpen(true)}
-            className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
-            title="Backup dan Restore JSON semua data aplikasi"
-          >
-            <FileJson className="h-4 w-4" />
-            <span>Backup JSON</span>
+            <Upload className="h-3.5 w-3.5 text-amber-600" />
+            <span>Import JSON</span>
           </button>
         </div>
       </div>
@@ -2173,29 +2123,29 @@ export default function BaristaSchedulePage({
           <button
             type="button"
             onClick={() => setIsViewDropdownOpen(!isViewDropdownOpen)}
-            className="w-full md:w-auto flex items-center justify-between space-x-3 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl border border-slate-700 shadow-sm transition cursor-pointer group min-w-[260px]"
+            className="w-full md:w-auto flex items-center justify-between space-x-3 px-3.5 py-2 bg-slate-50 hover:bg-slate-100 text-slate-900 rounded-xl border border-slate-200 transition cursor-pointer group min-w-[230px]"
             aria-expanded={isViewDropdownOpen}
             aria-haspopup="true"
           >
-            <div className="flex items-center space-x-3 text-left">
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shadow-xs ${currentViewOption.colorClass}`}>
+            <div className="flex items-center space-x-2.5 text-left">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${currentViewOption.colorClass}`}>
                 <CurrentViewIcon className="h-4 w-4" />
               </div>
               <div>
-                <span className="text-[9.5px] uppercase font-extrabold text-slate-400 block tracking-wider leading-none">
-                  Mode Tampilan
+                <span className="text-[9.5px] uppercase font-bold text-slate-400 block tracking-wider leading-none">
+                  Tampilan
                 </span>
-                <span className="text-xs sm:text-sm font-black text-white tracking-tight flex items-center space-x-2 mt-0.5">
+                <span className="text-xs sm:text-sm font-black text-slate-900 tracking-tight flex items-center space-x-1.5 mt-0.5">
                   <span>{currentViewOption.name}</span>
-                  <span className="text-[10px] px-2 py-0.5 bg-slate-800 rounded-md text-amber-300 font-mono font-bold border border-slate-700">
+                  <span className="text-[10px] px-1.5 py-0.5 bg-white rounded text-amber-800 font-mono font-bold border border-slate-200">
                     {currentViewOption.badge}
                   </span>
                 </span>
               </div>
             </div>
             
-            <div className="flex items-center pl-2 border-l border-slate-700/80 text-slate-400 group-hover:text-amber-400 transition">
-              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isViewDropdownOpen ? 'rotate-180 text-amber-400' : ''}`} />
+            <div className="flex items-center pl-2 border-l border-slate-200 text-slate-400 group-hover:text-amber-700 transition">
+              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isViewDropdownOpen ? 'rotate-180 text-amber-700' : ''}`} />
             </div>
           </button>
 
@@ -2262,33 +2212,9 @@ export default function BaristaSchedulePage({
           )}
         </div>
 
-        {/* Contextual Controller for Matrix View (Week Navigator, Copy Tool & Save) */}
+        {/* Contextual Controller for Matrix View (Week Navigator & Quick Copy) */}
         {viewMode === 'matrix' && (
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-between md:justify-end">
-            
-            {spreadsheetId && (
-              <button
-                type="button"
-                onClick={handleManualSaveToSheet}
-                disabled={isSyncingCloud}
-                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-60"
-                title="Simpan perubahan jadwal minggu ini langsung ke Google Sheets"
-              >
-                <Save className={`h-3.5 w-3.5 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
-                <span>{isSyncingCloud ? 'Menyimpan...' : 'Simpan Jadwal'}</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={handleCopyLastWeekSchedule}
-              className="px-3 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
-              title="Salin semua jadwal shift dari minggu lalu ke minggu yang sedang dilihat saat ini"
-            >
-              <Copy className="h-3.5 w-3.5" />
-              <span>Salin Jadwal Minggu Lalu</span>
-            </button>
-
             <div className="flex items-center space-x-1.5">
               <button
                 type="button"
@@ -2322,18 +2248,37 @@ export default function BaristaSchedulePage({
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 border-l border-slate-200 pl-2">
+              <button
+                type="button"
+                onClick={handleCopyLastWeekSchedule}
+                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-xl border border-amber-200 transition flex items-center space-x-1 cursor-pointer"
+                title="Salin jadwal sama dengan minggu lalu"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                <span>Salin Minggu Lalu</span>
+              </button>
 
               <button
                 type="button"
-                onClick={() => {
-                  const el = document.getElementById('monthly-cross-schedule-section');
-                  if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs rounded-xl shadow-xs transition flex items-center space-x-1 cursor-pointer active:scale-95"
-                title="Lihat jadwal shift 1 bulan & lintas bulan di bawah"
+                onClick={handleCopyCurrentWeekToNextWeek}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition flex items-center space-x-1 cursor-pointer"
+                title="Salin jadwal minggu ini ke minggu depan"
               >
-                <CalendarRange className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Jadwal 1 Bulan</span>
+                <ArrowRightLeft className="h-3.5 w-3.5 text-slate-500" />
+                <span>Ke Minggu Depan</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearWeekSchedule}
+                className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition flex items-center space-x-1 cursor-pointer"
+                title="Kosongkan jadwal minggu ini"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Kosongkan</span>
               </button>
             </div>
           </div>
@@ -2404,47 +2349,6 @@ export default function BaristaSchedulePage({
           {/* Bagian Jadwal Mingguan (Hanya tampil saat mode Matriks Mingguan) */}
           {viewMode === 'matrix' && (
             <>
-              {/* Quick Schedule Management Bar (Copy to next week, Clear week, Shift Master) */}
-              <div className="bg-slate-900 text-white px-4 py-3 rounded-2xl border border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="font-extrabold text-slate-200 text-xs">Aksi Cepat Jadwal:</span>
-              <span className="text-slate-400 text-[11px] hidden sm:inline">Kelola rotasi dan salin jadwal mingguan secara instan</span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCopyLastWeekSchedule}
-                className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] rounded-lg transition flex items-center space-x-1 cursor-pointer"
-                title="Salin jadwal sama dengan minggu lalu"
-              >
-                <Copy className="h-3 w-3" />
-                <span>Salin Dari Minggu Lalu</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCopyCurrentWeekToNextWeek}
-                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] rounded-lg border border-slate-700 transition flex items-center space-x-1 cursor-pointer"
-                title="Salin jadwal minggu ini ke minggu depan"
-              >
-                <ArrowRightLeft className="h-3 w-3 text-sky-400" />
-                <span>Salin Ke Minggu Depan</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleClearWeekSchedule}
-                className="px-2.5 py-1.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 font-bold text-[11px] rounded-lg border border-rose-800/40 transition flex items-center space-x-1 cursor-pointer"
-                title="Kosongkan jadwal minggu ini"
-              >
-                <RotateCcw className="h-3 w-3 text-rose-400" />
-                <span>Kosongkan Minggu Ini</span>
-              </button>
-            </div>
-          </div>
-
           {/* Legend of Shift Badges */}
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5 text-xs">
             <div className="flex flex-wrap items-center gap-2">
