@@ -1636,40 +1636,6 @@ export default function Dashboard({
           </div>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 shrink-0 w-full sm:w-auto">
-          {onSwitchRole && (
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
-              <button
-                type="button"
-                onClick={() => onSwitchRole('barista')}
-                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/80 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
-                title="Beralih langsung ke tampilan Barista tanpa login ulang"
-              >
-                <Coffee className="h-3.5 w-3.5 text-slate-500" />
-                <span>Barista</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onSwitchRole('manager')}
-                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/80 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 cursor-pointer"
-                title="Beralih langsung ke tampilan Manajer tanpa login ulang"
-              >
-                <UserCheck className="h-3.5 w-3.5 text-slate-500" />
-                <span>Manajer</span>
-              </button>
-            </div>
-          )}
-          {spreadsheetUrl && (
-            <a 
-              href={spreadsheetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 w-full sm:w-auto"
-              title="Buka Spreadsheet langsung di Google Sheets"
-            >
-              <Download className="h-3.5 w-3.5 text-slate-500" />
-              <span>Buka Google Sheets</span>
-            </a>
-          )}
           <button
             onClick={onManageCategories}
             className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl transition flex items-center justify-center space-x-2 cursor-pointer w-full sm:w-auto"
@@ -3121,39 +3087,17 @@ export default function Dashboard({
 
             {/* Quick Filter presets & Actions */}
             <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { id: 'all', label: 'Semua Waktu' },
-                { id: 'this_month', label: 'Bulan Ini' },
-                { id: 'last_month', label: 'Bulan Lalu' },
-                { id: 'this_year', label: 'Tahun Ini' }
-              ].map(preset => (
-                <button
-                  key={preset.id}
-                  onClick={() => handleQuickPreset(preset.id as any)}
-                  className={`px-3 py-1.5 rounded text-xs font-bold border transition ${
-                    quickFilter === preset.id
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                      : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200'
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-              
-              <span className="h-6 w-[1px] bg-slate-300 mx-1 hidden sm:inline"></span>
-
-              {onRefresh && (
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={isLoadingData}
-                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold transition flex items-center space-x-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-                  title="Sinkronisasi ulang langsung membaca seluruh lembar &amp; data terbaru dari Google Sheets"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingData ? 'animate-spin' : ''}`} />
-                  <span>{isLoadingData ? 'Memuat Sheet...' : 'Sinkronkan Sheet'}</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => handleQuickPreset('this_year')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                  quickFilter === 'this_year'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200'
+                }`}
+              >
+                Tahun Ini
+              </button>
 
               <button
                 type="button"
