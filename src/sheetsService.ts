@@ -1898,12 +1898,6 @@ export async function saveIncomingBatchesToSheet(
 
     await createCustomSheetTab(spreadsheetId, 'Barang Masuk & Pembelian', effectiveToken);
 
-    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Barang Masuk & Pembelian'!A1:N3000:clear`;
-    await fetch(clearUrl, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${effectiveToken}` },
-    });
-
     const headers = [
       'ID Batch',
       'Tanggal Masuk',
@@ -1941,8 +1935,9 @@ export async function saveIncomingBatchesToSheet(
       ]),
     ];
 
+    // Write rows FIRST before clearing any trailing rows so data is never wiped if write fails
     const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Barang Masuk & Pembelian'!A1:N${rows.length}?valueInputOption=USER_ENTERED`;
-    await fetch(writeUrl, {
+    const writeResp = await fetch(writeUrl, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${effectiveToken}`,
@@ -1950,6 +1945,20 @@ export async function saveIncomingBatchesToSheet(
       },
       body: JSON.stringify({ values: rows }),
     });
+
+    if (!writeResp.ok) {
+      const errText = await writeResp.text().catch(() => '');
+      console.error('Failed writing incoming batches to sheet:', writeResp.status, errText);
+      return;
+    }
+
+    if (rows.length < 3000) {
+      const clearTrailingUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'Barang Masuk & Pembelian'!A${rows.length + 1}:N3000:clear`;
+      await fetch(clearTrailingUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${effectiveToken}` },
+      }).catch(() => {});
+    }
   } catch (error) {
     console.error('Error saving incoming batches to sheet:', error);
   }

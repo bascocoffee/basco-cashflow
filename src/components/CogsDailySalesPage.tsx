@@ -902,20 +902,81 @@ export default function CogsDailySalesPage({
   }, [incomingBatches]);
 
   // Handler CRUD for Incoming Batches (with immediate realtime Google Sheet & Cloud sync)
+  const DUMMY_INCOMING_IDS = new Set(['in-batch-1', 'in-batch-2', 'in-batch-3']);
+  const INCOMING_DELETED_STORAGE_KEY = 'aruskas_cogs_incoming_deleted_ids';
+
+  const readDeletedIncomingTombstones = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem(INCOMING_DELETED_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []);
+    } catch {
+      return new Set();
+    }
+  };
+
+  const addDeletedIncomingTombstone = (id: string) => {
+    const set = readDeletedIncomingTombstones();
+    set.add(id);
+    try {
+      localStorage.setItem(INCOMING_DELETED_STORAGE_KEY, JSON.stringify(Array.from(set)));
+    } catch {
+      // ignore storage quota errors
+    }
+  };
+
+  const mergeIncomingBatches = (
+    localList: IncomingIngredientBatch[],
+    remoteList: IncomingIngredientBatch[]
+  ): IncomingIngredientBatch[] => {
+    const deletedSet = readDeletedIncomingTombstones();
+    const mergedMap = new Map<string, IncomingIngredientBatch>();
+
+    for (const rItem of remoteList || []) {
+      if (!rItem || !rItem.id || DUMMY_INCOMING_IDS.has(rItem.id) || deletedSet.has(rItem.id)) continue;
+      mergedMap.set(rItem.id, {
+        ...rItem,
+        tanggal: normalizeDateString(rItem.tanggal) || rItem.tanggal,
+      });
+    }
+
+    for (const lItem of localList || []) {
+      if (!lItem || !lItem.id || DUMMY_INCOMING_IDS.has(lItem.id) || deletedSet.has(lItem.id)) continue;
+      const normalizedLocal: IncomingIngredientBatch = {
+        ...lItem,
+        tanggal: normalizeDateString(lItem.tanggal) || lItem.tanggal,
+      };
+      const existing = mergedMap.get(lItem.id);
+      if (!existing) {
+        // Keep local item that hasn't been synced to Spreadsheet/Cloud yet
+        mergedMap.set(lItem.id, normalizedLocal);
+      } else {
+        const localTime = lItem.createdAt ? new Date(lItem.createdAt).getTime() : 0;
+        const remoteTime = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
+        if (localTime >= remoteTime) {
+          mergedMap.set(lItem.id, normalizedLocal);
+        }
+      }
+    }
+
+    return Array.from(mergedMap.values()).sort((a, b) => (b.tanggal || '').localeCompare(a.tanggal || ''));
+  };
+
   const handleRefreshIncomingFromSheet = async () => {
     if (!spreadsheetId) return;
     setIsSyncingSheet(true);
     try {
       const cloudIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
-      if (cloudIncoming && cloudIncoming.length > 0) {
-        isApplyingRemoteRef.current = true;
-        setIncomingBatches(cloudIncoming);
-        localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(cloudIncoming));
-        setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-        setTimeout(() => {
-          isApplyingRemoteRef.current = false;
-        }, 300);
-      }
+      const merged = mergeIncomingBatches(incomingBatches, cloudIncoming || []);
+      isApplyingRemoteRef.current = true;
+      setIncomingBatches(merged);
+      localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(merged));
+      const deletedIds = Array.from(readDeletedIncomingTombstones());
+      await saveIncomingBatchesToSheet(spreadsheetId, merged, token || 'local-token', deletedIds).catch(() => {});
+      setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+      setTimeout(() => {
+        isApplyingRemoteRef.current = false;
+      }, 300);
     } catch (err) {
       console.error('Error refreshing incoming batches:', err);
     } finally {
@@ -972,6 +1033,7 @@ export default function CogsDailySalesPage({
 
   const handleDeleteIncomingBatch = (id: string) => {
     const targetBatch = incomingBatches.find(b => b.id === id);
+    addDeletedIncomingTombstone(id);
     setIncomingBatches(prev => {
       const next = prev.filter(b => b.id !== id);
       localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
@@ -1229,11 +1291,14 @@ export default function CogsDailySalesPage({
             }
           }
 
-          // 5. Fetch Remote Incoming Batches (Barang Masuk)
+          // 5. Fetch Remote Incoming Batches (Barang Masuk) — merge so unsynced local batches are preserved
           const cloudIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token);
           if (cloudIncoming && cloudIncoming.length > 0) {
-            setIncomingBatches(cloudIncoming);
-            localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(cloudIncoming));
+            setIncomingBatches(prev => {
+              const merged = mergeIncomingBatches(prev, cloudIncoming);
+              localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(merged));
+              return merged;
+            });
           }
 
           setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
@@ -1353,15 +1418,16 @@ export default function CogsDailySalesPage({
           const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
           if (isMounted && remoteIncoming && remoteIncoming.length > 0) {
             setIncomingBatches(prev => {
+              const merged = mergeIncomingBatches(prev, remoteIncoming);
               const prevSig = prev.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
-              const nextSig = remoteIncoming.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
+              const nextSig = merged.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
               if (prevSig === nextSig) return prev;
               isApplyingRemoteRef.current = true;
-              localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(remoteIncoming));
+              localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(merged));
               setTimeout(() => {
                 isApplyingRemoteRef.current = false;
               }, 300);
-              return remoteIncoming;
+              return merged;
             });
           }
         }
