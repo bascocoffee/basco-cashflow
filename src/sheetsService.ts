@@ -1765,12 +1765,14 @@ export async function fetchIncomingBatchesFromSheet(
         deletedIds?: string[];
         updatedAt?: string;
       }>('incoming_batches'),
-      fetchSheetRowsWithFallback(
-        spreadsheetId,
-        'Barang Masuk & Pembelian',
-        "'Barang Masuk & Pembelian'!A1:N3000",
-        accessToken
-      ),
+      spreadsheetId
+        ? fetchSheetRowsWithFallback(
+            spreadsheetId,
+            'Barang Masuk & Pembelian',
+            "'Barang Masuk & Pembelian'!A1:N3000",
+            accessToken
+          )
+        : Promise.resolve(null),
     ]);
 
     const deletedSet = new Set<string>(Array.isArray(cloudSlot?.deletedIds) ? cloudSlot!.deletedIds! : []);
@@ -1864,12 +1866,14 @@ export async function fetchIncomingBatchesFromSheet(
   }
 }
 
+const INCOMING_PENDING_SHEET_SYNC_KEY = 'aruskas_cogs_incoming_pending_sync';
+
 export async function saveIncomingBatchesToSheet(
   spreadsheetId: string,
   batches: IncomingIngredientBatch[],
   accessToken: string,
   deletedIds?: string[]
-): Promise<void> {
+): Promise<boolean> {
   try {
     const cleanBatches = (batches || [])
       .filter((b) => b && !DUMMY_INCOMING_IDS.has(b.id))
@@ -1894,7 +1898,14 @@ export async function saveIncomingBatchesToSheet(
       const sharedToken = await getValidSharedAuthToken();
       if (sharedToken) effectiveToken = sharedToken;
     }
-    if (!effectiveToken || effectiveToken.endsWith('-local-token')) return;
+    if (!spreadsheetId || !effectiveToken || effectiveToken.endsWith('-local-token')) {
+      try {
+        localStorage.setItem(INCOMING_PENDING_SHEET_SYNC_KEY, '1');
+      } catch {
+        // ignore
+      }
+      return false;
+    }
 
     await createCustomSheetTab(spreadsheetId, 'Barang Masuk & Pembelian', effectiveToken);
 
@@ -1949,7 +1960,18 @@ export async function saveIncomingBatchesToSheet(
     if (!writeResp.ok) {
       const errText = await writeResp.text().catch(() => '');
       console.error('Failed writing incoming batches to sheet:', writeResp.status, errText);
-      return;
+      try {
+        localStorage.setItem(INCOMING_PENDING_SHEET_SYNC_KEY, '1');
+      } catch {
+        // ignore
+      }
+      return false;
+    }
+
+    try {
+      localStorage.removeItem(INCOMING_PENDING_SHEET_SYNC_KEY);
+    } catch {
+      // ignore
     }
 
     if (rows.length < 3000) {
@@ -1959,8 +1981,15 @@ export async function saveIncomingBatchesToSheet(
         headers: { Authorization: `Bearer ${effectiveToken}` },
       }).catch(() => {});
     }
+    return true;
   } catch (error) {
     console.error('Error saving incoming batches to sheet:', error);
+    try {
+      localStorage.setItem(INCOMING_PENDING_SHEET_SYNC_KEY, '1');
+    } catch {
+      // ignore
+    }
+    return false;
   }
 }
 

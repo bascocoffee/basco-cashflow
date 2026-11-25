@@ -790,6 +790,12 @@ export default function CogsDailySalesPage({
         deletedNames: deletedNamesArr,
         updatedAt: nowTs,
       }).catch(() => {});
+      await saveIncomingBatchesToSheet(
+        '',
+        currentIncoming,
+        token || 'local-token',
+        Array.from(readDeletedIncomingTombstones())
+      ).catch(() => {});
       return;
     }
 
@@ -962,18 +968,33 @@ export default function CogsDailySalesPage({
     return Array.from(mergedMap.values()).sort((a, b) => (b.tanggal || '').localeCompare(a.tanggal || ''));
   };
 
+  const persistIncomingBatchesAuto = async (
+    nextBatches: IncomingIngredientBatch[],
+    extraDeletedIds?: string[]
+  ) => {
+    const allDeleted = Array.from(
+      new Set([...Array.from(readDeletedIncomingTombstones()), ...(extraDeletedIds || [])])
+    );
+    const syncedToSheet = await saveIncomingBatchesToSheet(
+      spreadsheetId || '',
+      nextBatches,
+      token || 'local-token',
+      allDeleted
+    ).catch(() => false);
+    if (syncedToSheet) {
+      setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+    }
+  };
+
   const handleRefreshIncomingFromSheet = async () => {
-    if (!spreadsheetId) return;
     setIsSyncingSheet(true);
     try {
-      const cloudIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
+      const cloudIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId || '', token || 'local-token');
       const merged = mergeIncomingBatches(incomingBatches, cloudIncoming || []);
       isApplyingRemoteRef.current = true;
       setIncomingBatches(merged);
       localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(merged));
-      const deletedIds = Array.from(readDeletedIncomingTombstones());
-      await saveIncomingBatchesToSheet(spreadsheetId, merged, token || 'local-token', deletedIds).catch(() => {});
-      setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+      await persistIncomingBatchesAuto(merged);
       setTimeout(() => {
         isApplyingRemoteRef.current = false;
       }, 300);
@@ -994,9 +1015,7 @@ export default function CogsDailySalesPage({
     setIncomingBatches(prev => {
       const next = [created, ...prev];
       localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
-      if (spreadsheetId) {
-        saveIncomingBatchesToSheet(spreadsheetId, next, token || 'local-token').catch(() => {});
-      }
+      persistIncomingBatchesAuto(next).catch(() => {});
       return next;
     });
     logAppActivity({
@@ -1017,9 +1036,7 @@ export default function CogsDailySalesPage({
     setIncomingBatches(prev => {
       const next = prev.map(b => (b.id === stamped.id ? stamped : b));
       localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
-      if (spreadsheetId) {
-        saveIncomingBatchesToSheet(spreadsheetId, next, token || 'local-token').catch(() => {});
-      }
+      persistIncomingBatchesAuto(next).catch(() => {});
       return next;
     });
     logAppActivity({
@@ -1037,9 +1054,7 @@ export default function CogsDailySalesPage({
     setIncomingBatches(prev => {
       const next = prev.filter(b => b.id !== id);
       localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(next));
-      if (spreadsheetId) {
-        saveIncomingBatchesToSheet(spreadsheetId, next, token || 'local-token', [id]).catch(() => {});
-      }
+      persistIncomingBatchesAuto(next, [id]).catch(() => {});
       return next;
     });
     logAppActivity({
@@ -1314,7 +1329,27 @@ export default function CogsDailySalesPage({
       };
       loadCloudData();
     } else {
-      isCloudLoadedRef.current = true;
+      const loadIncomingFromCloudOnly = async () => {
+        try {
+          const cloudIncoming = await fetchIncomingBatchesFromSheet('', token || 'local-token');
+          if (cloudIncoming && cloudIncoming.length > 0) {
+            isApplyingRemoteRef.current = true;
+            setIncomingBatches(prev => {
+              const merged = mergeIncomingBatches(prev, cloudIncoming);
+              localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(merged));
+              return merged;
+            });
+            setTimeout(() => {
+              isApplyingRemoteRef.current = false;
+            }, 300);
+          }
+        } catch {
+          // ignore
+        } finally {
+          isCloudLoadedRef.current = true;
+        }
+      };
+      loadIncomingFromCloudOnly();
     }
   }, [spreadsheetId, token]);
 
@@ -1413,23 +1448,34 @@ export default function CogsDailySalesPage({
           // ignore cloud catalog poll error
         }
 
-        // Realtime poll for "Barang Masuk & Pembelian" from Google Spreadsheet
-        if (spreadsheetId) {
-          const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId, token || 'local-token');
-          if (isMounted && remoteIncoming && remoteIncoming.length > 0) {
-            setIncomingBatches(prev => {
-              const merged = mergeIncomingBatches(prev, remoteIncoming);
-              const prevSig = prev.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
-              const nextSig = merged.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
-              if (prevSig === nextSig) return prev;
-              isApplyingRemoteRef.current = true;
-              localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(merged));
-              setTimeout(() => {
-                isApplyingRemoteRef.current = false;
-              }, 300);
-              return merged;
-            });
+        // Flush any pending incoming batch write to Spreadsheet first, then pull & merge
+        if (spreadsheetId && localStorage.getItem('aruskas_cogs_incoming_pending_sync') === '1') {
+          try {
+            const rawLocal = localStorage.getItem('aruskas_cogs_incoming_batches');
+            const localBatches: IncomingIngredientBatch[] = rawLocal ? JSON.parse(rawLocal) : [];
+            if (Array.isArray(localBatches) && localBatches.length > 0) {
+              await persistIncomingBatchesAuto(localBatches);
+            }
+          } catch {
+            // ignore
           }
+        }
+
+        // Realtime poll for "Barang Masuk & Pembelian" from Cloud & Google Spreadsheet
+        const remoteIncoming = await fetchIncomingBatchesFromSheet(spreadsheetId || '', token || 'local-token');
+        if (isMounted && remoteIncoming && remoteIncoming.length > 0) {
+          setIncomingBatches(prev => {
+            const merged = mergeIncomingBatches(prev, remoteIncoming);
+            const prevSig = prev.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
+            const nextSig = merged.map(b => `${b.id}:${b.tanggal}:${b.harga}:${b.statusPembayaran}`).join('|');
+            if (prevSig === nextSig) return prev;
+            isApplyingRemoteRef.current = true;
+            localStorage.setItem('aruskas_cogs_incoming_batches', JSON.stringify(merged));
+            setTimeout(() => {
+              isApplyingRemoteRef.current = false;
+            }, 300);
+            return merged;
+          });
         }
       } catch {
         // ignore network poll errors
@@ -1443,11 +1489,16 @@ export default function CogsDailySalesPage({
     const handleFocus = () => {
       pollCrossDeviceSales();
     };
+    const handleOnline = () => {
+      pollCrossDeviceSales();
+    };
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleOnline);
     return () => {
       isMounted = false;
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleOnline);
     };
   }, [spreadsheetId, token]);
 
