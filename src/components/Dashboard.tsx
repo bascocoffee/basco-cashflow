@@ -1901,13 +1901,6 @@ export default function Dashboard({
           <h3 className="text-2xl font-black text-rose-600 truncate mt-2">
             {formatRupiah(filteredStats.totalKredit)}
           </h3>
-          {filteredColumnBreakdown.kreditColE > 0 && (
-            <div className="text-[10.5px] font-medium text-slate-500 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
-              <span>Kol C: <strong className="text-slate-700">{formatRupiah(filteredColumnBreakdown.kreditColC)}</strong></span>
-              <span>•</span>
-              <span>Kol E: <strong className="text-slate-700">{formatRupiah(filteredColumnBreakdown.kreditColE)}</strong></span>
-            </div>
-          )}
           <div className="w-full h-1.5 rounded-full bg-rose-100/80 mt-3 overflow-hidden">
             <div className="w-1/2 h-full rounded-full bg-rose-500"></div>
           </div>
@@ -1926,11 +1919,6 @@ export default function Dashboard({
           <h3 className="text-2xl font-black text-slate-900 truncate mt-2">
             {formatRupiah(filteredStats.saldo)}
           </h3>
-          {filteredColumnBreakdown.kreditColE > 0 && (
-            <div className="text-[10.5px] font-medium text-slate-500 mt-1">
-              Debit − Kol C saja: <strong className="text-emerald-700">{formatRupiah(filteredColumnBreakdown.saldoColCOnly)}</strong>
-            </div>
-          )}
           <div className="w-full h-1.5 rounded-full bg-slate-100 mt-3 overflow-hidden">
             <div className="w-1/4 h-full rounded-full bg-amber-500"></div>
           </div>
