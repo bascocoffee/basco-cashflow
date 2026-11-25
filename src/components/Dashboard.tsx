@@ -1617,7 +1617,7 @@ export default function Dashboard({
 
   return (
     <>
-      <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 print:hidden" id="dashboard-root">
+      <div className="space-y-6 w-full max-w-[1680px] mx-auto px-2 sm:px-3 lg:px-4 py-4 print:hidden" id="dashboard-root">
       
       {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded border border-slate-200">

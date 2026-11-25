@@ -1039,7 +1039,7 @@ export default function StockOpnamePage({ transactions = [], spreadsheetId, toke
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="w-full max-w-[1680px] mx-auto px-2 sm:px-3 lg:px-4 py-4 space-y-6">
       
       {/* Top Header Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-amber-900/40 relative overflow-hidden">

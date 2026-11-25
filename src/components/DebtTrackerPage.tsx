@@ -839,7 +839,7 @@ export default function DebtTrackerPage({
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-12">
+    <div className="w-full max-w-[1680px] mx-auto space-y-6 pb-12">
       
       {/* HEADER SECTION */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">

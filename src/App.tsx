@@ -2459,9 +2459,9 @@ export default function App() {
         </header>
 
         {/* Main Content Body */}
-        <main className="flex-grow p-3 sm:p-5 lg:p-6">
+        <main className="flex-grow p-2 sm:p-3 lg:p-4">
           {error && (
-            <div className="max-w-7xl mx-auto mb-4">
+            <div className="w-full max-w-[1680px] mx-auto mb-4">
               <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-xs font-semibold text-red-700 flex items-start space-x-2.5 shadow-xs">
                 <AlertCircle className="h-4.5 w-4.5 shrink-0 text-red-500 mt-0.5" />
                 <div className="flex-grow">
