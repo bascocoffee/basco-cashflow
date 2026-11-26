@@ -239,13 +239,6 @@ export default function Sidebar({
               badgeColor: 'amber' as const,
               description: 'Laporan Sheet JATAH HARIAN'
             },
-            { 
-              id: 'omset_cogs' as TabType, 
-              label: 'Analisis COGS & Sales', 
-              icon: Coffee, 
-              highlight: true,
-              description: 'Penjualan menu & laba kotor'
-            },
           ]
         },
         {

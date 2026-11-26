@@ -582,7 +582,6 @@ export default function App() {
         "employee_tasks",
         "barista_schedule",
         "jatah_absensi",
-        "omset_cogs",
         "shopping_report",
         "cogs",
       ];
@@ -602,7 +601,7 @@ export default function App() {
     if (userRole === "barista" && activeTab !== "omset_cogs") return;
     if (
       userRole === "manager" &&
-      !["employee_tasks", "barista_schedule", "jatah_absensi", "omset_cogs", "shopping_report", "cogs"].includes(activeTab)
+      !["employee_tasks", "barista_schedule", "jatah_absensi", "shopping_report", "cogs"].includes(activeTab)
     ) {
       return;
     }
@@ -2525,14 +2524,28 @@ export default function App() {
               )}
             />
           ) : activeTab === "omset_cogs" ? (
-            <CogsDailySalesPage
-              spreadsheetId={spreadsheetId}
-              spreadsheetName={spreadsheetName}
-              spreadsheetUrl={userRole === "owner" ? spreadsheetUrl : null}
-              token={token}
-              user={user}
-              userRole={userRole}
-            />
+            userRole === "manager" ? (
+              <div className="w-full max-w-xl mx-auto my-12 bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-2xs space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+                  <Lock className="h-6 w-6" />
+                </div>
+                <h3 className="text-base font-black text-slate-900">
+                  Akses Terkunci — Khusus Admin / Owner
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Modul <strong>COGS &amp; Penjualan Harian</strong> dikunci untuk role Manajer. Hubungi Admin / Owner untuk membuka akses.
+                </p>
+              </div>
+            ) : (
+              <CogsDailySalesPage
+                spreadsheetId={spreadsheetId}
+                spreadsheetName={spreadsheetName}
+                spreadsheetUrl={userRole === "owner" ? spreadsheetUrl : null}
+                token={token}
+                user={user}
+                userRole={userRole}
+              />
+            )
           ) : activeTab === "barista_schedule" ? (
             <BaristaSchedulePage
               transactions={transactions}

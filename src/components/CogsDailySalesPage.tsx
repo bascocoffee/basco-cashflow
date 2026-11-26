@@ -4795,6 +4795,22 @@ export default function CogsDailySalesPage({
     );
   }
 
+  if (userRole === 'manager') {
+    return (
+      <div className="w-full max-w-xl mx-auto my-12 bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-2xs space-y-3">
+        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+          <Lock className="h-6 w-6" />
+        </div>
+        <h3 className="text-base font-black text-slate-900">
+          Akses Terkunci — Khusus Admin / Owner
+        </h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Bagian <strong>COGS &amp; Penjualan Harian</strong> dikunci untuk role Manajer. Akses hanya dibuka untuk Admin / Owner.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-[1680px] mx-auto px-2 sm:px-3 lg:px-4 py-6 space-y-8 font-sans">
       
