@@ -382,14 +382,14 @@ export default function Sidebar({
       {/* Sidebar Container */}
       <aside
         id="app-left-sidebar"
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-[#009E6D] text-white flex flex-col border-r border-[#00855B] transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 bottom-0 left-0 z-50 bg-[#064E3B] text-white flex flex-col border-r border-[#053E2F] transition-all duration-300 ease-in-out ${
           isOpenMobile 
             ? 'translate-x-0 shadow-2xl w-72' 
             : `-translate-x-full lg:translate-x-0 ${isCollapsed ? 'lg:w-20' : 'lg:w-72'}`
         }`}
       >
         {/* Top Branding & Logo Header */}
-        <div className={`border-b border-white/15 flex items-center bg-[#008E61] transition-all duration-300 ${
+        <div className={`border-b border-white/15 flex items-center bg-[#053E2F] transition-all duration-300 ${
           isCollapsed ? 'p-3 justify-center' : 'p-4 sm:p-5 justify-between'
         }`}>
           {isCollapsed ? (
@@ -472,11 +472,11 @@ export default function Sidebar({
           {navGroups.map((group, gIdx) => (
             <div key={gIdx} className="space-y-1.5">
               {!isCollapsed ? (
-                <div className="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <div className="px-3 text-[10px] font-black uppercase tracking-widest text-emerald-100/75">
                   {group.groupTitle}
                 </div>
               ) : (
-                <div className="h-px bg-slate-800 mx-2 my-2" title={group.groupTitle} />
+                <div className="h-px bg-white/15 mx-2 my-2" title={group.groupTitle} />
               )}
 
               <div className="space-y-1">
@@ -492,14 +492,12 @@ export default function Sidebar({
                         onClick={() => handleItemClick(item.id)}
                         className={`w-full relative flex flex-col items-center justify-center p-2.5 rounded-xl transition-all group cursor-pointer ${
                           isActive
-                            ? 'bg-[#FEF6E0] text-[#065F46] shadow-xs'
-                            : 'text-white/90 hover:text-white hover:bg-white/12'
+                            ? 'bg-[#059669] text-white border border-white/25 shadow-xs'
+                            : 'text-white/85 hover:text-white hover:bg-white/10'
                         }`}
                         title={`${item.label}${item.badge ? ` (${item.badge})` : ''}`}
                       >
-                        <Icon className={`h-5 w-5 transition-transform group-hover:scale-110 ${
-                          isActive ? 'text-[#065F46]' : ''
-                        }`} />
+                        <Icon className="h-5 w-5 text-white transition-transform group-hover:scale-110" />
 
                         {/* Mini Badge dot indicator */}
                         {item.badge && (
@@ -522,25 +520,25 @@ export default function Sidebar({
                       onClick={() => handleItemClick(item.id)}
                       className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between group cursor-pointer ${
                         isActive
-                          ? 'bg-[#FEF6E0] text-[#065F46] font-extrabold shadow-xs'
-                          : 'text-white/90 hover:text-white hover:bg-white/12'
+                          ? 'bg-[#059669] text-white font-extrabold border border-white/20 shadow-xs'
+                          : 'text-white/90 hover:text-white hover:bg-white/10'
                       }`}
                     >
                       <div className="flex items-center space-x-3 min-w-0">
                         <div className={`p-1.5 rounded-lg shrink-0 transition-colors ${
                           isActive
-                            ? 'bg-[#009E6D]/15 text-[#065F46]'
-                            : 'bg-white/12 text-white group-hover:bg-white/20'
+                            ? 'bg-white/20 text-white'
+                            : 'bg-white/10 text-white group-hover:bg-white/20'
                         }`}>
                           <Icon className="h-4 w-4" />
                         </div>
                         <div className="truncate">
                           <div className="leading-tight truncate flex items-center space-x-1.5">
-                            <span className={isActive ? 'font-black' : 'font-semibold'}>{item.label}</span>
+                            <span className={isActive ? 'font-black text-white' : 'font-semibold text-white'}>{item.label}</span>
                           </div>
                           {item.description && (
                             <p className={`text-[10px] truncate mt-0.5 ${
-                              isActive ? 'text-emerald-800/80 font-medium' : 'text-emerald-100/75'
+                              isActive ? 'text-white/90 font-medium' : 'text-emerald-100/75'
                             }`}>
                               {item.description}
                             </p>
@@ -757,13 +755,13 @@ export default function Sidebar({
 
         {/* Quick Switcher for Owner Role */}
         {userRole === 'owner' && onSwitchRole && !isCollapsed && (
-          <div className="px-3.5 py-2 bg-slate-900/60 border-t border-slate-800 flex items-center justify-between text-[10px]">
-            <span className="text-slate-400 font-semibold">Tampilan:</span>
+          <div className="px-3.5 py-2 bg-[#053E2F] border-t border-white/15 flex items-center justify-between text-[10px]">
+            <span className="text-emerald-100/80 font-semibold">Tampilan:</span>
             <div className="flex items-center space-x-1">
               <button
                 type="button"
                 onClick={() => onSwitchRole('barista')}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded font-semibold border border-slate-700/80 transition cursor-pointer"
+                className="px-2 py-0.5 bg-white/10 hover:bg-white/20 text-white rounded font-semibold border border-white/15 transition cursor-pointer"
                 title="Beralih ke tampilan Barista"
               >
                 Barista
@@ -771,7 +769,7 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={() => onSwitchRole('manager')}
-                className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded font-semibold border border-slate-700/80 transition cursor-pointer"
+                className="px-2 py-0.5 bg-white/10 hover:bg-white/20 text-white rounded font-semibold border border-white/15 transition cursor-pointer"
                 title="Beralih ke tampilan Manajer"
               >
                 Manajer
@@ -781,7 +779,7 @@ export default function Sidebar({
         )}
 
         {/* Bottom User Profile & Session Footer */}
-        <div className={`border-t border-slate-800 bg-slate-900/95 transition-all ${
+        <div className={`border-t border-white/15 bg-[#053E2F] transition-all ${
           isCollapsed ? 'p-2.5 flex flex-col items-center space-y-2' : 'p-3.5 flex items-center justify-between'
         }`}>
           {isCollapsed ? (
