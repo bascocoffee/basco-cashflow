@@ -90,8 +90,9 @@ export default function Sidebar({
   useEffect(() => {
     fetchMySqlStatus().then(setMysqlStatus).catch(() => {});
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetchMySqlStatus().then(setMysqlStatus).catch(() => {});
-    }, 30000);
+    }, 300000);
     return () => clearInterval(interval);
   }, []);
 

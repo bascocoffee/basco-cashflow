@@ -420,7 +420,7 @@ export default function DebtTrackerPage({
     const intervalId = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       syncDebtsFromSpreadsheet(false);
-    }, 30000);
+    }, 300000);
     const handleFocusOrOnline = () => {
       syncDebtsFromSpreadsheet(false);
     };
@@ -432,18 +432,6 @@ export default function DebtTrackerPage({
       window.removeEventListener('online', handleFocusOrOnline);
     };
   }, [activeSpreadsheetId, activeToken]);
-
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      syncDebtsFromSpreadsheet(false);
-    }, 7000);
-    const handleFocus = () => syncDebtsFromSpreadsheet(false);
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [activeSpreadsheetId, activeToken, transactions]);
 
   // Save to localStorage whenever debts change
   useEffect(() => {

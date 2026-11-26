@@ -183,8 +183,9 @@ export default function UsageHistoryPage() {
   useEffect(() => {
     void loadLogs();
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       void loadLogs();
-    }, 10000);
+    }, 180000);
     return () => clearInterval(interval);
   }, []);
 
