@@ -382,14 +382,14 @@ export default function Sidebar({
       {/* Sidebar Container */}
       <aside
         id="app-left-sidebar"
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-slate-950 text-slate-100 flex flex-col border-r border-slate-800/80 transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 bottom-0 left-0 z-50 bg-[#009E6D] text-white flex flex-col border-r border-[#00855B] transition-all duration-300 ease-in-out ${
           isOpenMobile 
             ? 'translate-x-0 shadow-2xl w-72' 
             : `-translate-x-full lg:translate-x-0 ${isCollapsed ? 'lg:w-20' : 'lg:w-72'}`
         }`}
       >
         {/* Top Branding & Logo Header */}
-        <div className={`border-b border-slate-800 flex items-center bg-slate-900/90 transition-all duration-300 ${
+        <div className={`border-b border-white/15 flex items-center bg-[#008E61] transition-all duration-300 ${
           isCollapsed ? 'p-3 justify-center' : 'p-4 sm:p-5 justify-between'
         }`}>
           {isCollapsed ? (
@@ -492,15 +492,13 @@ export default function Sidebar({
                         onClick={() => handleItemClick(item.id)}
                         className={`w-full relative flex flex-col items-center justify-center p-2.5 rounded-xl transition-all group cursor-pointer ${
                           isActive
-                            ? item.highlight
-                              ? 'bg-linear-to-br from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20'
-                              : 'bg-slate-800 text-amber-400 border border-amber-400/40 shadow-inner'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-900/90'
+                            ? 'bg-[#FEF6E0] text-[#065F46] shadow-xs'
+                            : 'text-white/90 hover:text-white hover:bg-white/12'
                         }`}
                         title={`${item.label}${item.badge ? ` (${item.badge})` : ''}`}
                       >
                         <Icon className={`h-5 w-5 transition-transform group-hover:scale-110 ${
-                          isActive && !item.highlight ? 'text-amber-400' : ''
+                          isActive ? 'text-[#065F46]' : ''
                         }`} />
 
                         {/* Mini Badge dot indicator */}
@@ -524,19 +522,15 @@ export default function Sidebar({
                       onClick={() => handleItemClick(item.id)}
                       className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between group cursor-pointer ${
                         isActive
-                          ? item.highlight
-                            ? 'bg-linear-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/20'
-                            : 'bg-slate-800 text-amber-400 font-extrabold border border-amber-400/30 shadow-inner'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-900/80'
+                          ? 'bg-[#FEF6E0] text-[#065F46] font-extrabold shadow-xs'
+                          : 'text-white/90 hover:text-white hover:bg-white/12'
                       }`}
                     >
                       <div className="flex items-center space-x-3 min-w-0">
                         <div className={`p-1.5 rounded-lg shrink-0 transition-colors ${
                           isActive
-                            ? item.highlight
-                              ? 'bg-slate-950/20 text-slate-950'
-                              : 'bg-amber-400/10 text-amber-400'
-                            : 'bg-slate-900 text-slate-400 group-hover:text-slate-200 group-hover:bg-slate-800'
+                            ? 'bg-[#009E6D]/15 text-[#065F46]'
+                            : 'bg-white/12 text-white group-hover:bg-white/20'
                         }`}>
                           <Icon className="h-4 w-4" />
                         </div>
@@ -546,9 +540,7 @@ export default function Sidebar({
                           </div>
                           {item.description && (
                             <p className={`text-[10px] truncate mt-0.5 ${
-                              isActive 
-                                ? item.highlight ? 'text-slate-900/80 font-medium' : 'text-slate-400' 
-                                : 'text-slate-400'
+                              isActive ? 'text-emerald-800/80 font-medium' : 'text-emerald-100/75'
                             }`}>
                               {item.description}
                             </p>

@@ -5,24 +5,24 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Warm Cream & Light Brown Cafe Theme */
-  --color-white: #FFFDF9;
-  --color-slate-50: #FAF6F0;
-  --color-slate-100: #F3EBE0;
-  --color-slate-200: #E6D8C7;
-  --color-slate-300: #D5C1A9;
-  --color-slate-400: #9E8772;
-  --color-slate-500: #7D6652;
-  --color-slate-600: #634E3C;
-  --color-slate-700: #4E3B2B;
-  --color-slate-800: #3B2B1E;
-  --color-slate-900: #2C1E14;
-  --color-slate-950: #1F140D;
+  /* Kasir Pintar Clean Emerald & Crisp White Theme */
+  --color-white: #FFFFFF;
+  --color-slate-50: #F4F6F9;
+  --color-slate-100: #EEF2F6;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+  --color-slate-950: #020617;
 }
 
 body {
-  background-color: #FAF6F0;
-  color: #2C1E14;
+  background-color: #F4F6F9;
+  color: #1E293B;
 }
 
 /* Elegant keyframe animations */
@@ -56,12 +56,12 @@ body {
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #D5C1A9;
+  background: #CBD5E1;
   border-radius: 99px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #B99B7B;
+  background: #94A3B8;
 }
 
 /* Print-specific helper styles */
