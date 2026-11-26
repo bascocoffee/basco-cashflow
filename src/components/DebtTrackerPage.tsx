@@ -271,8 +271,13 @@ export default function DebtTrackerPage({
       )
       .join('|');
 
+  const lastLocalMutationAtRef = React.useRef<number>(0);
+
   // Realtime sync from Cloud & Google Spreadsheet ("Pencatatan Hutang")
   const syncDebtsFromSpreadsheet = async (showSpinner = false) => {
+    if (!showSpinner && Date.now() - lastLocalMutationAtRef.current < 5000) {
+      return;
+    }
     if (showSpinner) setIsSyncingSheet(true);
     try {
       // Flush any pending local write to Spreadsheet first
@@ -569,6 +574,7 @@ export default function DebtTrackerPage({
     const annualAmount = formDebtType === 'annual' ? principal : monthly * 12;
 
     if (editingDebt) {
+      lastLocalMutationAtRef.current = Date.now();
       setDebts(prev => {
         const nextList = prev.map(item => {
           if (item.id === editingDebt.id) {
@@ -595,10 +601,16 @@ export default function DebtTrackerPage({
           return item;
         });
         saveStoredDebts(nextList);
-        saveDebtsToSheet(activeSpreadsheetId, nextList, activeToken).catch(() => {});
+        saveDebtsToSheet(
+          activeSpreadsheetId,
+          nextList,
+          activeToken,
+          Array.from(readDeletedDebtTombstones())
+        ).catch(() => {});
         return nextList;
       });
     } else {
+      lastLocalMutationAtRef.current = Date.now();
       const newDebt: DebtItem = {
         id: `debt-${Date.now()}`,
         name: formName.trim(),
@@ -623,7 +635,12 @@ export default function DebtTrackerPage({
       setDebts(prev => {
         const nextList = [newDebt, ...prev];
         saveStoredDebts(nextList);
-        saveDebtsToSheet(activeSpreadsheetId, nextList, activeToken).catch(() => {});
+        saveDebtsToSheet(
+          activeSpreadsheetId,
+          nextList,
+          activeToken,
+          Array.from(readDeletedDebtTombstones())
+        ).catch(() => {});
         return nextList;
       });
     }

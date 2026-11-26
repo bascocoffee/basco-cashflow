@@ -2150,8 +2150,8 @@ export function normalizeDebtItemRecord(raw: any): any {
     status: isPaid ? 'paid_off' : 'active',
     notes: String(raw.notes ?? raw.catatan ?? ''),
     paymentLogs: rawLogs,
-    createdAt: raw.createdAt || new Date().toISOString(),
-    updatedAt: raw.updatedAt || new Date().toISOString(),
+    createdAt: raw.createdAt || '',
+    updatedAt: raw.updatedAt || '',
     source: raw.source || 'sheet-hutang',
     batchId: raw.batchId,
     transactionId: raw.transactionId,
@@ -2289,7 +2289,7 @@ export async function fetchDebtsFromSheet(
         ? fetchSheetRowsWithFallback(
             spreadsheetId,
             DEBT_SHEET_TAB_NAME,
-            `'${DEBT_SHEET_TAB_NAME}'!A1:Q1000`,
+            `'${DEBT_SHEET_TAB_NAME}'!A1:R1000`,
             accessToken
           )
         : Promise.resolve(null),
@@ -2361,6 +2361,7 @@ export async function fetchDebtsFromSheet(
               status: statusStr.includes('lunas') || sisaPokok <= 0 ? 'paid_off' : 'active',
               notes,
               paymentLogs: parsedLogs,
+              updatedAt: row[17] ? String(row[17]).trim() : '',
               source: 'sheet-hutang',
             })
           );
@@ -2401,6 +2402,7 @@ export async function fetchDebtsFromSheet(
                   : 'active',
               notes: String(row[11] || '').trim(),
               paymentLogs: parsedLogs,
+              updatedAt: '',
               source: 'sheet-hutang',
             })
           );
@@ -2540,6 +2542,7 @@ export async function saveDebtsToSheet(
       'Status',
       'Catatan',
       'Riwayat Pembayaran (JSON)',
+      'Updated At',
     ];
 
     const rows = [
@@ -2568,11 +2571,12 @@ export async function saveDebtsToSheet(
           d.status === 'paid_off' ? 'Lunas' : 'Aktif',
           d.notes || '',
           JSON.stringify(d.paymentLogs || []),
+          d.updatedAt || new Date().toISOString(),
         ];
       }),
     ];
 
-    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A1:Q${rows.length}?valueInputOption=USER_ENTERED`;
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A1:R${rows.length}?valueInputOption=USER_ENTERED`;
     const writeRes = await fetch(writeUrl, {
       method: 'PUT',
       headers: {
@@ -2590,7 +2594,7 @@ export async function saveDebtsToSheet(
     if (writeRes.ok) {
       clearPending();
       if (rows.length < 1000) {
-        const clearTrailingUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A${rows.length + 1}:Q1000:clear`;
+        const clearTrailingUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${DEBT_SHEET_TAB_NAME}'!A${rows.length + 1}:R1000:clear`;
         await fetch(clearTrailingUrl, {
           method: 'POST',
           headers: { Authorization: `Bearer ${effectiveToken}` },
